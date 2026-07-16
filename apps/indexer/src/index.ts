@@ -1,23 +1,61 @@
 import { ponder } from "ponder:registry";
-import { coin, swap, feeBalance, feeRecipient, captain } from "ponder:schema";
+import { and, count, desc, eq, gt, lte } from "ponder";
+import { coin, swap, holder, feeBalance, feeRecipient, captain } from "ponder:schema";
 
-/** Pinned WETH9 on Robinhood Chain (4663) — the quote asset of every pool. */
-const WETH9 = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
+// Tick-space math lives in lib/ so it can be unit-checked without Ponder's
+// virtual modules: `node lib/ticks.ts`. Read the comments there before touching
+// anything tick-related — the token ordering is NOT what it looks like.
+import {
+  WETH9,
+  isCoinToken0,
+  toCoinTick,
+  poolRange,
+  curveProgress,
+  pctChange,
+} from "../lib/ticks";
 
-/**
- * Salt mining guarantees every launched token sorts below WETH9, so the coin is
- * always token0 and WETH is always token1. That's what makes `amount0`/`amount1`
- * unambiguous below, and why buyers push the tick UP.
- */
+/** Mint source / burn sink. Never counts as a holder. */
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+const DAY = 86_400n;
+
 function abs(n: bigint): bigint {
   return n < 0n ? -n : n;
 }
 
-/** 0–1 progress of `tick` through [lower, upper]. Clamped. */
-function curveProgress(tick: number, lower: number, upper: number): number {
-  if (upper <= lower) return 0;
-  const p = (tick - lower) / (upper - lower);
-  return Math.min(1, Math.max(0, p));
+/** Holder row id. Lowercased so it matches the `hex()` columns, which store lowercase. */
+function holderId(coinAddr: string, address: string): string {
+  return `${coinAddr.toLowerCase()}-${address.toLowerCase()}`;
+}
+
+/**
+ * Real 24h price change, in percent, or null when there's nothing to compare to.
+ *
+ * Takes COIN-SPACE ticks (see toCoinTick), where price = 1.0001^tick is WETH per
+ * whole coin for either token ordering — so this needs no ordering knowledge.
+ *
+ * We only ever need the *ratio* of two prices, and 1.0001^a / 1.0001^b collapses
+ * to 1.0001^(a-b), so we never evaluate the huge exponentials themselves.
+ *
+ * Returns null when no swap is older than 24h: a coin with no history to compare
+ * against must show nothing, never a fabricated 0.
+ */
+async function change24hFor(
+  context: any,
+  coinAddr: `0x${string}`,
+  tickNow: number,
+  now: bigint,
+): Promise<number | null> {
+  // The newest swap at or before the cutoff = the price as of 24h ago.
+  const [prior] = await context.db.sql
+    .select({ tick: swap.tick })
+    .from(swap)
+    .where(and(eq(swap.coin, coinAddr), lte(swap.timestamp, now - DAY)))
+    .orderBy(desc(swap.timestamp))
+    .limit(1);
+
+  if (!prior) return null;
+  return pctChange(tickNow, prior.tick);
 }
 
 async function bumpCaptain(
@@ -51,6 +89,12 @@ async function bumpCaptain(
 ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
   const a = event.args;
 
+  // The event's ticks are coin-space; the real pool/NFPM range is mirrored when
+  // the coin is token1. Verified for $SMOKE: event [-268600,-199400] vs the
+  // on-chain position [199400, 268600].
+  const coinIsToken0 = isCoinToken0(a.token);
+  const { poolTickLower, poolTickUpper } = poolRange(a.tickLower, a.tickUpper, coinIsToken0);
+
   await context.db.insert(coin).values({
     address: a.token,
     creator: a.creator,
@@ -59,6 +103,9 @@ ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
     supply: a.supply,
     tickLower: a.tickLower,
     tickUpper: a.tickUpper,
+    coinIsToken0,
+    poolTickLower,
+    poolTickUpper,
     protocolFeeBps: a.protocolFeeBps,
     devBuyEthIn: a.devBuyEthIn,
     name: a.name,
@@ -66,11 +113,28 @@ ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
     metadataURI: a.metadataURI,
     createdAt: event.block.timestamp,
     createdBlock: event.block.number,
-    // pool is initialised at tickLower, so a fresh coin sits at 0 progress
+    // In coin space a fresh pool always starts at tickLower => 0 progress. (In
+    // pool space that's poolTickUpper when the coin is token1 — the same point.)
     tick: a.tickLower,
+    poolTick: coinIsToken0 ? poolTickLower : poolTickUpper,
     curve: 0,
     graduated: false,
+    // No swaps yet => nothing to compare against => no 24h change.
+    change24h: null,
   });
+
+  // The launch tx mints the supply and funds the LP *before* it emits
+  // TokenLaunched (verified on chain: the token's Transfer logs are at logIndex
+  // 4/8/13, this event at 17). Those Transfer handlers ran first and already
+  // wrote holder rows, but had no coin row to bump — so seed the count here.
+  const [seed] = await context.db.sql
+    .select({ n: count() })
+    .from(holder)
+    .where(and(eq(holder.coin, a.token), gt(holder.balance, 0n)));
+
+  if (seed && seed.n > 0) {
+    await context.db.update(coin, { address: a.token }).set({ holderCount: seed.n });
+  }
 
   await bumpCaptain(context, a.creator, { coinsCreated: 1 }, event.block.timestamp);
 });
@@ -83,31 +147,37 @@ ponder.on("LaunchPool:Swap", async ({ event, context }) => {
   const { amount0, amount1, tick, sqrtPriceX96, sender, recipient } = event.args;
 
   // Find the coin this pool belongs to.
-  const rows = await context.db.sql
+  const [c] = await context.db.sql
     .select()
     .from(coin)
-    .where((c: any) => c.pool.eq(event.log.address))
-    .limit(1)
-    .catch(() => []);
-  const c = rows?.[0];
+    .where(eq(coin.pool, event.log.address))
+    .limit(1);
   if (!c) return; // not one of ours
 
-  // token0 = the coin, token1 = WETH (guaranteed by salt mining).
-  // amount1 > 0 means WETH went INTO the pool => a buy.
-  const isBuy = amount1 > 0n;
-  const amountWeth = abs(amount1);
-  const amountToken = abs(amount0);
+  // Which amount is WETH depends on the pool's token ordering — NOT fixed.
+  // A positive amount means that token went INTO the pool, so WETH in => a buy.
+  const wethDelta = c.coinIsToken0 ? amount1 : amount0;
+  const tokenDelta = c.coinIsToken0 ? amount0 : amount1;
+  const isBuy = wethDelta > 0n;
+  const amountWeth = abs(wethDelta);
+  const amountToken = abs(tokenDelta);
 
-  const progress = curveProgress(tick, c.tickLower, c.tickUpper);
+  // Normalise once, then all the range math below is ordering-agnostic.
+  const coinTick = toCoinTick(tick, c.coinIsToken0);
+  const progress = curveProgress(coinTick, c.tickLower, c.tickUpper);
 
   await context.db.update(coin, { address: c.address }).set({
-    tick,
+    tick: coinTick,
+    poolTick: tick,
     sqrtPriceX96,
     curve: progress,
-    graduated: tick >= c.tickUpper,
+    // Coin space always climbs toward tickUpper, whichever side the coin is on.
+    graduated: coinTick >= c.tickUpper,
     volumeWeth: c.volumeWeth + amountWeth,
     swapCount: c.swapCount + 1,
     lastTradeAt: event.block.timestamp,
+    // This swap is at `now`, so it can never be its own 24h-ago comparison point.
+    change24h: await change24hFor(context, c.address, coinTick, event.block.timestamp),
   });
 
   await context.db.insert(swap).values({
@@ -118,7 +188,7 @@ ponder.on("LaunchPool:Swap", async ({ event, context }) => {
     isBuy,
     amountToken,
     amountWeth,
-    tick,
+    tick: coinTick,
     timestamp: event.block.timestamp,
     block: event.block.number,
     txHash: event.transaction.hash,
@@ -130,6 +200,82 @@ ponder.on("LaunchPool:Swap", async ({ event, context }) => {
     isBuy ? { buys: 1, volumeWeth: amountWeth } : { sells: 1, volumeWeth: amountWeth },
     event.block.timestamp,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Holders — rebuilt purely from ERC20 Transfer logs
+// ---------------------------------------------------------------------------
+
+/**
+ * Applies a signed delta to one holder's balance.
+ * Returns the resulting change in the coin's holder count: -1, 0 or +1.
+ */
+async function applyBalance(
+  context: any,
+  coinAddr: `0x${string}`,
+  address: `0x${string}`,
+  delta: bigint,
+): Promise<number> {
+  if (address === ZERO_ADDRESS) return 0; // mint/burn endpoint, not a holder
+
+  const id = holderId(coinAddr, address);
+  const prev = (await context.db.find(holder, { id }))?.balance ?? 0n;
+
+  // Clamp at zero. A balance must never go negative even if we somehow saw a
+  // send before its matching receive (reorg, or a token that mints oddly).
+  const sum = prev + delta;
+  const next = sum > 0n ? sum : 0n;
+
+  await context.db
+    .insert(holder)
+    .values({ id, coin: coinAddr, address, balance: next })
+    .onConflictDoUpdate({ balance: next });
+
+  // Only crossing the zero boundary moves the count.
+  return (next > 0n ? 1 : 0) - (prev > 0n ? 1 : 0);
+}
+
+ponder.on("LaunchToken:Transfer", async ({ event, context }) => {
+  const { from, to, value } = event.args;
+  if (value === 0n) return; // moves no balance, so it can't move the holder set
+
+  const token = event.log.address;
+  const delta =
+    (await applyBalance(context, token, from, -value)) +
+    (await applyBalance(context, token, to, value));
+
+  if (delta === 0) return;
+
+  // The launch-tx mints arrive before TokenLaunched, so the coin row may not
+  // exist yet; TokenLaunched seeds holderCount from the rows we just wrote.
+  const c = await context.db.find(coin, { address: token });
+  if (!c) return;
+
+  await context.db
+    .update(coin, { address: token })
+    .set({ holderCount: c.holderCount + delta });
+});
+
+// ---------------------------------------------------------------------------
+// Clock — keeps the rolling 24h window honest between trades
+// ---------------------------------------------------------------------------
+
+ponder.on("Clock:block", async ({ event, context }) => {
+  // Recompute change24h for traded coins. Without this the value would freeze at
+  // whatever the last swap computed: a coin that pumped and then went quiet for
+  // days would advertise that pump forever, instead of decaying to 0%.
+  //
+  // ponytail: full scan of traded coins each interval. Fine at launchpad scale
+  // (tens–hundreds of coins); if it reaches thousands, narrow the filter to coins
+  // whose lastTradeAt is within ~48h — older ones have already settled at 0.
+  const coins = await context.db.sql.select().from(coin).where(gt(coin.swapCount, 0));
+
+  for (const c of coins) {
+    if (c.tick === null) continue;
+    const next = await change24hFor(context, c.address, c.tick, event.block.timestamp);
+    if (next === c.change24h) continue; // no write if nothing moved
+    await context.db.update(coin, { address: c.address }).set({ change24h: next });
+  }
 });
 
 // ---------------------------------------------------------------------------

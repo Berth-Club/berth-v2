@@ -1,22 +1,43 @@
 "use client"
 
 import * as React from "react"
+import { formatUnits } from "viem"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { fmtAmount } from "@/lib/format"
 import { useFx } from "@/components/fx-provider"
+import { useWallet } from "@/components/wallet-provider"
+import { useTrade, type Side } from "@/lib/trade"
+import { explorerTx } from "@/lib/chain"
 import type { Coin } from "@/lib/mock"
 
 // ~6.9 WETH buys through the whole range — the total exit liquidity.
+// Measured, not assumed: tracing a 20 WETH buy against the live $SMOKE pool shows
+// the pool taking exactly 6.956359525294265233 WETH for the full 100B supply and
+// halting at MIN_TICK. The remaining 13.04 WETH is handed back by the refundETH()
+// leg that lib/trade.ts bundles into the swap — that is what the note below means.
 const EXIT_WETH = 6.9
 const CHIPS = ["0.05", "0.1", "0.5", "1"]
+const SELL_CHIPS: [string, bigint][] = [
+  ["25%", 25n],
+  ["50%", 50n],
+  ["MAX", 100n],
+]
 
-type Side = "buy" | "sell"
+/** ETH amounts are small and precision matters — no compact notation. */
+function fmtEth(n: number): string {
+  if (n === 0) return "0"
+  if (n < 0.000001) return "<0.000001"
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 })
+}
 
 export function TradePanel({ coin }: { coin: Coin }) {
   const [side, setSide] = React.useState<Side>("buy")
   const [amount, setAmount] = React.useState("")
+  const [lastTx, setLastTx] = React.useState<`0x${string}`>()
   const { celebrate } = useFx()
+  const { connected, wrongNetwork, connect, switchToRobinhood } = useWallet()
+  const trade = useTrade(coin, side, amount)
 
   const eth = parseFloat(amount) || 0
   // remaining range = (100 − grad%)/100 × 6.9 WETH
@@ -24,11 +45,18 @@ export function TradePanel({ coin }: { coin: Coin }) {
   const impact = eth ? Math.min(95, (eth / EXIT_WETH) * 100) : 0
   const showImpact = side === "buy" && eth >= EXIT_WETH * 0.03
   const overshoots = side === "buy" && eth > remaining && !coin.graduated
-  const receive = eth * 1_450_000_000
 
-  function submit() {
-    if (side === "buy") celebrate("Loaded up, captain 🫡")
-    else celebrate("Cashed out, captain 🌊")
+  const { success, hash, reset } = trade
+  React.useEffect(() => {
+    if (!success || !hash) return
+    setLastTx(hash)
+    celebrate(side === "buy" ? "Loaded up, captain 🫡" : "Cashed out, captain 🌊")
+    setAmount("")
+    reset()
+  }, [success, hash, side, celebrate, reset])
+
+  function setSideAndClear(s: Side) {
+    setSide(s)
     setAmount("")
   }
 
@@ -39,7 +67,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
         {(["buy", "sell"] as const).map((s) => (
           <button
             key={s}
-            onClick={() => setSide(s)}
+            onClick={() => setSideAndClear(s)}
             aria-pressed={side === s}
             className={cn(
               "font-display flex-1 rounded-[9px] py-2 text-[15px] capitalize transition-colors",
@@ -57,9 +85,16 @@ export function TradePanel({ coin }: { coin: Coin }) {
 
       {/* amount */}
       <div className="flex flex-col gap-2">
-        <label className="text-mist text-xs">
-          {side === "buy" ? "Amount (ETH)" : `Amount ($${coin.ticker})`}
-        </label>
+        <div className="flex items-baseline justify-between">
+          <label className="text-mist text-xs">
+            {side === "buy" ? "Amount (ETH)" : `Amount ($${coin.ticker})`}
+          </label>
+          {trade.balance !== undefined && (
+            <span className="text-faint tabular text-[11px]">
+              {fmtEth(Number(formatUnits(trade.balance, 18)))} {side === "buy" ? "Ξ" : `$${coin.ticker}`}
+            </span>
+          )}
+        </div>
         <div className="bg-deep flex items-center gap-2 rounded-btn border py-1 pl-3.5 pr-1">
           <input
             inputMode="decimal"
@@ -69,19 +104,32 @@ export function TradePanel({ coin }: { coin: Coin }) {
             className="tabular w-full bg-transparent py-2 text-[20px] outline-none"
           />
           <span className="text-mist pr-2 text-[15px]" aria-hidden>
-            Ξ
+            {side === "buy" ? "Ξ" : `$${coin.ticker}`}
           </span>
         </div>
         <div className="flex gap-2">
-          {CHIPS.map((c) => (
-            <button
-              key={c}
-              onClick={() => setAmount(c)}
-              className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs"
-            >
-              {c} Ξ
-            </button>
-          ))}
+          {side === "buy"
+            ? CHIPS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setAmount(c)}
+                  className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs"
+                >
+                  {c} Ξ
+                </button>
+              ))
+            : SELL_CHIPS.map(([label, pct]) => (
+                <button
+                  key={label}
+                  disabled={!trade.balance}
+                  onClick={() =>
+                    trade.balance && setAmount(formatUnits((trade.balance * pct) / 100n, 18))
+                  }
+                  className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs disabled:opacity-40"
+                >
+                  {label}
+                </button>
+              ))}
         </div>
       </div>
 
@@ -90,7 +138,15 @@ export function TradePanel({ coin }: { coin: Coin }) {
           <div className="flex justify-between">
             <span className="text-mist">You receive</span>
             <span className="tabular">
-              {fmtAmount(receive)} ${coin.ticker}
+              {trade.quoting ? (
+                <span className="text-mist">quoting…</span>
+              ) : trade.amountOut === undefined ? (
+                <span className="text-mist">—</span>
+              ) : side === "buy" ? (
+                `${fmtAmount(trade.amountOutFloat)} $${coin.ticker}`
+              ) : (
+                `${fmtEth(trade.amountOutFloat)} Ξ`
+              )}
             </span>
           </div>
           <div className="flex justify-between">
@@ -125,19 +181,55 @@ export function TradePanel({ coin }: { coin: Coin }) {
         </div>
       )}
 
-      {/* NOTE: SwapRouter02 has no deadline field — do not add one. */}
-      <button
-        onClick={submit}
-        className={cn(
-          "btn-deck w-full py-3 text-[19px]",
-          side === "buy" ? "btn-lime" : "btn-red"
-        )}
-      >
-        {side === "buy" ? "FULL SAIL ⚓" : "ABANDON SHIP 😭"}
-      </button>
-      <p className="text-faint text-center text-[11px]">
-        Wallet + live quotes are mocked — wiring lands with the indexer &amp; contracts
-      </p>
+      {/* why the button is dead */}
+      {trade.disabledReason && (
+        <div className="text-mist rounded-btn bg-deep p-2.5 text-[13px]">{trade.disabledReason}</div>
+      )}
+
+      {/* NOTE: SwapRouter02 has no deadline field — do not add one. See lib/trade.ts. */}
+      {!connected ? (
+        <button onClick={connect} className="btn-deck btn-quiet w-full py-3 text-[19px]">
+          CONNECT WALLET
+        </button>
+      ) : wrongNetwork ? (
+        <button onClick={switchToRobinhood} className="btn-deck btn-quiet w-full py-3 text-[19px]">
+          SWITCH TO ROBINHOOD CHAIN
+        </button>
+      ) : (
+        <button
+          onClick={trade.submit}
+          disabled={!trade.canSubmit}
+          className={cn(
+            "btn-deck w-full py-3 text-[19px] disabled:cursor-not-allowed disabled:opacity-40",
+            side === "buy" ? "btn-lime" : "btn-red"
+          )}
+        >
+          {side === "buy" ? "FULL SAIL ⚓" : "ABANDON SHIP 😭"}
+        </button>
+      )}
+
+      {trade.busy && (
+        <p className="text-mist text-center text-[12px]">
+          {trade.approving ? `Approving $${coin.ticker}…` : "Signing and sailing… hold fast."}
+        </p>
+      )}
+
+      {trade.error && !trade.busy && (
+        <p className="text-center text-[12px]" style={{ color: "#F87171" }}>
+          {trade.error}
+        </p>
+      )}
+
+      {lastTx && (
+        <a
+          href={explorerTx(lastTx)}
+          target="_blank"
+          rel="noreferrer"
+          className="text-lime text-center text-[12px] underline underline-offset-2"
+        >
+          View last trade on the explorer ↗
+        </a>
+      )}
     </div>
   )
 }

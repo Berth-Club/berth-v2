@@ -6,9 +6,10 @@ import Link from "next/link"
 import { cn } from "@workspace/ui/lib/utils"
 import { FACE_OPTIONS } from "@/lib/mock"
 import { useFx } from "@/components/fx-provider"
+import { useWallet } from "@/components/wallet-provider"
+import { explorerTx } from "@/lib/chain"
+import { buildConfig, normalizeTicker, parseEthInput, useLaunch } from "@/lib/launch"
 
-// ~0.0045 Ξ ≈ the 2% maxDevBuyBps cap on the shipped curve.
-const DEV_BUY_CAP_ETH = 0.0045
 const STEPS = ["Papers", "Sea trial", "Set sail"] as const
 
 export function LaunchWizard() {
@@ -19,20 +20,54 @@ export function LaunchWizard() {
   const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
+  const { connected, wrongNetwork, switchToRobinhood, connect } = useWallet()
 
-  const devEth = parseFloat(devBuy) || 0
-  const overCap = devEth > DEV_BUY_CAP_ETH
-  const devPct = (devEth / DEV_BUY_CAP_ETH) * 2
-  const tickerUp = ticker || "TICKER"
-  // mock — real value comes from predictTokenAddress before signing (plan Unit 4)
-  const predAddr = `0x0bd7f3a2${(ticker || "ship").toLowerCase().padEnd(4, "0").slice(0, 4)}9c1e5a77b204d3f8e6c1a90b2d4f`.slice(0, 42)
+  const valueWei = parseEthInput(devBuy)
+  const tickerUp = normalizeTicker(ticker) || "TICKER"
 
-  const canAdvance = name.trim() && ticker.trim() && !overCap
+  // Memoized: this object is a query key for the predict read and the deploy
+  // simulation. A fresh identity every render would refetch forever.
+  //
+  // lore and emoji ARE deps: they go into metadataURI, which is a constructor
+  // arg and therefore part of the CREATE2 initcode hash. Leave them out and the
+  // previewed address stops matching the one that actually gets deployed.
+  const config = React.useMemo(
+    () =>
+      name.trim() && normalizeTicker(ticker)
+        ? buildConfig(name, ticker, lore, emoji)
+        : undefined,
+    [name, ticker, lore, emoji]
+  )
 
-  function setSail() {
-    celebrate(`$${tickerUp} has left the shipyard 🚢`)
-    setStep(2)
-  }
+  // The simulation is a full deploy eth_call — only run it on the review step,
+  // where it is about to gate a signature.
+  const launch = useLaunch(config, valueWei, step === 1)
+
+  const devEth = valueWei !== undefined ? Number(devBuy) || 0 : 0
+  // Advisory only — instant, works before connecting. The authority is the
+  // on-chain simulation on the review step (launch.blocked).
+  const overCap = devEth > launch.capEth
+  const devPct = (devEth / launch.capEth) * launch.capPct
+  const badDevBuy = valueWei === undefined
+
+  const canAdvance = !!config && !overCap && !badDevBuy
+
+  const gate = !connected
+    ? { label: "Connect wallet to launch", act: connect }
+    : wrongNetwork
+      ? { label: "Switch to Robinhood Chain", act: switchToRobinhood }
+      : undefined
+
+  // Fire once, on the receipt — never on click. The real token address only
+  // exists after TokenLaunched is parsed out of the mined receipt.
+  const celebrated = React.useRef(false)
+  React.useEffect(() => {
+    if (launch.status === "done" && !celebrated.current) {
+      celebrated.current = true
+      celebrate(`$${tickerUp} has left the shipyard 🚢`)
+      setStep(2)
+    }
+  }, [launch.status, celebrate, tickerUp])
 
   return (
     <div className="flex flex-col gap-5">
@@ -65,7 +100,7 @@ export function LaunchWizard() {
           <Field label="Ticker">
             <input
               value={ticker}
-              onChange={(e) => setTicker(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8))}
+              onChange={(e) => setTicker(normalizeTicker(e.target.value))}
               placeholder="FLAG"
               className={cn(inputCls, "tabular")}
             />
@@ -77,21 +112,27 @@ export function LaunchWizard() {
           <Field label="Dev-buy (optional) — your own first buy">
             <div
               className="bg-deep flex items-center gap-2 rounded-btn border pl-3.5 pr-3"
-              style={{ borderColor: overCap ? "#F87171" : "#263A28" }}
+              style={{ borderColor: overCap || badDevBuy ? "#F87171" : "#263A28" }}
             >
               <input
                 value={devBuy}
                 onChange={(e) => setDevBuy(e.target.value.replace(/[^0-9.]/g, ""))}
                 placeholder="0.0"
+                inputMode="decimal"
                 className="tabular w-full bg-transparent py-2.5 outline-none"
               />
               <span className="text-mist" aria-hidden>Ξ</span>
             </div>
           </Field>
-          {overCap ? (
+          {badDevBuy ? (
             <p className="text-[13px]" style={{ color: "#F87171" }}>
-              Over the cap — max dev-buy is <span className="tabular">0.0045 Ξ</span> (~2% of supply).
-              The launch would revert on-chain; we won&apos;t let you pay gas to fail.
+              That dev-buy isn&apos;t a number.
+            </p>
+          ) : overCap ? (
+            <p className="text-[13px]" style={{ color: "#F87171" }}>
+              Over the cap — max dev-buy is <span className="tabular">{launch.capEth} Ξ</span> (~
+              {launch.capPct}% of supply). The launch would revert on-chain; we won&apos;t let you pay
+              gas to fail.
             </p>
           ) : (
             devEth > 0 && (
@@ -149,18 +190,72 @@ export function LaunchWizard() {
             <Row k="Your dev-buy" v={`${devEth} Ξ`} mono />
             <div className="mt-2">
               <div className="text-mist text-xs">Predicted coin address — computed before you sign</div>
-              <div className="tabular mt-1 break-all text-[13px]">{predAddr}</div>
+              {launch.predicted ? (
+                <div className="tabular mt-1 break-all text-[13px]">{launch.predicted}</div>
+              ) : launch.predictFailed ? (
+                <div className="mt-1 flex flex-col items-start gap-1.5">
+                  <p className="text-[13px]" style={{ color: "#F87171" }}>
+                    The shipyard couldn&apos;t find a berth for this name. Nudge the name or ticker.
+                  </p>
+                  <button onClick={launch.retryPredict} className="btn-deck btn-quiet px-3 py-1.5 text-xs">
+                    Sound it again
+                  </button>
+                </div>
+              ) : (
+                <div className="text-faint mt-1 text-[13px]">
+                  {gate ? "Connect on Robinhood Chain to sound the address." : "Sounding the address…"}
+                </div>
+              )}
             </div>
           </div>
 
+          {launch.blocked && !gate && (
+            <p className="text-[13px]" style={{ color: "#F87171" }}>
+              {launch.blocked}
+            </p>
+          )}
+          {launch.error && (
+            <p className="text-[13px]" style={{ color: "#F87171" }}>
+              {launch.error}
+            </p>
+          )}
+
           <div className="flex items-center justify-between">
-            <button onClick={() => setStep(0)} className="btn-deck btn-quiet px-4 py-2.5 text-sm">
+            <button
+              onClick={() => setStep(0)}
+              disabled={launch.status === "signing" || launch.status === "mining"}
+              className="btn-deck btn-quiet px-4 py-2.5 text-sm disabled:opacity-40"
+            >
               ← Edit
             </button>
-            <button onClick={setSail} className="btn-deck btn-lime px-6 py-3 text-[19px]">
-              Set sail 🚢
-            </button>
+            {gate ? (
+              <button onClick={gate.act} className="btn-deck btn-gold px-6 py-3 text-[19px]">
+                {gate.label}
+              </button>
+            ) : (
+              <button
+                onClick={launch.launch}
+                disabled={!launch.ready || launch.status === "signing" || launch.status === "mining"}
+                className="btn-deck btn-lime px-6 py-3 text-[19px] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {launch.status === "signing"
+                  ? "Check your wallet…"
+                  : launch.status === "mining"
+                    ? "Leaving the yard…"
+                    : "Set sail 🚢"}
+              </button>
+            )}
           </div>
+          {launch.hash && (
+            <a
+              href={explorerTx(launch.hash)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-mist text-center text-xs underline"
+            >
+              Track the transaction ↗
+            </a>
+          )}
           <p className="text-faint text-center text-xs">
             one transaction: mint + pool + lock the LP forever
           </p>
@@ -174,13 +269,25 @@ export function LaunchWizard() {
           <h2 className="font-display text-2xl">${tickerUp} has left the shipyard</h2>
           <p className="text-mist text-sm">Block confirmed. Calm seas and green candles, captain.</p>
           <div className="mt-2 flex gap-3">
-            <Link href={`/token/${predAddr}`} className="btn-deck btn-lime px-5 py-2.5 text-base">
-              View your coin
-            </Link>
+            {launch.token && (
+              <Link href={`/token/${launch.token}`} className="btn-deck btn-lime px-5 py-2.5 text-base">
+                View your coin
+              </Link>
+            )}
             <Link href="/" className="btn-deck btn-quiet px-5 py-2.5 text-base">
               Back home
             </Link>
           </div>
+          {launch.hash && (
+            <a
+              href={explorerTx(launch.hash)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-mist mt-1 text-xs underline"
+            >
+              View the launch transaction ↗
+            </a>
+          )}
         </div>
       )}
     </div>

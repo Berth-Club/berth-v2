@@ -5,6 +5,7 @@ import {
   LaunchFactoryAbi,
   LpLockerAbi,
   FeeLockerAbi,
+  LaunchTokenAbi,
   UniswapV3PoolAbi,
 } from "./abis/berth";
 
@@ -58,6 +59,29 @@ export default createConfig({
         event: tokenLaunchedEvent,
         parameter: "pool",
       }),
+      startBlock: START_BLOCK,
+    },
+    // Same factory pattern, on the `token` param: the ERC20 Transfer log of every
+    // launched coin. Drives the holder table + coin.holderCount.
+    LaunchToken: {
+      chain: "robinhood",
+      abi: LaunchTokenAbi,
+      address: factory({
+        address: LAUNCH_FACTORY,
+        event: tokenLaunchedEvent,
+        parameter: "token",
+      }),
+      startBlock: START_BLOCK,
+    },
+  },
+  blocks: {
+    // change24h is a *moving* window, so it has to be recomputed as time passes
+    // and not only when a swap fires — otherwise a coin that pumped and then went
+    // quiet would keep showing its old number forever.
+    // ~0.1s blocks here, so 6000 blocks ≈ 10 minutes of drift at worst.
+    Clock: {
+      chain: "robinhood",
+      interval: 6_000,
       startBlock: START_BLOCK,
     },
   },

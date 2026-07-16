@@ -1,12 +1,10 @@
+import { formatEther, isAddress } from "viem"
+
+import { CONTRACTS, UNISWAP } from "@/lib/chain"
 import { FACE_OPTIONS, type Coin } from "@/lib/mock"
+import { getEthUsd } from "@/lib/prices"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
-
-/**
- * ETH/USD for display only. The spec's mock data assumes $3,400.
- * TODO: replace with a real price feed before anyone trades on these numbers.
- */
-const ETH_USD = 3400
 
 /** Every launched coin has 18 decimals and 100B supply. */
 const SUPPLY_TOKENS = 100_000_000_000
@@ -19,39 +17,143 @@ type IndexedCoin = {
   name: string
   symbol: string
   metadataURI: string
+  /** Launch-event bounds. Always coin-space, both orderings. */
   tickLower: number
   tickUpper: number
+  /** Coin-space at launch, raw pool tick once swapCount > 0. See coinSpaceTick. */
   tick: number | null
-  curve: number
-  graduated: boolean
   volumeWeth: string
   swapCount: number
+  lastTradeAt: string | null
   createdAt: string
+  // Landing in the indexer separately — absent on older builds, see coinsQuery.
+  holderCount?: number | null
+  change24h?: number | null
 }
 
-const COINS_QUERY = `{
+/**
+ * Ponder rejects the *whole* query for one unknown field, so `holderCount` and
+ * `change24h` (still being added indexer-side) are asked for optimistically and
+ * dropped on a retry. Costs one extra localhost POST per render until they
+ * land, then zero — cheaper than a flag that needs a web restart to notice.
+ */
+const coinsQuery = (extended: boolean) => `{
   coins(orderBy: "createdAt", orderDirection: "desc", limit: 100) {
     items {
       address creator tokenId pool name symbol metadataURI
-      tickLower tickUpper tick curve graduated
-      volumeWeth swapCount createdAt
+      tickLower tickUpper tick
+      volumeWeth swapCount lastTradeAt createdAt
+      ${extended ? "holderCount change24h" : ""}
     }
   }
 }`
 
+const SWAPS_QUERY = `query ($coin: String!) {
+  swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "desc", limit: 20) {
+    items { id isBuy amountWeth timestamp txHash }
+  }
+}`
+
+const HOLDERS_QUERY = `query ($coin: String!) {
+  holders(where: { coin: $coin }, orderBy: "balance", orderDirection: "desc", limit: 12) {
+    items { address balance }
+  }
+}`
+
+/** null on any failure — transport, HTTP, or a GraphQL error (e.g. unknown field). */
+async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T | null> {
+  try {
+    const res = await fetch(`${INDEXER_URL}/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const json = await res.json()
+    if (json?.errors) return null
+    return (json?.data as T) ?? null
+  } catch {
+    return null // indexer down — caller falls back to demo data
+  }
+}
+
 /**
- * Uniswap v3 tick -> price. Salt mining guarantees the coin is token0 and WETH
- * is token1, so 1.0001^tick is WETH per whole token (both sides are 18dp).
+ * Uniswap v3 tick -> price, for a tick already in COIN SPACE (see
+ * `coinSpaceTick`). Both sides are 18dp, so 1.0001^tick is WETH per whole coin.
+ *
+ * Do NOT hand this a raw pool tick — pass it through `coinSpaceTick` first, or
+ * you get the reciprocal price (off by ~1e22 for a real launch range).
  */
 export function tickToPriceWeth(tick: number): number {
   return Math.pow(1.0001, tick)
 }
 
-/** Deterministic face until metadata carries a real one. */
-function emojiFor(address: string): string {
+/**
+ * Uniswap sorts pool tokens by address, and the DEPLOYED factory does not force
+ * the coin to token0 — it mirrors the tick range when the coin sorts above
+ * WETH9. So ordering is derived from the addresses (deterministic, no schema
+ * coupling) rather than assumed.
+ *
+ * Verified on chain 4663 for $SMOKE (0x4b70e9…, pool 0x12ff27…):
+ *   token0 = 0x0Bd7D308… (WETH9), token1 = 0x4b70e93E… (the coin)
+ *   slot0.tick = +268600, position range +199400/+268600
+ *   but TokenLaunched emitted tickLower -268600 / tickUpper -199400.
+ */
+export function coinIsToken0(coinAddress: string): boolean {
+  return BigInt(coinAddress) < BigInt(UNISWAP.weth9)
+}
+
+/** The fields of a coin row needed to place its price on the curve. */
+type TickSource = {
+  address: string
+  tick: number | null
+  tickLower: number
+  swapCount: number
+}
+
+/**
+ * The tick as if the coin were token0 — the space where 1.0001^tick is WETH per
+ * coin and the launch event's tickLower/tickUpper already live.
+ *
+ * The indexer's `tick` column changes meaning: at launch it's seeded from the
+ * (coin-space) event tickLower, but a Swap overwrites it with the raw pool tick.
+ * `swapCount` is what distinguishes the two — before any trade the pool simply
+ * sits at the range floor.
+ */
+export function coinSpaceTick(c: TickSource): number {
+  if (c.tick == null || c.swapCount === 0) return c.tickLower
+  // Coin as token1: the pool quotes coin-per-WETH, the reciprocal of what we want.
+  return coinIsToken0(c.address) ? c.tick : -c.tick
+}
+
+/** Deterministic face, used only when the coin carries no readable metadata. */
+export function emojiFor(address: string): string {
   let h = 0
   for (let i = 2; i < address.length; i++) h = (h * 31 + address.charCodeAt(i)) % 997
   return FACE_OPTIONS[h % FACE_OPTIONS.length]!
+}
+
+type CoinMeta = { emoji?: string; description?: string; image?: string }
+
+/**
+ * Read back the metadata the creator chose.
+ *
+ * New launches inline it as `data:application/json,<encoded>` (see
+ * lib/launch.ts) so the face and lore survive without an upload host. Anything
+ * else — `ipfs://…`, a bare string, an http URL — is metadata we cannot resolve
+ * synchronously, so we return nothing and let the caller fall back rather than
+ * render a URL as if it were prose. Untrusted input: never throw on it.
+ */
+export function parseMetadata(uri: string | null | undefined): CoinMeta {
+  if (!uri?.startsWith("data:application/json,")) return {}
+  try {
+    const json = decodeURIComponent(uri.slice("data:application/json,".length))
+    const m = JSON.parse(json) as CoinMeta
+    return typeof m === "object" && m !== null ? m : {}
+  } catch {
+    return {} // malformed metadata is a bad coin, not a broken harbor
+  }
 }
 
 function ago(unixSeconds: number): string {
@@ -66,51 +168,165 @@ function short(addr: string): string {
   return `${addr.slice(0, 5)}…${addr.slice(-5)}`
 }
 
-function toCoin(c: IndexedCoin): Coin {
-  // Pool opens at tickLower; before the first swap `tick` is that floor.
-  const tick = c.tick ?? c.tickLower
+function toCoin(c: IndexedCoin, ethUsd: number): Coin {
+  const tick = coinSpaceTick(c)
   const priceWeth = tickToPriceWeth(tick)
   const marketCapWeth = priceWeth * SUPPLY_TOKENS
-  const volWeth = Number(BigInt(c.volumeWeth)) / 1e18
+  const volWeth = Number(formatEther(BigInt(c.volumeWeth)))
+  // The creator's face + lore, read back out of the launch event. Falls back to
+  // a derived face for coins launched before metadata was inlined (e.g. $SMOKE,
+  // whose URI is literally "ipfs://placeholder").
+  const meta = parseMetadata(c.metadataURI)
+
+  // curve/graduated are recomputed rather than read off the row: the indexer
+  // still derives them from a raw pool tick against coin-space bounds, which
+  // pins any traded coin to curve=1 + graduated. In coin-space the direction is
+  // uniform for both orderings — buyers always walk the tick up toward tickUpper.
+  const curve = Math.min(1, Math.max(0, (tick - c.tickLower) / (c.tickUpper - c.tickLower)))
 
   return {
     address: c.address,
-    emoji: emojiFor(c.address),
+    emoji: meta.emoji ?? emojiFor(c.address),
     name: c.name,
     ticker: c.symbol,
     creator: short(c.creator),
     age: ago(Number(c.createdAt)),
-    priceUsd: priceWeth * ETH_USD,
-    // no trades => no basis for a 24h change. Never fake a 0.
-    change24h: c.swapCount > 0 ? 0 : null,
-    marketCapUsd: marketCapWeth * ETH_USD,
-    curve: c.curve,
-    graduated: c.graduated,
-    lore: c.metadataURI?.startsWith("ipfs://") ? "" : (c.metadataURI ?? ""),
-    vol: volWeth > 0 ? `$${Math.round(volWeth * ETH_USD).toLocaleString()}` : "$0",
+    priceUsd: priceWeth * ethUsd,
+    // Real and nullable: the indexer returns null when there's no ~24h-old
+    // trade to compare against. Never fake a 0 — null renders a neutral "—".
+    change24h: c.change24h ?? null,
+    marketCapUsd: marketCapWeth * ethUsd,
+    curve: c.tickUpper > c.tickLower ? curve : 0,
+    graduated: tick >= c.tickUpper,
+    lore: meta.description ?? "",
+    vol: volWeth > 0 ? `$${Math.round(volWeth * ethUsd).toLocaleString()}` : "$0",
   }
 }
 
 /** Live coins from the indexer. Returns null if it's unreachable. */
 export async function fetchCoins(): Promise<Coin[] | null> {
-  try {
-    const res = await fetch(`${INDEXER_URL}/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: COINS_QUERY }),
-      cache: "no-store",
-    })
-    if (!res.ok) return null
-    const json = await res.json()
-    const items: IndexedCoin[] | undefined = json?.data?.coins?.items
-    if (!items) return null
-    return items.map(toCoin)
-  } catch {
-    return null // indexer down — caller falls back to demo data
-  }
+  type Res = { coins: { items: IndexedCoin[] } }
+
+  let data = await gql<Res>(coinsQuery(true))
+  // Either the indexer is down or it predates holderCount/change24h. Retry
+  // plain: if that works it was the latter, and those fields stay null.
+  if (!data) data = await gql<Res>(coinsQuery(false))
+
+  const items = data?.coins?.items
+  if (!items) return null
+
+  const { usd } = await getEthUsd()
+  return items.map((c) => toCoin(c, usd))
 }
 
 export async function fetchCoin(address: string): Promise<Coin | null> {
   const coins = await fetchCoins()
   return coins?.find((c) => c.address.toLowerCase() === address.toLowerCase()) ?? null
+}
+
+export type Trade = {
+  /** `${txHash}-${logIndex}` — one tx can hold two swaps, so this is the row key. */
+  id: string
+  kind: "buy" | "sell"
+  /** WETH in/out of the swap, preformatted. */
+  eth: string
+  ago: string
+  txHash: string
+}
+
+type IndexedSwap = {
+  id: string
+  isBuy: boolean
+  amountWeth: string
+  timestamp: string
+  txHash: string
+}
+
+function abs(n: bigint): bigint {
+  return n < 0n ? -n : n
+}
+
+/**
+ * Recent trades for one coin. `[]` = genuinely no trades yet (the honest state
+ * for a fresh launch); `null` = the indexer couldn't be reached.
+ */
+export async function fetchTrades(address: string): Promise<Trade[] | null> {
+  if (!isAddress(address)) return null
+
+  const data = await gql<{ swaps: { items: IndexedSwap[] } }>(SWAPS_QUERY, {
+    coin: address.toLowerCase(),
+  })
+  const items = data?.swaps?.items
+  if (!items) return null
+
+  return items.map((s) => ({
+    id: s.id,
+    kind: s.isBuy ? ("buy" as const) : ("sell" as const),
+    // Pool amounts are signed from the pool's perspective; we only want size.
+    eth: Number(formatEther(abs(BigInt(s.amountWeth)))).toLocaleString("en-US", {
+      maximumFractionDigits: 4,
+    }),
+    ago: ago(Number(s.timestamp)),
+    txHash: s.txHash,
+  }))
+}
+
+export type Holder = {
+  address: string
+  pct: number
+  /** The locked LP position — always the largest holder, by construction. */
+  locked: boolean
+}
+
+export type Holders = {
+  rows: Holder[]
+  /** Total distinct holders from the indexer; null until it indexes them. */
+  count: number | null
+}
+
+/**
+ * Top holders for one coin. `null` = the indexer has no `holder` table yet, or
+ * is unreachable — callers must render an honest empty state, never invent rows.
+ */
+export async function fetchHolders(address: string): Promise<Holders | null> {
+  if (!isAddress(address)) return null
+  const coin = address.toLowerCase()
+
+  const [meta, data] = await Promise.all([
+    fetchCoinMeta(coin),
+    gql<{ holders: { items: { address: string; balance: string }[] } }>(HOLDERS_QUERY, { coin }),
+  ])
+
+  const items = data?.holders?.items
+  if (!items) return null
+
+  // The LP tokens sit in the pool; the position NFT is held by LpLocker. Either
+  // one showing up as a holder is the locked position, not a trader.
+  const locked = new Set(
+    [CONTRACTS.lpLocker, meta?.pool].filter((a) => !!a).map((a) => a!.toLowerCase()),
+  )
+
+  return {
+    rows: items.map((h) => ({
+      address: h.address,
+      pct: (Number(formatEther(BigInt(h.balance))) / SUPPLY_TOKENS) * 100,
+      locked: locked.has(h.address.toLowerCase()),
+    })),
+    count: meta?.holderCount ?? null,
+  }
+}
+
+/** `pool` + `holderCount` for one coin — the bits `Coin` doesn't carry. */
+async function fetchCoinMeta(
+  coin: string,
+): Promise<{ pool: string; holderCount: number | null } | null> {
+  type Res = { coin: { pool: string; holderCount?: number | null } | null }
+  const q = (extended: boolean) =>
+    `query ($coin: String!) { coin(address: $coin) { pool ${extended ? "holderCount" : ""} } }`
+
+  let data = await gql<Res>(q(true), { coin })
+  if (!data) data = await gql<Res>(q(false), { coin })
+  if (!data?.coin) return null
+
+  return { pool: data.coin.pool, holderCount: data.coin.holderCount ?? null }
 }

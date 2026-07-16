@@ -96,6 +96,23 @@ export const FeeLockerAbi = [
   },
 ] as const
 
+/**
+ * A launched coin (ERC20) — only Transfer, for holder tracking.
+ * Event ABI only, like the rest of this file: the deployed token's function ABI
+ * is not assumed to match the contracts repo.
+ */
+export const LaunchTokenAbi = [
+  {
+    type: "event",
+    name: "Transfer",
+    inputs: [
+      { name: "from", type: "address", indexed: true },
+      { name: "to", type: "address", indexed: true },
+      { name: "value", type: "uint256", indexed: false },
+    ],
+  },
+] as const
+
 /** Uniswap v3 pool — only what we index. */
 export const UniswapV3PoolAbi = [
   {

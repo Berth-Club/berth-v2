@@ -12,8 +12,27 @@ export const coin = onchainTable(
     tokenId: t.bigint().notNull(),
     pool: t.hex().notNull(),
     supply: t.bigint().notNull(),
+    /**
+     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "WETH per
+     * whole coin", so higher = coin more expensive, and graduation is at
+     * tickUpper. Compare these ONLY against `coin.tick`/`swap.tick`, which are
+     * normalised into the same space. See src/index.ts `toCoinTick`.
+     */
     tickLower: t.integer().notNull(),
     tickUpper: t.integer().notNull(),
+    /**
+     * Uniswap token ordering for this pool. The deployed factory does NOT force
+     * the coin to token0 — it mirrors the tick range when the coin sorts above
+     * WETH9 instead. Verified on chain for $SMOKE: pool.token0() = WETH9.
+     */
+    coinIsToken0: t.boolean().notNull(),
+    /**
+     * The REAL pool/NFPM-space range (what slot0.tick and positions() report).
+     * Equals [tickLower, tickUpper] when coinIsToken0, else the mirrored
+     * [-tickUpper, -tickLower]. Stored so the web app never has to re-derive it.
+     */
+    poolTickLower: t.integer().notNull(),
+    poolTickUpper: t.integer().notNull(),
     protocolFeeBps: t.integer().notNull(),
     devBuyEthIn: t.bigint().notNull(),
     name: t.text().notNull(),
@@ -23,8 +42,15 @@ export const coin = onchainTable(
     createdBlock: t.bigint().notNull(),
 
     // --- market state, maintained from pool Swap events ---
-    /** Latest pool tick. null until the first swap. */
+    /**
+     * Latest tick in COIN SPACE (negated when the coin is token1), so
+     * `1.0001^tick` is always WETH per whole coin regardless of pool ordering.
+     * NOT the raw slot0 tick — use poolTick for that.
+     */
     tick: t.integer(),
+    /** Raw slot0-space tick, as the pool itself reports it. */
+    poolTick: t.integer(),
+    /** Raw slot0 sqrtPriceX96 — pool space, i.e. token1 per token0. */
     sqrtPriceX96: t.bigint(),
     /** 0–1 progress along the range toward graduation. */
     curve: t.real().notNull().default(0),
@@ -33,6 +59,14 @@ export const coin = onchainTable(
     volumeWeth: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),
     lastTradeAt: t.bigint(),
+    /** Addresses holding a non-zero balance. The locked LP pool is one of them. */
+    holderCount: t.integer().notNull().default(0),
+    /**
+     * Price change over the last 24h, in percent. NULLABLE on purpose: null means
+     * "no trade older than 24h to compare against", which the UI must render as
+     * nothing rather than a fake 0.
+     */
+    change24h: t.real(),
   }),
   (t) => ({
     creatorIdx: index().on(t.creator),
@@ -54,6 +88,7 @@ export const swap = onchainTable(
     /** Absolute amounts, wei. */
     amountToken: t.bigint().notNull(),
     amountWeth: t.bigint().notNull(),
+    /** COIN-SPACE tick after the swap — see coin.tick. Drives the 24h change. */
     tick: t.integer().notNull(),
     timestamp: t.bigint().notNull(),
     block: t.bigint().notNull(),
@@ -63,6 +98,28 @@ export const swap = onchainTable(
     coinIdx: index().on(t.coin),
     tsIdx: index().on(t.timestamp),
     recipientIdx: index().on(t.recipient),
+    // Serves the 24h lookback: newest swap for a coin at or before a cutoff.
+    coinTsIdx: index().on(t.coin, t.timestamp),
+  }),
+);
+
+/**
+ * Token balance per address, per coin. Rebuilt from ERC20 Transfer logs, so it
+ * needs no chain reads. The zero address is never a holder (mint/burn endpoint).
+ */
+export const holder = onchainTable(
+  "holder",
+  (t) => ({
+    id: t.text().primaryKey(), // `${coin}-${address}`, both lowercased
+    coin: t.hex().notNull(),
+    address: t.hex().notNull(),
+    balance: t.bigint().notNull().default(0n),
+  }),
+  (t) => ({
+    coinIdx: index().on(t.coin),
+    addressIdx: index().on(t.address),
+    // Serves "holders of this coin, biggest first" and the holderCount seed.
+    coinBalanceIdx: index().on(t.coin, t.balance),
   }),
 );
 
@@ -117,8 +174,13 @@ export const captain = onchainTable("captain", (t) => ({
 
 export const coinRelations = relations(coin, ({ many }) => ({
   swaps: many(swap),
+  holders: many(holder),
 }));
 
 export const swapRelations = relations(swap, ({ one }) => ({
   coinRef: one(coin, { fields: [swap.coin], references: [coin.address] }),
+}));
+
+export const holderRelations = relations(holder, ({ one }) => ({
+  coinRef: one(coin, { fields: [holder.coin], references: [coin.address] }),
 }));

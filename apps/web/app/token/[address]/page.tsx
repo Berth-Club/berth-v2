@@ -1,14 +1,14 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { cn } from "@workspace/ui/lib/utils"
 import { GraduationMeter } from "@workspace/ui/components/graduation-meter"
 import { ChangeChip } from "@/components/token-card"
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
-import { fmtPrice, fmtMc } from "@/lib/format"
-import { getCoin, getHolders, getTrades } from "@/lib/mock"
-import { fetchCoin } from "@/lib/indexer"
+import { explorerTx } from "@/lib/chain"
+import { fmtPrice } from "@/lib/format"
+import { getCoin } from "@/lib/mock"
+import { fetchCoin, fetchHolders, fetchTrades } from "@/lib/indexer"
 
 export const dynamic = "force-dynamic"
 
@@ -22,8 +22,9 @@ export default async function TokenPage({
   const coin = (await fetchCoin(address)) ?? getCoin(address)
   if (!coin) notFound()
 
-  const holders = getHolders(coin)
-  const trades = getTrades(coin)
+  // Both are null when the indexer can't answer. Nothing here is invented: an
+  // un-traded coin shows no trades, and holders stay empty until it indexes them.
+  const [trades, holders] = await Promise.all([fetchTrades(address), fetchHolders(address)])
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-6">
@@ -94,56 +95,111 @@ export default async function TokenPage({
         className="mt-4 grid gap-4"
         style={{ gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}
       >
-        <Panel title="TOP HOLDERS">
-          {/* the locked LP position is always the largest holder — by construction */}
-          <Row>
-            <span className="text-sm">🏦 locked position</span>
-            <span className="tabular text-mist text-sm">{holders[0]!.pct}%</span>
-          </Row>
-          {holders.slice(1).map((h) => (
-            <Row key={h.who}>
-              <Link href={`/u/${h.who}`} className="tabular text-body2 hover:text-lime text-sm">
-                {h.who}
-              </Link>
-              <span className="tabular text-mist text-sm">{h.pct}%</span>
-            </Row>
-          ))}
+        <Panel
+          title="TOP HOLDERS"
+          note={holders?.count != null ? `${holders.count.toLocaleString()} aboard` : undefined}
+        >
+          {holders === null || holders.rows.length === 0 ? (
+            <Empty>
+              {/* TODO: the indexer has no `holder` table yet. No invented rows until it does. */}
+              Holder manifest isn&rsquo;t indexed yet.
+            </Empty>
+          ) : (
+            holders.rows.map((h) =>
+              // the locked LP position is always the largest holder — by construction
+              h.locked ? (
+                <Row key={h.address}>
+                  <span className="text-sm">🏦 locked position</span>
+                  <span className="tabular text-mist text-sm">{fmtPct(h.pct)}</span>
+                </Row>
+              ) : (
+                <Row key={h.address}>
+                  <Link
+                    href={`/u/${h.address}`}
+                    className="tabular text-body2 hover:text-lime text-sm"
+                  >
+                    {shortAddr(h.address)}
+                  </Link>
+                  <span className="tabular text-mist text-sm">{fmtPct(h.pct)}</span>
+                </Row>
+              ),
+            )
+          )}
         </Panel>
 
         <Panel title="RECENT TRADES">
-          {trades.map((t, i) => (
-            <Row key={i}>
-              <span className="flex items-center gap-2 text-sm">
-                <span
-                  className="rounded-chip px-1.5 py-0.5 text-[11px] font-bold uppercase"
-                  style={{
-                    color: t.kind === "buy" ? "#4ADE80" : "#F87171",
-                    background: t.kind === "buy" ? "rgba(74,222,128,.12)" : "rgba(248,113,113,.12)",
-                  }}
-                >
-                  {t.kind}
+          {trades === null ? (
+            <Empty>Can&rsquo;t reach the harbourmaster&rsquo;s log.</Empty>
+          ) : trades.length === 0 ? (
+            <Empty>No trades yet — this one&rsquo;s still at the dock.</Empty>
+          ) : (
+            trades.map((t) => (
+              <Row key={t.id}>
+                <span className="flex items-center gap-2 text-sm">
+                  <span
+                    className="rounded-chip px-1.5 py-0.5 text-[11px] font-bold uppercase"
+                    style={{
+                      color: t.kind === "buy" ? "#4ADE80" : "#F87171",
+                      background:
+                        t.kind === "buy" ? "rgba(74,222,128,.12)" : "rgba(248,113,113,.12)",
+                    }}
+                  >
+                    {t.kind}
+                  </span>
+                  <span className="tabular">{t.eth} Ξ</span>
+                  <span className="text-mist">of ${coin.ticker}</span>
                 </span>
-                <span className="tabular">{t.eth} Ξ</span>
-                <span className="text-mist">of ${coin.ticker}</span>
-              </span>
-              <span className="tabular text-mist text-xs">{t.ago}</span>
-            </Row>
-          ))}
+                <a
+                  href={explorerTx(t.txHash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="tabular text-mist hover:text-lime text-xs transition-colors"
+                >
+                  {t.ago} ↗
+                </a>
+              </Row>
+            ))
+          )}
         </Panel>
       </div>
     </div>
   )
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+/** Holder share of the fixed 100B supply. Sub-0.01% is still not zero — say so. */
+function fmtPct(pct: number): string {
+  if (pct > 0 && pct < 0.01) return "<0.01%"
+  return `${pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`
+}
+
+function shortAddr(addr: string): string {
+  return `${addr.slice(0, 5)}…${addr.slice(-5)}`
+}
+
+function Panel({
+  title,
+  note,
+  children,
+}: {
+  title: string
+  note?: string
+  children: React.ReactNode
+}) {
   return (
     <div className="rounded-panel bg-hull border p-[18px]">
-      <h3 className="text-mist mb-2 text-xs font-bold" style={{ letterSpacing: 1 }}>
-        {title}
-      </h3>
+      <div className="mb-2 flex items-baseline justify-between">
+        <h3 className="text-mist text-xs font-bold" style={{ letterSpacing: 1 }}>
+          {title}
+        </h3>
+        {note && <span className="tabular text-mist text-[11px]">{note}</span>}
+      </div>
       <div className="flex flex-col">{children}</div>
     </div>
   )
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="text-mist py-6 text-center text-sm">{children}</p>
 }
 
 function Row({ children }: { children: React.ReactNode }) {
