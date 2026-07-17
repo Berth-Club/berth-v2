@@ -7,11 +7,13 @@ import {
   decodeEventLog,
   parseEther,
   type Address,
+  formatEther,
   type Hash,
   type TransactionReceipt,
 } from "viem"
 import {
   useAccount,
+  useBalance,
   useReadContract,
   useSimulateContract,
   useWaitForTransactionReceipt,
@@ -214,6 +216,8 @@ export type Launch = {
   retryPredict: () => void
   /** Why we refuse to let them sign, if we do. */
   blocked?: string
+  /** Simulation in flight — the button is dead but for a reason worth naming. */
+  checking: boolean
   /** Simulation passed — signing this is safe. */
   ready: boolean
   launch: () => void
@@ -232,6 +236,7 @@ const IDLE: Launch = {
   predictPending: false,
   retryPredict: () => {},
   ready: false,
+  checking: false,
   launch: () => {},
   status: "idle",
   reset: () => {},
@@ -257,6 +262,11 @@ export function useLaunch(
 
   /* eslint-disable react-hooks/rules-of-hooks */
   const { address, chainId } = useAccount()
+
+  // Cheap, instant, and answers the most common failure before the simulation
+  // round-trips: the wallet simply cannot pay. The sim is still the authority —
+  // this exists so the UI can say WHY rather than dying quietly.
+  const { data: balance } = useBalance({ address, chainId: robinhood.id })
 
   const { data: capBps } = useReadContract({
     address: CONTRACTS.launchFactory,
@@ -307,8 +317,21 @@ export function useLaunch(
 
   const capPct = capBps !== undefined ? capBps / 100 : 2
 
+  // Gas headroom for the deploy itself (~0.00045 Ξ measured on the shipped
+  // curve). Deliberately generous: telling someone they're short when they are
+  // not is worse than letting the simulation catch the edge.
+  const GAS_HEADROOM_WEI = 700_000_000_000_000n // 0.0007
+  const needWei = valueWei !== undefined ? valueWei + GAS_HEADROOM_WEI : undefined
+  const short =
+    balance !== undefined && needWei !== undefined && balance.value < needWei
+
   let blocked: string | undefined
   if (valueWei === undefined) blocked = "That dev-buy isn't a number."
+  else if (short)
+    blocked =
+      `Not enough Ξ in this wallet. You have ${Number(formatEther(balance!.value)).toFixed(5)} Ξ; ` +
+      `this needs about ${Number(formatEther(needWei!)).toFixed(5)} Ξ (dev-buy + gas). ` +
+      `Lower the dev-buy or top the wallet up.`
   else if (predictFailed)
     blocked = "The shipyard couldn't find a berth for this name. Nudge the name or ticker and try again."
   else if (sim.error) blocked = blockReason(sim.error, capPct)
@@ -337,6 +360,7 @@ export function useLaunch(
     predictPending: predict.isFetching,
     retryPredict: () => void predict.refetch(),
     blocked,
+    checking: sim.isLoading && !blocked,
     // Only ever true off a simulation that actually passed — never off a guess.
     ready: !!sim.data && !blocked,
     launch: () => sim.data && writeContract(sim.data.request),

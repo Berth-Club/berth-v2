@@ -8,9 +8,27 @@ import { FACE_OPTIONS } from "@/lib/mock"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { explorerTx } from "@/lib/chain"
-import { buildConfig, normalizeTicker, parseEthInput, useLaunch } from "@/lib/launch"
+import {
+  DEV_BUY_CAP_ETH,
+  buildConfig,
+  normalizeTicker,
+  parseEthInput,
+  useLaunch,
+} from "@/lib/launch"
 
 const STEPS = ["Papers", "Sea trial", "Set sail"] as const
+
+/**
+ * Dev-buy quick picks. Sourced from DEV_BUY_CAP_ETH so MAX lands exactly ON the
+ * boundary — the cap is only ~0.00445 Ξ, so generic amounts (0.1, 0.5) would
+ * every one of them revert with DevBuyExceedsCap.
+ */
+const DEV_BUY_PRESETS: { label: string; value: string }[] = [
+  { label: "none", value: "0" },
+  { label: "0.001 Ξ", value: "0.001" },
+  { label: "0.0025 Ξ", value: "0.0025" },
+  { label: `MAX · ${DEV_BUY_CAP_ETH} Ξ`, value: String(DEV_BUY_CAP_ETH) },
+]
 
 export function LaunchWizard() {
   const [step, setStep] = React.useState(0)
@@ -124,6 +142,28 @@ export function LaunchWizard() {
               <span className="text-mist" aria-hidden>Ξ</span>
             </div>
           </Field>
+          {/* Presets are derived from the live cap, not typed out — a hardcoded
+              list would drift the moment the boundary moves, and "MAX" has to
+              land exactly ON the cap rather than a hair over it (0.0045 reverts). */}
+          <div className="-mt-2 flex flex-wrap gap-2">
+            {DEV_BUY_PRESETS.map(({ label, value }) => {
+              const active = devBuy === value
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setDevBuy(value)}
+                  aria-pressed={active}
+                  className={cn(
+                    "btn-quiet rounded-chip tabular px-2.5 py-1 text-xs transition-colors",
+                    active && "border-lime text-lime"
+                  )}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
           {badDevBuy ? (
             <p className="text-[13px]" style={{ color: "#F87171" }}>
               That dev-buy isn&apos;t a number.
@@ -212,6 +252,13 @@ export function LaunchWizard() {
           {launch.blocked && !gate && (
             <p className="text-[13px]" style={{ color: "#F87171" }}>
               {launch.blocked}
+            </p>
+          )}
+          {/* A dead button with no reason is the worst of both worlds: it knows
+              something is wrong and won't say what. Name the wait too. */}
+          {launch.checking && !gate && !launch.blocked && (
+            <p className="text-mist text-[13px]">
+              Checking the launch against the chain…
             </p>
           )}
           {launch.error && (

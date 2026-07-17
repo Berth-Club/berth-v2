@@ -60,6 +60,138 @@ const HOLDERS_QUERY = `query ($coin: String!) {
   }
 }`
 
+/**
+ * A trader, straight from the indexer's `captain` rollup.
+ *
+ * Note what is NOT here: PnL and win-rate. Both need per-holder cost basis,
+ * which nothing indexes, so there is no honest way to compute them — and a
+ * plausible-looking number is worse than an absent one. The leaderboard ranks
+ * on volume, which is real.
+ */
+export type Captain = {
+  address: string
+  coinsCreated: number
+  buys: number
+  sells: number
+  volumeWeth: number
+  volumeUsd: number
+  firstSeenAt: number
+}
+
+const CAPTAINS_QUERY = `{
+  captains(orderBy: "volumeWeth", orderDirection: "desc", limit: 50) {
+    items { address coinsCreated buys sells volumeWeth firstSeenAt }
+  }
+}`
+
+type RawCaptain = {
+  address: string
+  coinsCreated: number
+  buys: number
+  sells: number
+  volumeWeth: string
+  firstSeenAt: string
+}
+
+/** Real traders, ranked by real volume. null if the indexer is unreachable. */
+export async function fetchCaptains(): Promise<Captain[] | null> {
+  const data = await gql<{ captains: { items: RawCaptain[] } }>(CAPTAINS_QUERY)
+  if (!data?.captains?.items) return null
+  const ethUsd = await getEthUsd()
+  return data.captains.items.map((c) => {
+    const volumeWeth = Number(formatEther(BigInt(c.volumeWeth)))
+    return {
+      address: c.address,
+      coinsCreated: c.coinsCreated,
+      buys: c.buys,
+      sells: c.sells,
+      volumeWeth,
+      volumeUsd: volumeWeth * ethUsd.usd,
+      firstSeenAt: Number(c.firstSeenAt),
+    }
+  })
+}
+
+export async function fetchCaptain(address: string): Promise<Captain | null> {
+  const all = await fetchCaptains()
+  return all?.find((c) => c.address.toLowerCase() === address.toLowerCase()) ?? null
+}
+
+/**
+ * Coins a given wallet launched, from the indexed launch events.
+ *
+ * Filtered by the indexer on the FULL address — `Coin.creator` is the
+ * truncated display form (0x624…4e895), so matching on it would quietly
+ * return nothing.
+ */
+export async function fetchCoinsByCreator(address: string): Promise<Coin[] | null> {
+  const data = await gql<{ coins: { items: IndexedCoin[] } }>(
+    `query ($creator: String!) {
+      coins(where: { creator: $creator }, orderBy: "createdAt", orderDirection: "desc", limit: 50) {
+        items {
+          address creator tokenId pool name symbol metadataURI
+          tickLower tickUpper tick
+          volumeWeth swapCount lastTradeAt createdAt
+          holderCount change24h
+        }
+      }
+    }`,
+    { creator: address.toLowerCase() }
+  )
+  if (!data?.coins?.items) return null
+  const ethUsd = await getEthUsd()
+  return data.coins.items.map((c) => toCoin(c, ethUsd.usd))
+}
+
+export type IndexerStatus = {
+  /** Last block the indexer has processed. */
+  block: number
+  /** How far behind the chain tip it is, in seconds of chain time. */
+  lagSeconds: number
+  /** Caught up enough that what we render is effectively current. */
+  synced: boolean
+}
+
+/**
+ * How far behind the indexer is.
+ *
+ * Measured in TIME, not blocks: chain 4663 produces a block every ~0.098s, so
+ * "11,000 blocks behind" is meaningless to a reader while "18 minutes behind"
+ * is not. Lag comes from the indexed block's own timestamp, so it needs no
+ * extra RPC round-trip.
+ *
+ * This exists because the harbor badge used to claim "live" whenever the
+ * indexer answered at all — including when it was 18 minutes stale and missing
+ * a coin that had already launched. Answering is not the same as being current.
+ */
+export async function fetchIndexerStatus(): Promise<IndexerStatus | null> {
+  try {
+    const res = await fetch(`${INDEXER_URL}/status`, { cache: "no-store" })
+    if (!res.ok) return null
+    const json = await res.json()
+    const block = json?.robinhood?.block
+    if (!block?.number || !block?.timestamp) return null
+    // Clamp at 0: a chain timestamp can sit marginally ahead of local clock.
+    const lagSeconds = Math.max(0, Math.floor(Date.now() / 1000) - Number(block.timestamp))
+    return {
+      block: Number(block.number),
+      lagSeconds,
+      // 60s ≈ 600 blocks here — comfortably past normal jitter, well short of
+      // "you are missing launches".
+      synced: lagSeconds < 60,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Human lag: "18m behind", "42s behind". */
+export function formatLag(seconds: number): string {
+  if (seconds < 90) return `${seconds}s behind`
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m behind`
+  return `${(seconds / 3600).toFixed(1)}h behind`
+}
+
 /** null on any failure — transport, HTTP, or a GraphQL error (e.g. unknown field). */
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T | null> {
   try {

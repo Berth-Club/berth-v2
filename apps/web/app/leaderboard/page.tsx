@@ -1,84 +1,112 @@
 import Link from "next/link"
 
 import { fmtMc } from "@/lib/format"
-import { CAPTAINS, rankColor } from "@/lib/users"
+import { fetchCaptains, fetchIndexerStatus, formatLag } from "@/lib/indexer"
 
+export const dynamic = "force-dynamic"
+
+// Real columns only. The design asks for PNL and WIN %, but neither is
+// computable from what we index: both need per-holder cost basis, and nothing
+// tracks it. A plausible number would be worse than an absent one, so the
+// columns are gone rather than filled with invention.
 const COLS = "56px 1fr 110px 90px 110px"
 
-export default function LeaderboardPage() {
+/** Rank numerals: gold / silver / bronze for the top 3. */
+function rankColor(rank: number): string | undefined {
+  return rank === 1 ? "#FBBF24" : rank === 2 ? "#cbd5d1" : rank === 3 ? "#d19a66" : undefined
+}
+
+function short(a: string): string {
+  return `${a.slice(0, 6)}…${a.slice(-4)}`
+}
+
+export default async function LeaderboardPage() {
+  const [captains, status] = await Promise.all([fetchCaptains(), fetchIndexerStatus()])
+
   return (
     <div className="mx-auto max-w-[900px] px-5 pb-20 pt-8">
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="font-display text-[34px]">Harbor Masters</h1>
-        <span
-          className="text-gold rounded-[20px] px-3 py-1 text-xs font-bold"
-          style={{ background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.45)" }}
-        >
-          Season 1 · ends in <span className="tabular">12d 4h</span>
-        </span>
+        {status && !status.synced && (
+          <span
+            className="rounded-[20px] px-2.5 py-1 text-[11px] font-bold"
+            style={{
+              color: "#FBBF24",
+              background: "rgba(251,191,36,.12)",
+              border: "1px solid rgba(251,191,36,.35)",
+            }}
+            title={`Indexed to block ${status.block.toLocaleString()}`}
+          >
+            ● syncing · {formatLag(status.lagSeconds)}
+          </span>
+        )}
       </div>
 
-      <div className="rounded-panel bg-hull overflow-hidden border">
-        {/* header row */}
-        <div
-          className="text-mist grid gap-3 px-4 py-3 text-xs font-bold"
-          style={{ gridTemplateColumns: COLS, letterSpacing: 1, borderBottom: "1px solid #263A28" }}
-        >
-          <span>#</span>
-          <span>TRADER</span>
-          <span className="text-right">PNL</span>
-          <span className="text-right">WIN %</span>
-          <span className="text-right">VOLUME</span>
+      {captains === null ? (
+        <div className="rounded-panel bg-hull border p-12 text-center">
+          <p className="text-mist text-[15px]">
+            Can&apos;t reach the harbor ledger, so we won&apos;t guess at the standings.
+          </p>
         </div>
+      ) : captains.length === 0 ? (
+        <div className="rounded-panel bg-hull border p-12 text-center">
+          <p className="text-mist text-[15px]">
+            No captains yet. Launch a coin or make a trade and you&apos;ll be first on the board.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-panel bg-hull overflow-hidden border">
+          <div
+            className="text-mist grid gap-3 px-4 py-3 text-xs font-bold"
+            style={{ gridTemplateColumns: COLS, letterSpacing: 1, borderBottom: "1px solid #263A28" }}
+          >
+            <span>#</span>
+            <span>CAPTAIN</span>
+            <span className="text-right">COINS</span>
+            <span className="text-right">TRADES</span>
+            <span className="text-right">VOLUME</span>
+          </div>
 
-        {CAPTAINS.map((c, i) => {
-          const rank = i + 1
-          const color = rankColor(rank)
-          return (
-            <Link
-              key={c.address}
-              href={`/u/${encodeURIComponent(c.address)}`}
-              className="hover:bg-bulwark grid items-center gap-3 px-4 py-3 transition-colors"
-              style={{ gridTemplateColumns: COLS, borderBottom: "1px solid #1a281c" }}
-            >
-              <span className="font-display text-lg" style={{ color: color ?? "#93A896" }}>
-                {rank}
-              </span>
-
-              <span className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="grid size-[30px] shrink-0 place-items-center rounded-full text-sm"
-                  style={{
-                    background: color ? "rgba(251,191,36,.12)" : "#182418",
-                    border: `1px solid ${color ?? "#263A28"}`,
-                  }}
-                  aria-hidden
-                >
-                  {c.emoji}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold">{c.handle}</span>
-                  <span className="tabular text-faint block text-xs">{c.address}</span>
-                </span>
-              </span>
-
-              <span
-                className="tabular text-right text-sm"
-                style={{ color: c.pnlUsd >= 0 ? "#4ADE80" : "#F87171" }}
+          {captains.map((c, i) => {
+            const rank = i + 1
+            const color = rankColor(rank)
+            return (
+              <Link
+                key={c.address}
+                href={`/u/${c.address}`}
+                className="hover:bg-bulwark grid items-center gap-3 px-4 py-3 transition-colors"
+                style={{ gridTemplateColumns: COLS, borderBottom: "1px solid #1a281c" }}
               >
-                {c.pnlUsd >= 0 ? "+" : "−"}
-                {fmtMc(Math.abs(c.pnlUsd)).slice(1)}
-              </span>
-              <span className="tabular text-right text-sm">{c.winPct}%</span>
-              <span className="tabular text-right text-sm">{fmtMc(c.volumeUsd)}</span>
-            </Link>
-          )
-        })}
-      </div>
+                <span className="font-display text-lg" style={{ color: color ?? "#93A896" }}>
+                  {rank}
+                </span>
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className="grid size-[30px] shrink-0 place-items-center rounded-full text-sm"
+                    style={{
+                      background: color ? "rgba(251,191,36,.12)" : "#182418",
+                      border: `1px solid ${color ?? "#263A28"}`,
+                    }}
+                    aria-hidden
+                  >
+                    ⚓
+                  </span>
+                  <span className="tabular truncate text-sm">{short(c.address)}</span>
+                </span>
+                <span className="tabular text-right text-sm">{c.coinsCreated}</span>
+                <span className="tabular text-right text-sm">{c.buys + c.sells}</span>
+                <span className="tabular text-right text-sm">
+                  {c.volumeWeth > 0 ? fmtMc(c.volumeUsd) : "—"}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
 
       <p className="text-faint mt-4 text-center text-[13px]">
-        Top 3 split a <span className="tabular">12 ETH</span> prize pool. Salvaged from the storm,
-        obviously.
+        Ranked by traded volume. PnL and win-rate need per-trade cost basis, which nothing tracks yet —
+        so they&apos;re not shown rather than guessed at.
       </p>
     </div>
   )

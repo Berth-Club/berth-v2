@@ -4,7 +4,7 @@ import { TokenCard, ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc } from "@/lib/format"
 import { JitterPrice } from "@/components/jitter-price"
-import { fetchCoins } from "@/lib/indexer"
+import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
 import { MOCK_COINS, type Coin } from "@/lib/mock"
 
 // Always read fresh from the indexer.
@@ -17,9 +17,34 @@ const TRUST = [
   { icon: "💸", title: "1% fee → the creator", body: "every trade pays the ship's builder, not a middleman" },
 ]
 
+const GREEN = { color: "#4ADE80", background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.35)" }
+const GOLD = { color: "#FBBF24", background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.35)" }
+
 export default async function HarborPage() {
-  const live = await fetchCoins()
+  const [live, status] = await Promise.all([fetchCoins(), fetchIndexerStatus()])
   const isLive = live !== null && live.length > 0
+
+  const badge =
+    !isLive
+      ? {
+          label: "● demo data",
+          style: GOLD,
+          title: "Indexer unreachable or empty — showing demo data",
+        }
+      : status && !status.synced
+        ? {
+            // Behind means launches are missing from this page — say so.
+            label: `● syncing · ${formatLag(status.lagSeconds)}`,
+            style: GOLD,
+            title: `Indexed to block ${status.block.toLocaleString()}. Coins launched more recently than this aren't here yet.`,
+          }
+        : {
+            label: "● live · chain 4663",
+            style: GREEN,
+            title: status
+              ? `Indexed to block ${status.block.toLocaleString()} (${formatLag(status.lagSeconds)})`
+              : "Indexed from chain 4663",
+          }
   // Fall back to demo data when the indexer is unreachable or empty, so the
   // harbor still renders. Clearly labelled either way.
   const coins: Coin[] = isLive ? live : MOCK_COINS
@@ -124,16 +149,15 @@ export default async function HarborPage() {
           <span className="text-mist text-[13px]">
             <span className="tabular">{coins.length}</span> ships in the water
           </span>
+          {/* Three states, not two. "Answering" != "current": the badge used to
+              say live while the indexer sat 18 minutes back, silently missing a
+              coin that had already launched. Lag is now stated, not implied. */}
           <span
             className="rounded-[20px] px-2.5 py-1 text-[11px] font-bold"
-            style={
-              isLive
-                ? { color: "#4ADE80", background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.35)" }
-                : { color: "#FBBF24", background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.35)" }
-            }
-            title={isLive ? "Indexed from chain 4663" : "Indexer unreachable or empty — showing demo data"}
+            style={badge.style}
+            title={badge.title}
           >
-            {isLive ? "● live · chain 4663" : "● demo data"}
+            {badge.label}
           </span>
         </div>
         <div
