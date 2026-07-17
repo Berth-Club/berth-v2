@@ -10,8 +10,12 @@ import { NAV_ITEMS, LAUNCH_HREF, isActive } from "@/lib/nav"
 /** Bottom tab bar for mobile. Launch is the emphasized center action. */
 export function MobileTabBar() {
   const pathname = usePathname()
-  const [harbor, leaderboard, , portfolio] = NAV_ITEMS
-  const items = [harbor!, leaderboard!, portfolio!]
+  // Select by href, not position: this used to destructure NAV_ITEMS
+  // positionally and silently broke the moment an entry was removed —
+  // TypeScript won't flag destructuring past the end of an array.
+  const items = ["/", "/leaderboard", "/portfolio"]
+    .map((href) => NAV_ITEMS.find((i) => i.href === href))
+    .filter((i): i is NonNullable<typeof i> => Boolean(i))
 
   return (
     <nav className="border-border/60 bg-background/90 fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t backdrop-blur-xl md:hidden">
