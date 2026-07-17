@@ -3,7 +3,7 @@ import Link from "next/link"
 import { cn } from "@workspace/ui/lib/utils"
 import { GraduationMeter } from "@workspace/ui/components/graduation-meter"
 import { fmtPrice, fmtMc } from "@/lib/format"
-import type { Coin } from "@/lib/mock"
+import type { Coin } from "@/lib/coin"
 
 /**
  * 24h chip — tinted green/red per the spec. `change: null` means "no trades

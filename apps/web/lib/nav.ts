@@ -1,4 +1,4 @@
-import { Anchor, Trophy, Ticket, Wallet, type LucideIcon } from "lucide-react"
+import { Anchor, Trophy, Wallet, type LucideIcon } from "lucide-react"
 
 export type NavItem = {
   href: string
@@ -10,13 +10,11 @@ export type NavItem = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Harbor", icon: Anchor },
   { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
-  // Whitelist is hidden, not deleted. The page is a mockup from the design
-  // handoff: no contract, no store, no persistence. "Claim my berth" flips a
-  // boolean and hands everyone the same hardcoded #4,271 of 10,000. Harmless on
-  // localhost, but on a public URL it tells strangers they've secured something
-  // that does not exist. Restore this line only once it's backed by something
-  // real (the factory does have setWhitelisted/whitelistEnabled, currently off).
-  // { href: "/whitelist", label: "Whitelist", icon: Ticket },
+  // No Whitelist entry: the page was a design mockup with no contract behind it
+  // ("Claim my berth" flipped a boolean and handed everyone berth #4,271 of an
+  // invented 10,000), so it was deleted rather than just unlinked — an unlinked
+  // URL still resolves. The factory does have setWhitelisted/whitelistEnabled,
+  // currently off; build the page against those if it ever comes back.
   { href: "/portfolio", label: "Portfolio", icon: Wallet },
 ]
 

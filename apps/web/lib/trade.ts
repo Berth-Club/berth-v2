@@ -12,7 +12,7 @@ import {
 
 import { UNISWAP, robinhood } from "@/lib/chain"
 import { useWallet } from "@/components/wallet-provider"
-import type { Coin } from "@/lib/mock"
+import type { Coin } from "@/lib/coin"
 
 /**
  * QuoterV2 — minimal ABI, kept local on purpose. `lib/abis/` holds the verified

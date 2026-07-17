@@ -7,8 +7,7 @@ import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
 import { explorerTx } from "@/lib/chain"
 import { fmtPrice } from "@/lib/format"
-import { getCoin } from "@/lib/mock"
-import { fetchCoin, fetchHolders, fetchTrades } from "@/lib/indexer"
+import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
 
 export const dynamic = "force-dynamic"
 
@@ -18,13 +17,19 @@ export default async function TokenPage({
   params: Promise<{ address: string }>
 }) {
   const { address } = await params
-  // live first, demo data as fallback so the page still renders offline
-  const coin = (await fetchCoin(address)) ?? getCoin(address)
+  // No fixture fallback: an address the indexer doesn't know is a 404, not an
+  // invented coin page. (If the indexer is down this 404s too — wrong, but far
+  // better than rendering a coin that does not exist.)
+  const coin = await fetchCoin(address)
   if (!coin) notFound()
 
   // Both are null when the indexer can't answer. Nothing here is invented: an
   // un-traded coin shows no trades, and holders stay empty until it indexes them.
-  const [trades, holders] = await Promise.all([fetchTrades(address), fetchHolders(address)])
+  const [trades, holders, history] = await Promise.all([
+    fetchTrades(address),
+    fetchHolders(address),
+    fetchPriceHistory(address),
+  ])
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-6">
@@ -76,7 +81,7 @@ export default async function TokenPage({
         style={{ gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}
       >
         <div className="rounded-panel bg-hull border p-[18px]">
-          <PriceChart seed={coin.address} change={coin.change24h} volume={coin.vol} />
+          <PriceChart points={history ?? []} volume={coin.vol} />
 
           <div className="mt-5">
             <GraduationMeter progress={coin.curve} graduated={coin.graduated} size="page" />

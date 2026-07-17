@@ -2,10 +2,8 @@ import Link from "next/link"
 
 import { TokenCard, ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
-import { fmtMc } from "@/lib/format"
-import { JitterPrice } from "@/components/jitter-price"
+import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
-import { MOCK_COINS, type Coin } from "@/lib/mock"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -21,36 +19,30 @@ const GREEN = { color: "#4ADE80", background: "rgba(74,222,128,.12)", border: "1
 const GOLD = { color: "#FBBF24", background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.35)" }
 
 export default async function HarborPage() {
-  const [live, status] = await Promise.all([fetchCoins(), fetchIndexerStatus()])
-  const isLive = live !== null && live.length > 0
+  // null = indexer unreachable. [] = reachable, genuinely no coins. These are
+  // different facts and the page says which; it never fills the gap with
+  // invented coins. A "demo data" pill in the corner was no match for a full
+  // grid of plausible fake coins with prices and graduation meters.
+  const [coins, status] = await Promise.all([fetchCoins(), fetchIndexerStatus()])
 
   const badge =
-    !isLive
+    status && !status.synced
       ? {
-          label: "● demo data",
+          // Behind means launches are missing from this page — say so.
+          label: `● syncing · ${formatLag(status.lagSeconds)}`,
           style: GOLD,
-          title: "Indexer unreachable or empty — showing demo data",
+          title: `Indexed to block ${status.block.toLocaleString()}. Coins launched more recently than this aren't here yet.`,
         }
-      : status && !status.synced
-        ? {
-            // Behind means launches are missing from this page — say so.
-            label: `● syncing · ${formatLag(status.lagSeconds)}`,
-            style: GOLD,
-            title: `Indexed to block ${status.block.toLocaleString()}. Coins launched more recently than this aren't here yet.`,
-          }
-        : {
-            label: "● live · chain 4663",
-            style: GREEN,
-            title: status
-              ? `Indexed to block ${status.block.toLocaleString()} (${formatLag(status.lagSeconds)})`
-              : "Indexed from chain 4663",
-          }
-  // Fall back to demo data when the indexer is unreachable or empty, so the
-  // harbor still renders. Clearly labelled either way.
-  const coins: Coin[] = isLive ? live : MOCK_COINS
+      : {
+          label: "● live · chain 4663",
+          style: GREEN,
+          title: status
+            ? `Indexed to block ${status.block.toLocaleString()} (${formatLag(status.lagSeconds)})`
+            : "Indexed from chain 4663",
+        }
 
-  const king = [...coins].sort((a, b) => b.marketCapUsd - a.marketCapUsd)[0]!
-  const fleet = coins.filter((c) => c.address !== king.address)
+  const king = coins?.length ? [...coins].sort((a, b) => b.marketCapWeth - a.marketCapWeth)[0]! : null
+  const fleet = king && coins ? coins.filter((c) => c.address !== king.address) : []
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-7">
@@ -72,7 +64,8 @@ export default async function HarborPage() {
         </div>
       </section>
 
-      {/* flagship — king of the hill */}
+      {/* flagship — king of the hill. Only exists once a coin does. */}
+      {king && (
       <section className="mb-6">
         <Link
           href={`/token/${king.address}`}
@@ -106,7 +99,7 @@ export default async function HarborPage() {
 
           <div className="flex flex-wrap gap-7 md:ml-auto">
             <Metric label="Price">
-              <JitterPrice base={king.priceUsd} />
+              <span className="tabular">{fmtPrice(king.priceUsd)}</span>
             </Metric>
             <Metric label="24h">
               <ChangeChip change={king.change24h} className="text-sm" />
@@ -119,6 +112,7 @@ export default async function HarborPage() {
           <span className="btn-deck btn-gold px-5 py-2.5 text-base">Climb aboard →</span>
         </Link>
       </section>
+      )}
 
       {/* trust strip — 1px gaps show rigging as hairlines */}
       <section
@@ -146,9 +140,12 @@ export default async function HarborPage() {
       <section>
         <div className="mb-3.5 flex flex-wrap items-baseline gap-3">
           <h2 className="font-display text-2xl">Fresh out of the shipyard</h2>
-          <span className="text-mist text-[13px]">
-            <span className="tabular">{coins.length}</span> ships in the water
-          </span>
+          {coins && (
+            <span className="text-mist text-[13px]">
+              <span className="tabular">{coins.length}</span>{" "}
+              {coins.length === 1 ? "ship" : "ships"} in the water
+            </span>
+          )}
           {/* Three states, not two. "Answering" != "current": the badge used to
               say live while the indexer sat 18 minutes back, silently missing a
               coin that had already launched. Lag is now stated, not implied. */}
@@ -168,11 +165,22 @@ export default async function HarborPage() {
             <TokenCard key={coin.address} coin={coin} />
           ))}
         </div>
-        {fleet.length === 0 && (
+        {/* Three real states. "Can't reach" and "nothing here" are different
+            facts — neither is answered with invented coins. */}
+        {coins === null ? (
+          <p className="text-mist py-10 text-center text-sm">
+            Can&apos;t reach the harbor ledger, so we won&apos;t guess at what&apos;s in the water.
+            Try again in a moment.
+          </p>
+        ) : coins.length === 0 ? (
+          <p className="text-mist py-10 text-center text-sm">
+            No ships yet. The harbor&apos;s empty — go launch the first one.
+          </p>
+        ) : fleet.length === 0 ? (
           <p className="text-mist py-10 text-center text-sm">
             Only the flagship so far. The harbor&apos;s quiet — go launch something.
           </p>
-        )}
+        ) : null}
       </section>
     </div>
   )

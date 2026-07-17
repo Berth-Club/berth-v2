@@ -1,6 +1,10 @@
 {
   "extends": "@workspace/typescript-config/nextjs.json",
   "compilerOptions": {
+    // *.selfcheck.ts files run directly under `node --experimental-strip-types`,
+    // which requires the explicit .ts extension on their imports. Next/webpack
+    // never sees them — nothing in app/ or components/ imports one.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./*"],
       "@workspace/ui/*": ["../../packages/ui/src/*"]

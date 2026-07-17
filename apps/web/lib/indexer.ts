@@ -1,7 +1,7 @@
 import { formatEther, isAddress } from "viem"
 
 import { CONTRACTS, UNISWAP } from "@/lib/chain"
-import { FACE_OPTIONS, type Coin } from "@/lib/mock"
+import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 import { getEthUsd } from "@/lib/prices"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
@@ -74,7 +74,8 @@ export type Captain = {
   buys: number
   sells: number
   volumeWeth: number
-  volumeUsd: number
+  /** null = ETH/USD feed unreachable. Rank on volumeWeth, which is always real. */
+  volumeUsd: number | null
   firstSeenAt: number
 }
 
@@ -106,7 +107,7 @@ export async function fetchCaptains(): Promise<Captain[] | null> {
       buys: c.buys,
       sells: c.sells,
       volumeWeth,
-      volumeUsd: volumeWeth * ethUsd.usd,
+      volumeUsd: ethUsd === null ? null : volumeWeth * ethUsd.usd,
       firstSeenAt: Number(c.firstSeenAt),
     }
   })
@@ -140,7 +141,7 @@ export async function fetchCoinsByCreator(address: string): Promise<Coin[] | nul
   )
   if (!data?.coins?.items) return null
   const ethUsd = await getEthUsd()
-  return data.coins.items.map((c) => toCoin(c, ethUsd.usd))
+  return data.coins.items.map((c) => toCoin(c, ethUsd?.usd ?? null))
 }
 
 export type IndexerStatus = {
@@ -206,7 +207,7 @@ async function gql<T>(query: string, variables?: Record<string, unknown>): Promi
     if (json?.errors) return null
     return (json?.data as T) ?? null
   } catch {
-    return null // indexer down — caller falls back to demo data
+    return null // indexer down — callers must say so, never substitute data
   }
 }
 
@@ -309,7 +310,8 @@ function short(addr: string): string {
   return `${addr.slice(0, 5)}…${addr.slice(-5)}`
 }
 
-function toCoin(c: IndexedCoin, ethUsd: number): Coin {
+/** `ethUsd` is null when the price feed is unreachable — USD fields go null, not fake. */
+function toCoin(c: IndexedCoin, ethUsd: number | null): Coin {
   const tick = coinSpaceTick(c)
   const priceWeth = tickToPriceWeth(tick)
   const marketCapWeth = priceWeth * SUPPLY_TOKENS
@@ -332,15 +334,16 @@ function toCoin(c: IndexedCoin, ethUsd: number): Coin {
     ticker: c.symbol,
     creator: short(c.creator),
     age: ago(Number(c.createdAt)),
-    priceUsd: priceWeth * ethUsd,
+    priceUsd: ethUsd === null ? null : priceWeth * ethUsd,
     // Real and nullable: the indexer returns null when there's no ~24h-old
     // trade to compare against. Never fake a 0 — null renders a neutral "—".
     change24h: c.change24h ?? null,
-    marketCapUsd: marketCapWeth * ethUsd,
+    marketCapUsd: ethUsd === null ? null : marketCapWeth * ethUsd,
+    marketCapWeth,
     curve: c.tickUpper > c.tickLower ? curve : 0,
     graduated: tick >= c.tickUpper,
     lore: meta.description ?? "",
-    vol: volWeth > 0 ? `$${Math.round(volWeth * ethUsd).toLocaleString()}` : "$0",
+    vol: ethUsd === null ? null : volWeth > 0 ? `$${Math.round(volWeth * ethUsd).toLocaleString()}` : "$0",
   }
 }
 
@@ -356,8 +359,8 @@ export async function fetchCoins(): Promise<Coin[] | null> {
   const items = data?.coins?.items
   if (!items) return null
 
-  const { usd } = await getEthUsd()
-  return items.map((c) => toCoin(c, usd))
+  const ethUsd = await getEthUsd()
+  return items.map((c) => toCoin(c, ethUsd?.usd ?? null))
 }
 
 export async function fetchCoin(address: string): Promise<Coin | null> {
@@ -410,6 +413,50 @@ export async function fetchTrades(address: string): Promise<Trade[] | null> {
     ago: ago(Number(s.timestamp)),
     txHash: s.txHash,
   }))
+}
+
+/** One real, indexed trade, priced. The chart is drawn from these and nothing else. */
+export type PricePoint = {
+  /** Unix seconds. */
+  t: number
+  /** null when the ETH/USD feed is unreachable — the line still plots, in WETH. */
+  usd: number | null
+  weth: number
+}
+
+/**
+ * Real price history: every indexed swap's post-trade tick, oldest first.
+ *
+ * `[]` = fewer than two trades, so there is no line to draw. `null` = the
+ * indexer is unreachable.
+ *
+ * The chart this feeds used to be a seeded RNG walk — `series(seed + tf, up)` —
+ * that produced a plausible 48-point line for any coin, including coins that
+ * had never traded, and redrew a different shape per timeframe button. It sat
+ * next to the coin's real price and was indistinguishable from real history.
+ * Every point here comes off a swap that actually happened on chain.
+ */
+export async function fetchPriceHistory(address: string): Promise<PricePoint[] | null> {
+  if (!isAddress(address)) return null
+
+  const data = await gql<{ swaps: { items: { tick: number; timestamp: string }[] } }>(
+    `query ($coin: String!) {
+      swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "asc", limit: 500) {
+        items { tick timestamp }
+      }
+    }`,
+    { coin: address.toLowerCase() }
+  )
+  const items = data?.swaps?.items
+  if (!items) return null
+
+  const ethUsd = await getEthUsd()
+  return items.map((s) => {
+    // swap.tick is already coin-space (the indexer normalises on write), so
+    // 1.0001^tick is WETH per coin directly. Do NOT re-negate — see coinSpaceTick.
+    const weth = tickToPriceWeth(s.tick)
+    return { t: Number(s.timestamp), weth, usd: ethUsd ? weth * ethUsd.usd : null }
+  })
 }
 
 export type Holder = {

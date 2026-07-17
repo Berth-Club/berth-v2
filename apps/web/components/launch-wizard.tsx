@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { FACE_OPTIONS } from "@/lib/mock"
+import { FACE_OPTIONS } from "@/lib/coin"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { explorerTx } from "@/lib/chain"

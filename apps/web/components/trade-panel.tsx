@@ -9,7 +9,7 @@ import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { useTrade, type Side } from "@/lib/trade"
 import { explorerTx } from "@/lib/chain"
-import type { Coin } from "@/lib/mock"
+import type { Coin } from "@/lib/coin"
 
 // ~6.9 WETH buys through the whole range — the total exit liquidity.
 // Measured, not assumed: tracing a 20 WETH buy against the live $SMOKE pool shows

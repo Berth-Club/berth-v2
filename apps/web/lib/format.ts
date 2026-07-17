@@ -25,7 +25,10 @@ function toSubscript(n: number): string {
  * Never exponent notation ($4.1e-9): it reads as a rounding artifact rather
  * than a price, which is exactly the confusion this replaces.
  */
-export function fmtPrice(usd: number): string {
+export function fmtPrice(usd: number | null): string {
+  // null = ETH/USD feed unreachable, so the dollar price is genuinely unknown.
+  // "—" says that; "$0" would be a lie about a coin that has a real price.
+  if (usd === null) return "—"
   if (!isFinite(usd) || usd <= 0) return "$0"
   // Normal money: $1.23, $0.42
   if (usd >= 0.01) return `$${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
@@ -48,7 +51,8 @@ export function fmtPrice(usd: number): string {
 }
 
 /** Compact market cap: $736, $41.2K, $1.2M. */
-export function fmtMc(usd: number): string {
+export function fmtMc(usd: number | null): string {
+  if (usd === null) return "—"
   return `$${new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: 1,

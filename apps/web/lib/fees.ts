@@ -9,7 +9,7 @@ import { FeeLockerAbi } from "@/lib/abis/feeLocker"
 import { LpLockerAbi } from "@/lib/abis/lpLocker"
 import { CONTRACTS, UNISWAP } from "@/lib/chain"
 import { coinIsToken0, coinSpaceTick, tickToPriceWeth } from "@/lib/indexer"
-import { FACE_OPTIONS } from "@/lib/mock"
+import { FACE_OPTIONS } from "@/lib/coin"
 
 /**
  * The fee flow, for real.
