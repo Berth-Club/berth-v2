@@ -6,11 +6,16 @@ import Link from "next/link"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { explorerTx } from "@/lib/chain"
-import { fmtBalance, fmtFee, useClaim, useCollect, usePortfolio, type FeeBalance } from "@/lib/fees"
+import { fmtPrice } from "@/lib/format"
+import { fmtBalance, fmtFee, useClaim, useCollect, usePortfolio } from "@/lib/fees"
+
+/** Row/column geometry, straight from the handoff. Shared by header + rows. */
+const HOLD_COLS = "1fr 140px 110px"
+const REW_COLS = "1fr auto 110px auto 110px"
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-panel bg-hull flex flex-col items-center gap-4 border p-12 text-center">
+    <div className="rounded-panel bg-hull mt-5 flex flex-col items-center gap-4 border px-5 py-11 text-center">
       {children}
     </div>
   )
@@ -23,17 +28,95 @@ function TxLink({ hash }: { hash?: `0x${string}` }) {
       href={explorerTx(hash)}
       target="_blank"
       rel="noreferrer"
-      className="text-mist hover:text-lime text-xs underline"
+      className="text-lime text-[13px] font-bold no-underline hover:underline"
     >
       View tx ↗
     </a>
   )
 }
 
-export function PortfolioTabs() {
+/** One stage of the fee pipeline. Explainer only — it describes the flow, not live state. */
+function StagePill({ active, title, sub }: { active?: boolean; title: string; sub: string }) {
+  return (
+    <div
+      className="flex items-center gap-2 px-3.5 py-1.5 text-[13px]"
+      style={{
+        borderRadius: 20,
+        background: active ? "rgba(163,230,53,.08)" : "#0e1810",
+        border: `1px solid ${active ? "#4d7016" : "#263A28"}`,
+      }}
+    >
+      <span className="font-bold" style={{ color: active ? "#A3E635" : "#b9ccb6" }}>
+        {title}
+      </span>
+      <span className="text-mist">{sub}</span>
+    </div>
+  )
+}
+
+function Arrow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="font-bold" style={{ color: "#4d7016" }}>
+      {children}
+    </div>
+  )
+}
+
+/** Column heading: 12px, bold, tracked out. */
+function Th({ children, right }: { children?: React.ReactNode; right?: boolean }) {
+  return (
+    <div className={right ? "text-right" : undefined} style={{ letterSpacing: 1 }}>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * A fee amount, dual-denominated per the spec: primary line in Ξ, secondary
+ * "+ N $TICKER". `weth`/`token` null means we couldn't read it — that renders a
+ * dim em-dash, never a 0, because 0 and "unknown" are different answers when
+ * someone is deciding whether to sign.
+ */
+function FeeAmount({
+  weth,
+  token,
+  symbol,
+  tone,
+}: {
+  weth: bigint | null
+  token: bigint | null
+  symbol: string
+  tone: "foam" | "lime"
+}) {
+  const empty = (weth === null || weth === 0n) && (token === null || token === 0n)
+  if (empty) {
+    return (
+      <div className="text-right">
+        <div className="font-bold" style={{ color: "#5c6f5e" }}>
+          —
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="text-right">
+      <div className="font-bold" style={{ color: tone === "lime" ? "#A3E635" : "#EFF5EC" }}>
+        {fmtFee(weth)} Ξ
+      </div>
+      {token !== null && token > 0n && (
+        <div className="text-mist text-xs">
+          + {fmtBalance(token)} ${symbol}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
   const wallet = useWallet()
   const { celebrate, toast } = useFx()
   const portfolio = usePortfolio(wallet.address)
+  const [tab, setTab] = React.useState<"hold" | "rew">("hold")
 
   // refetch is stable in react-query v5; depending on it (not `portfolio`) keeps
   // the receipt effects below from re-running on every render.
@@ -65,30 +148,28 @@ export function PortfolioTabs() {
   if (!wallet.connected) {
     return (
       <Panel>
-        <span className="text-4xl" aria-hidden>
-          ⚓
+        <span className="text-[42px]" aria-hidden>
+          👜
         </span>
-        <p className="text-mist text-[15px]">Connect your wallet to see what&apos;s in your hold</p>
-        <button onClick={wallet.connect} className="btn-deck btn-lime px-5 py-2.5 text-base">
+        <p className="text-lg font-bold">Connect your wallet to see what&apos;s in your hold</p>
+        <button onClick={wallet.connect} className="btn-deck btn-lime px-6 py-3 text-base">
           Connect wallet
         </button>
       </Panel>
     )
   }
 
+  // States the handoff didn't cover but the chain does. Kept ahead of the tabs:
+  // a wrong-network read would report someone else's balances as yours.
   if (wallet.wrongNetwork) {
     return (
       <Panel>
-        <span className="text-4xl" aria-hidden>
+        <span className="text-[42px]" aria-hidden>
           🧭
         </span>
-        <p className="text-mist text-[15px]">
-          Wrong waters, captain. Your hold is on Robinhood Chain (4663).
-        </p>
-        <button
-          onClick={wallet.switchToRobinhood}
-          className="btn-deck btn-lime px-5 py-2.5 text-base"
-        >
+        <p className="text-lg font-bold">Wrong waters, captain</p>
+        <p className="text-mist -mt-2 text-[15px]">Your hold is on Robinhood Chain (4663).</p>
+        <button onClick={wallet.switchToRobinhood} className="btn-deck btn-lime px-6 py-3 text-base">
           Switch to Robinhood Chain
         </button>
       </Panel>
@@ -106,13 +187,12 @@ export function PortfolioTabs() {
   if (portfolio.isError) {
     return (
       <Panel>
-        <span className="text-4xl" aria-hidden>
+        <span className="text-[42px]" aria-hidden>
           🌫️
         </span>
-        <p className="text-mist text-[15px]">
-          Can&apos;t reach the harbor ledger, so we won&apos;t guess at your numbers.
-        </p>
-        <button onClick={refetch} className="btn-deck btn-quiet px-5 py-2.5 text-base">
+        <p className="text-lg font-bold">Can&apos;t reach the harbor ledger</p>
+        <p className="text-mist -mt-2 text-[15px]">So we won&apos;t guess at your numbers.</p>
+        <button onClick={refetch} className="btn-deck btn-quiet px-6 py-3 text-base">
           Try again
         </button>
       </Panel>
@@ -120,189 +200,288 @@ export function PortfolioTabs() {
   }
 
   const { positions, balances, holdings } = portfolio.data
-  const claimableBalances = balances.filter((b) => b.claimable > 0n)
   const owner = wallet.address!
 
-  return (
-    <div className="flex flex-col gap-5">
-      {/* holdings */}
-      <div className="rounded-panel bg-hull overflow-hidden border">
-        <div
-          className="text-mist grid gap-3 px-4 py-3 text-xs font-bold"
-          style={{
-            gridTemplateColumns: "1fr 120px 120px",
-            letterSpacing: 1,
-            borderBottom: "1px solid #263A28",
-          }}
-        >
-          <span>HOLDING</span>
-          <span className="text-right">BALANCE</span>
-          <span className="text-right">VALUE</span>
-        </div>
+  // Escrow is keyed by (owner, TOKEN), never by position. Every position's WETH
+  // lands in this ONE bucket — this wallet is a recipient on two positions and
+  // has exactly one WETH row on chain. So the WETH figure lives in the summary
+  // bar; printing it on each row would show the same money twice.
+  const wethBucket = balances.find((b) => b.isWeth)
+  const coinBucket = (token?: string) =>
+    token ? balances.find((b) => !b.isWeth && b.token === token) : undefined
+  const claimableBalances = balances.filter((b) => b.claimable > 0n)
+  const claimedBalances = balances.filter((b) => (b.lifetimeClaimed ?? 0n) > 0n)
 
-        {holdings.length === 0 ? (
-          <p className="text-mist px-4 py-8 text-center text-sm">
-            Nothing in the hold yet — coins you buy here show up on this line.
-          </p>
-        ) : (
-          holdings.map((h) => (
-            <Link
-              key={h.token}
-              href={`/token/${h.token}`}
-              className="hover:bg-bulwark grid items-center gap-3 px-4 py-3 transition-colors"
-              style={{ gridTemplateColumns: "1fr 120px 120px", borderBottom: "1px solid #1a281c" }}
-            >
-              <span className="flex min-w-0 items-center gap-2.5">
-                <span
-                  className="bg-deep rounded-chip grid size-9 place-items-center text-lg"
-                  aria-hidden
-                >
-                  {h.emoji}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold">{h.name}</span>
-                  <span className="tabular text-mist text-xs">${h.symbol}</span>
-                </span>
-              </span>
-              <span className="tabular text-right text-sm">{fmtBalance(h.balance)}</span>
-              {/* Priced in WETH off the pool tick — no USD, since we have no real ETH/USD feed. */}
-              <span className="tabular text-right text-sm">
-                {h.valueWeth === null
-                  ? "—"
-                  : `${h.valueWeth < 0.0001 ? "<0.0001" : h.valueWeth.toFixed(4)} Ξ`}
-              </span>
-            </Link>
-          ))
-        )}
+  return (
+    <>
+      {/* tabs */}
+      <div
+        className="bg-hull mt-5 flex gap-1 border p-1"
+        style={{ borderRadius: 14, maxWidth: 380 }}
+      >
+        {(
+          [
+            ["hold", "Holdings"],
+            ["rew", "Creator rewards"],
+          ] as const
+        ).map(([id, lbl]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            aria-pressed={tab === id}
+            className="flex-1 p-2.5 text-center text-sm font-bold transition-colors"
+            style={{
+              borderRadius: 11,
+              background: tab === id ? "#A3E635" : "transparent",
+              color: tab === id ? "#122005" : "#93A896",
+            }}
+          >
+            {lbl}
+          </button>
+        ))}
       </div>
 
-      {/* creator rewards */}
-      <div className="rounded-panel bg-hull border p-[18px]">
-        <h2 className="font-display mb-2 text-xl">Creator rewards</h2>
-        <p className="text-mist mb-4 text-[13px]">
-          Every trade pays a 1% fee that piles up on the locked position.{" "}
-          <b className="text-foam">Collect</b> sweeps it into escrow (anyone can trigger it) ·{" "}
-          <b className="text-foam">Claim</b> withdraws escrow to your wallet. Two steps, on purpose.
-        </p>
+      {/* holdings */}
+      {tab === "hold" && (
+        <div className="rounded-panel bg-hull mt-4 overflow-hidden border">
+          <div
+            className="text-mist grid gap-2.5 px-[18px] py-3 text-xs font-bold"
+            style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid #263A28" }}
+          >
+            <Th>HOLDING</Th>
+            <Th right>BALANCE</Th>
+            <Th right>VALUE</Th>
+          </div>
 
-        {positions.length === 0 ? (
-          <p className="text-mist py-6 text-center text-sm">
-            You&apos;re not a fee recipient on any position yet. Launch a coin and the fees are
-            yours.
-          </p>
-        ) : (
-          <>
-            {/* step 1 — on the position. Collect sweeps it into escrow. */}
-            <div className="text-mist mb-1 mt-2 text-xs font-bold" style={{ letterSpacing: 1 }}>
-              ON THE POSITION · EARNED, UNCOLLECTED
-            </div>
-            {positions.map((p) => {
-              const busy = collector.tokenId === p.tokenId
-              // Nothing to sweep => nothing to collect. null means "unknown", so
-              // we leave the button live rather than block on a failed read.
-              const nothing = p.earnedToken === 0n && p.earnedWeth === 0n
-              return (
-                <div
-                  key={p.tokenId.toString()}
-                  className="flex flex-wrap items-center gap-3 py-3"
-                  style={{ borderBottom: "1px solid #1a281c" }}
-                >
+          {holdings.length === 0 ? (
+            <p className="text-mist px-4 py-8 text-center text-sm">
+              Nothing in the hold yet — coins you buy here show up on this line.
+            </p>
+          ) : (
+            holdings.map((h) => (
+              <Link
+                key={h.token}
+                href={`/token/${h.token}`}
+                className="hover:bg-bulwark grid items-center gap-2.5 px-[18px] py-[13px] transition-colors"
+                style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid #1a281c" }}
+              >
+                <span className="flex min-w-0 items-center gap-2.5">
                   <span
-                    className="bg-deep rounded-chip grid size-9 place-items-center text-lg"
+                    className="bg-deep grid size-[34px] shrink-0 place-items-center text-lg"
+                    style={{ borderRadius: 10, border: "1px solid #263A28" }}
                     aria-hidden
                   >
-                    {p.emoji}
+                    {h.emoji}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold">{p.name}</span>
-                    <span className="tabular text-mist text-xs">
-                      ${p.symbol} · your share {(p.bps / 100).toFixed(0)}%
-                    </span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-bold">{h.name}</span>
+                    <span className="text-mist block text-xs">${h.symbol}</span>
                   </span>
+                </span>
+                <span className="text-right font-bold">{fmtBalance(h.balance)}</span>
+                {/* Priced off the pool tick, converted at the live rate. Either
+                    missing (no pool price / no feed) means "—", never a $0. */}
+                <span className="text-right" style={{ color: "#b9ccb6" }}>
+                  {h.valueWeth === null || ethUsd === null
+                    ? "—"
+                    : fmtPrice(h.valueWeth * ethUsd)}
+                </span>
+              </Link>
+            ))
+          )}
+        </div>
+      )}
 
-                  {/* Fees accrue in BOTH sides of the pool. Show both. */}
-                  <span className="text-right">
-                    <span className="text-mist block text-xs">${p.symbol}</span>
-                    <span className="tabular text-sm">{fmtFee(p.earnedToken)}</span>
-                  </span>
-                  <span className="text-right">
-                    <span className="text-mist block text-xs">WETH</span>
-                    <span className="tabular text-sm">{fmtFee(p.earnedWeth)}</span>
-                  </span>
+      {/* creator rewards */}
+      {tab === "rew" && (
+        <div className="rounded-panel bg-hull mt-4 border p-[18px]">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <div className="font-display text-[21px]">Creator rewards</div>
+            <div className="text-mist text-[13px]">1% of every trade, paid in the coin + WETH</div>
+          </div>
 
-                  <button
-                    onClick={() => collector.collect(p.tokenId)}
-                    disabled={collector.pending || nothing}
-                    className="btn-deck btn-quiet rounded-btn px-3 py-1.5 text-xs disabled:opacity-40"
-                  >
-                    {busy ? "Sweeping…" : "Collect →"}
-                  </button>
-                </div>
-              )
-            })}
-            {collector.hash && (
-              <div className="pt-2">
-                <TxLink hash={collector.hash} />
-              </div>
-            )}
+          {/* Pipeline explainer. Two steps on two contracts, and they stay
+              visibly distinct: collect is permissionless, claim always pays the
+              owner. Anyone reading this should know why there are two buttons. */}
+          <div className="mb-4 mt-3 flex flex-wrap items-center gap-2">
+            <StagePill title="① On the position" sub="fees pile up" />
+            <Arrow>→ collect →</Arrow>
+            <StagePill title="② In escrow" sub="anyone can trigger" />
+            <Arrow>→ claim →</Arrow>
+            <StagePill active title="③ Your wallet" sub="only you" />
+          </div>
 
-            {/* step 2 — in escrow, keyed by token (NOT by position: one bucket per token). */}
-            <div className="text-mist mb-1 mt-5 text-xs font-bold" style={{ letterSpacing: 1 }}>
-              IN ESCROW · CLAIMABLE TO YOUR WALLET
-            </div>
-            {balances.map((b: FeeBalance) => (
+          {positions.length === 0 ? (
+            <p className="text-mist py-6 text-center text-sm">
+              You&apos;re not a fee recipient on any position yet. Launch a coin and the fees are
+              yours.
+            </p>
+          ) : (
+            <>
               <div
-                key={b.token}
-                className="flex flex-wrap items-center gap-3 py-3"
-                style={{ borderBottom: "1px solid #1a281c" }}
+                className="text-mist grid items-center text-xs font-bold"
+                style={{
+                  gridTemplateColumns: REW_COLS,
+                  gap: "8px 16px",
+                  paddingBottom: 8,
+                  borderBottom: "1px solid #263A28",
+                }}
               >
-                <span
-                  className="bg-deep rounded-chip grid size-9 place-items-center text-lg"
-                  aria-hidden
-                >
-                  {b.emoji}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-bold">${b.symbol}</span>
-                </span>
-                <span className="text-right">
-                  <span className="text-mist block text-xs">Claimable</span>
-                  <span className="tabular text-lime text-sm">{fmtFee(b.claimable)}</span>
-                </span>
-                {/* claim() reverts NothingToClaim at zero — disable, don't revert. */}
+                <Th>SHIP</Th>
+                <Th />
+                <Th right>UNCOLLECTED</Th>
+                <Th />
+                <Th right>IN ESCROW</Th>
+              </div>
+
+              {positions.map((p) => {
+                const busy = collector.tokenId === p.tokenId
+                // null = the read failed, so we don't know. Leave the button live
+                // rather than block on a failed read; only a known zero disables.
+                const nothing = p.earnedToken === 0n && p.earnedWeth === 0n
+                const escrow = coinBucket(p.token)
+                return (
+                  <div
+                    key={p.tokenId.toString()}
+                    className="grid items-center"
+                    style={{
+                      gridTemplateColumns: REW_COLS,
+                      gap: "8px 16px",
+                      padding: "13px 0",
+                      borderBottom: "1px solid #1a281c",
+                    }}
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div
+                        className="bg-deep grid size-[38px] shrink-0 place-items-center text-[19px]"
+                        style={{ borderRadius: 10, border: "1px solid #263A28" }}
+                        aria-hidden
+                      >
+                        {p.emoji}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-bold">${p.symbol}</div>
+                        <div className="text-mist text-xs">
+                          your share {(p.bps / 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
+                    <div />
+
+                    {/* On the position: both sides are this position's own, so
+                        both are attributable and shown together. */}
+                    <FeeAmount
+                      weth={p.earnedWeth}
+                      token={p.earnedToken}
+                      symbol={p.symbol}
+                      tone="foam"
+                    />
+
+                    {/* The button sits between the two columns because that is
+                        literally what it does: moves uncollected -> escrow. */}
+                    <button
+                      onClick={() => collector.collect(p.tokenId)}
+                      disabled={collector.pending || nothing}
+                      className="text-[13px] font-bold transition-colors"
+                      style={{
+                        background: "transparent",
+                        color: nothing ? "#5c6f5e" : "#A3E635",
+                        border: `1px solid ${nothing ? "#263A28" : "#4d7016"}`,
+                        borderRadius: 10,
+                        padding: "8px 14px",
+                        cursor: nothing ? "default" : "pointer",
+                      }}
+                    >
+                      {busy ? "Sweeping…" : "Collect →"}
+                    </button>
+
+                    {/* In escrow, coin side only. This coin's escrow IS per-coin;
+                        the WETH half of it is pooled across every position and
+                        lives in the summary bar instead. */}
+                    <div className="text-right">
+                      {!escrow || escrow.claimable === 0n ? (
+                        <div className="font-bold" style={{ color: "#5c6f5e" }}>
+                          —
+                        </div>
+                      ) : (
+                        <div className="font-bold" style={{ color: "#A3E635" }}>
+                          {fmtBalance(escrow.claimable)}{" "}
+                          <span className="text-mist text-xs font-normal">${escrow.symbol}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+
+              {collector.hash && (
+                <div className="pt-2 text-right">
+                  <TxLink hash={collector.hash} />
+                </div>
+              )}
+
+              {/* summary bar */}
+              <div
+                className="mt-4 flex flex-wrap items-center gap-[22px] p-4"
+                style={{ background: "#0e1810", borderRadius: 14 }}
+              >
+                <div>
+                  <div className="text-mist text-xs">Claimable now</div>
+                  <div
+                    className="text-xl font-bold"
+                    style={{ color: claimableBalances.length ? "#A3E635" : "#5c6f5e" }}
+                  >
+                    {claimableBalances.length === 0
+                      ? "Nothing yet"
+                      : `${fmtFee(wethBucket?.claimable ?? 0n)} Ξ`}
+                  </div>
+                  {/* Every non-WETH bucket, named. Ξ alone would hide the coin side. */}
+                  {claimableBalances
+                    .filter((b) => !b.isWeth)
+                    .map((b) => (
+                      <div key={b.token} className="text-mist text-xs">
+                        + {fmtBalance(b.claimable)} ${b.symbol}
+                      </div>
+                    ))}
+                </div>
+
+                <div>
+                  <div className="text-mist text-xs">Lifetime claimed</div>
+                  {/* Indexed from FeesClaimed — real history, no on-chain getter. */}
+                  <div className="text-xl font-bold">
+                    {fmtFee(wethBucket?.lifetimeClaimed ?? 0n)} Ξ
+                  </div>
+                  {claimedBalances
+                    .filter((b) => !b.isWeth)
+                    .map((b) => (
+                      <div key={b.token} className="text-mist text-xs">
+                        + {fmtBalance(b.lifetimeClaimed!)} ${b.symbol}
+                      </div>
+                    ))}
+                </div>
+
+                <TxLink hash={claimer.hash} />
+
+                {/* claimMany skips zero balances rather than reverting — we filter
+                    to match, and stay disabled rather than send a no-op tx. */}
                 <button
-                  onClick={() => claimer.claim(owner, b.token)}
-                  disabled={claimer.pending || b.claimable === 0n}
-                  className="btn-deck btn-quiet rounded-btn px-3 py-1.5 text-xs disabled:opacity-40"
+                  onClick={() => claimer.claimMany(owner, balances)}
+                  disabled={claimer.pending || claimableBalances.length === 0}
+                  className="btn-deck ml-auto px-[22px] py-3 text-base"
+                  style={{
+                    background: claimableBalances.length ? "#A3E635" : "#182418",
+                    color: claimableBalances.length ? "#122005" : "#5c6f5e",
+                    boxShadow: `0 4px 0 ${claimableBalances.length ? "#4d7016" : "#0e1810"}`,
+                    cursor: claimableBalances.length ? "pointer" : "default",
+                  }}
                 >
-                  Claim
+                  {claimer.pending ? "Paying out…" : "Claim to wallet 💰"}
                 </button>
               </div>
-            ))}
-
-            {/* summary bar */}
-            <div className="mt-4 flex flex-wrap items-center gap-5">
-              <span>
-                <span className="text-mist block text-xs">Claimable now</span>
-                <span className="tabular text-lime text-lg">
-                  {claimableBalances.length === 0
-                    ? "Nothing yet"
-                    : claimableBalances.map((b) => `${fmtFee(b.claimable)} ${b.symbol}`).join(" · ")}
-                </span>
-              </span>
-              <TxLink hash={claimer.hash} />
-              {/* claimMany skips zero balances rather than reverting — we filter to match. */}
-              <button
-                onClick={() => claimer.claimMany(owner, balances)}
-                disabled={claimer.pending || claimableBalances.length === 0}
-                className="btn-deck btn-lime ml-auto px-5 py-2.5 text-base disabled:opacity-40"
-              >
-                {claimer.pending ? "Paying out…" : "Claim to wallet 💰"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
   )
 }

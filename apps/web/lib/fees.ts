@@ -66,8 +66,18 @@ export type FeeBalance = {
   token: Address
   symbol: string
   emoji: string
-  /** Withdrawable right now via claim(owner, token). */
+  /** Withdrawable right now via claim(owner, token). Read from the CHAIN. */
   claimable: bigint
+  /** true for the WETH bucket — the one shared across every position. */
+  isWeth: boolean
+  /**
+   * Lifetime total ever withdrawn to the wallet for this token.
+   *
+   * From the indexer's FeesClaimed rollup, not the chain: FeeLocker has no
+   * getter for it. Historical, so it can't be signed against — display only.
+   * null = the indexer had no row (nothing ever claimed).
+   */
+  lifetimeClaimed: bigint | null
 }
 
 export type Holding = {
@@ -81,6 +91,7 @@ export type Holding = {
 }
 
 type RawRecipient = { tokenId: string; bps: number }
+type RawFeeBalance = { token: Address; lifetimeClaimed: string }
 type RawCoin = {
   address: Address
   name: string
@@ -95,9 +106,16 @@ type RawCoin = {
 
 // ponytail: joins against the whole coin list (one launch today, capped at 100).
 // Swap to `coins(where: {tokenId_in: [...]})` if the harbor outgrows one page.
+//
+// feeBalances is here for lifetimeClaimed ONLY. `claimable` is deliberately NOT
+// taken from it: that number gates a signature, so it's read from the chain
+// (availableFees) where it can't be stale by an indexer block.
 const PORTFOLIO_QUERY = `query($addr: String!) {
   feeRecipients(where: { addr: $addr }, limit: 500) {
     items { tokenId bps }
+  }
+  feeBalances(where: { owner: $addr }, limit: 100) {
+    items { token lifetimeClaimed }
   }
   coins(limit: 100) {
     items { address name symbol tokenId tick tickLower swapCount }
@@ -117,7 +135,9 @@ async function fetchPortfolio(addr: Address) {
   const recipients: RawRecipient[] | undefined = json?.data?.feeRecipients?.items
   const coins: RawCoin[] | undefined = json?.data?.coins?.items
   if (!recipients || !coins) throw new Error("indexer returned no data")
-  return { recipients, coins }
+  // Absent = nothing ever claimed, which is a real answer, not a failure.
+  const claimed: RawFeeBalance[] = json?.data?.feeBalances?.items ?? []
+  return { recipients, coins, claimed }
 }
 
 // ponytail: mirrors the private emojiFor() in lib/indexer.ts so a coin keeps the
@@ -167,7 +187,7 @@ export function usePortfolio(owner?: Address) {
     queryFn: async () => {
       const addr = owner!
       const client = publicClient! as PublicClient
-      const { recipients, coins } = await fetchPortfolio(addr)
+      const { recipients, coins, claimed } = await fetchPortfolio(addr)
 
       // A wallet can hold SEVERAL slots on one position — SMOKE's 163160 is two
       // 5000-bps slots for the same creator. Its share is the sum, not one slot.
@@ -210,6 +230,9 @@ export function usePortfolio(owner?: Address) {
         ...new Set(positions.map((p) => p.token).filter((t): t is Address => !!t)),
         WETH,
       ]
+      const claimedByToken = new Map(
+        claimed.map((b) => [b.token.toLowerCase(), BigInt(b.lifetimeClaimed)])
+      )
       const balances: FeeBalance[] = await Promise.all(
         feeTokens.map(async (token) => {
           const claimable = await client.readContract({
@@ -224,6 +247,8 @@ export function usePortfolio(owner?: Address) {
             symbol: token === WETH ? "WETH" : (coin?.symbol ?? "?"),
             emoji: token === WETH ? "Ξ" : emojiFor(token),
             claimable,
+            isWeth: token === WETH,
+            lifetimeClaimed: claimedByToken.get(token.toLowerCase()) ?? null,
           }
         })
       )
