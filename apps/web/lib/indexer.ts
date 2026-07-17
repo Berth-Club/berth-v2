@@ -254,9 +254,18 @@ type TickSource = {
  * sits at the range floor.
  */
 export function coinSpaceTick(c: TickSource): number {
-  if (c.tick == null || c.swapCount === 0) return c.tickLower
-  // Coin as token1: the pool quotes coin-per-WETH, the reciprocal of what we want.
-  return coinIsToken0(c.address) ? c.tick : -c.tick
+  // `coin.tick` is ALREADY coin-space — the indexer normalises it on write
+  // (toCoinTick), seeding it from the event's tickLower at launch and updating
+  // it from the pool tick on every swap. The raw pool tick lives in `poolTick`.
+  //
+  // Do NOT negate it here for token1 coins. This function used to, back when the
+  // column held a raw pool tick, and the two fixes composed into a double
+  // negation: -(-268591) = +268591, so 1.0001^tick returned ~$843 TRILLION per
+  // token and curve clamped to 1, badging a coin "GRADUATED" off a 0.0001 Ξ buy.
+  //
+  // It hid because swapCount === 0 short-circuited to tickLower — every coin had
+  // zero trades, so the wrong branch was unreachable until the first real swap.
+  return c.tick ?? c.tickLower
 }
 
 /** Deterministic face, used only when the coin carries no readable metadata. */
