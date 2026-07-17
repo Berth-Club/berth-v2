@@ -21,7 +21,17 @@ function short(a: string): string {
 }
 
 export default async function LeaderboardPage() {
-  const [captains, status] = await Promise.all([fetchCaptains(), fetchIndexerStatus()])
+  const [raw, status] = await Promise.all([fetchCaptains(), fetchIndexerStatus()])
+
+  // "Ranked by volume" is only true once somebody has traded. Until then every
+  // captain sits at 0 and the order is arbitrary — so say so, and order by the
+  // one thing that IS real (coins launched) rather than implying a contest.
+  const ranked = (raw ?? []).some((c) => c.volumeWeth > 0)
+  const captains = raw
+    ? [...raw].sort((a, b) =>
+        ranked ? b.volumeWeth - a.volumeWeth : b.coinsCreated - a.coinsCreated
+      )
+    : null
 
   return (
     <div className="mx-auto max-w-[900px] px-5 pb-20 pt-8">
@@ -69,7 +79,11 @@ export default async function LeaderboardPage() {
 
           {captains.map((c, i) => {
             const rank = i + 1
-            const color = rankColor(rank)
+            // Medals only mean something once there is something to win. Every
+            // coin currently has zero swaps, so volume is 0 across the board and
+            // this order is an arbitrary tiebreak — painting the top three
+            // gold/silver/bronze would dress that up as an achievement.
+            const color = ranked ? rankColor(rank) : undefined
             return (
               <Link
                 key={c.address}
@@ -105,8 +119,11 @@ export default async function LeaderboardPage() {
       )}
 
       <p className="text-faint mt-4 text-center text-[13px]">
-        Ranked by traded volume. PnL and win-rate need per-trade cost basis, which nothing tracks yet —
-        so they&apos;re not shown rather than guessed at.
+        {ranked
+          ? "Ranked by traded volume."
+          : "Nobody has traded yet, so there's nothing to rank — listed by coins launched. Volume takes over once the first buy lands."}{" "}
+        PnL and win-rate need per-trade cost basis, which nothing tracks yet — so they&apos;re not
+        shown rather than guessed at.
       </p>
     </div>
   )
