@@ -20,12 +20,12 @@ export type Coin = {
   /** null = ETH/USD unknown. See priceUsd. */
   marketCapUsd: number | null
   /**
-   * Market cap in WETH. Always known — it comes off the pool tick, with no
+   * Market cap in NATIVE. Always known — it comes off the pool tick, with no
    * dollar feed involved. Rank on this, never on the USD fields, which go null
    * whenever Coinbase is unreachable.
    */
-  marketCapWeth: number
-  /** 0–1 progress along the v3 range toward graduation (~6.9 WETH). */
+  marketCapNative: number
+  /** 0–1 progress along the v3 range toward graduation (~6.9 NATIVE). */
   curve: number
   graduated: boolean
   lore: string

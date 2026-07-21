@@ -72,23 +72,23 @@ function Th({ children, right }: { children?: React.ReactNode; right?: boolean }
 }
 
 /**
- * A fee amount, dual-denominated per the spec: primary line in Ξ, secondary
- * "+ N $TICKER". `weth`/`token` null means we couldn't read it — that renders a
+ * A fee amount, dual-denominated per the spec: primary line in USDC, secondary
+ * "+ N $TICKER". `native`/`token` null means we couldn't read it — that renders a
  * dim em-dash, never a 0, because 0 and "unknown" are different answers when
  * someone is deciding whether to sign.
  */
 function FeeAmount({
-  weth,
+  native,
   token,
   symbol,
   tone,
 }: {
-  weth: bigint | null
+  native: bigint | null
   token: bigint | null
   symbol: string
   tone: "foam" | "lime"
 }) {
-  const empty = (weth === null || weth === 0n) && (token === null || token === 0n)
+  const empty = (native === null || native === 0n) && (token === null || token === 0n)
   if (empty) {
     return (
       <div className="text-right">
@@ -101,7 +101,7 @@ function FeeAmount({
   return (
     <div className="text-right">
       <div className="font-bold" style={{ color: tone === "lime" ? "#A3E635" : "#EFF5EC" }}>
-        {fmtFee(weth)} Ξ
+        {fmtFee(native)} USDC
       </div>
       {token !== null && token > 0n && (
         <div className="text-mist text-xs">
@@ -112,7 +112,7 @@ function FeeAmount({
   )
 }
 
-export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
+export function PortfolioTabs() {
   const wallet = useWallet()
   const { celebrate, toast } = useFx()
   const portfolio = usePortfolio(wallet.address)
@@ -168,9 +168,9 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
           🧭
         </span>
         <p className="text-lg font-bold">Wrong waters, captain</p>
-        <p className="text-mist -mt-2 text-[15px]">Your hold is on Robinhood Chain (4663).</p>
-        <button onClick={wallet.switchToRobinhood} className="btn-deck btn-lime px-6 py-3 text-base">
-          Switch to Robinhood Chain
+        <p className="text-mist -mt-2 text-[15px]">Your hold is on Arc Testnet (5042002).</p>
+        <button onClick={wallet.switchToArc} className="btn-deck btn-lime px-6 py-3 text-base">
+          Switch to Arc Testnet
         </button>
       </Panel>
     )
@@ -202,13 +202,13 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
   const { positions, balances, holdings } = portfolio.data
   const owner = wallet.address!
 
-  // Escrow is keyed by (owner, TOKEN), never by position. Every position's WETH
+  // Escrow is keyed by (owner, TOKEN), never by position. Every position's NATIVE
   // lands in this ONE bucket — this wallet is a recipient on two positions and
-  // has exactly one WETH row on chain. So the WETH figure lives in the summary
+  // has exactly one NATIVE row on chain. So the NATIVE figure lives in the summary
   // bar; printing it on each row would show the same money twice.
-  const wethBucket = balances.find((b) => b.isWeth)
+  const nativeBucket = balances.find((b) => b.isNative)
   const coinBucket = (token?: string) =>
-    token ? balances.find((b) => !b.isWeth && b.token === token) : undefined
+    token ? balances.find((b) => !b.isNative && b.token === token) : undefined
   const claimableBalances = balances.filter((b) => b.claimable > 0n)
   const claimedBalances = balances.filter((b) => (b.lifetimeClaimed ?? 0n) > 0n)
 
@@ -282,9 +282,9 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                 {/* Priced off the pool tick, converted at the live rate. Either
                     missing (no pool price / no feed) means "—", never a $0. */}
                 <span className="text-right" style={{ color: "#b9ccb6" }}>
-                  {h.valueWeth === null || ethUsd === null
+                  {h.valueNative === null
                     ? "—"
-                    : fmtPrice(h.valueWeth * ethUsd)}
+                    : fmtPrice(h.valueNative)}
                 </span>
               </Link>
             ))
@@ -297,7 +297,7 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
         <div className="rounded-panel bg-hull mt-4 border p-[18px]">
           <div className="flex flex-wrap items-baseline gap-3">
             <div className="font-display text-[21px]">Creator rewards</div>
-            <div className="text-mist text-[13px]">1% of every trade, paid in the coin + WETH</div>
+            <div className="text-mist text-[13px]">1% of every trade, paid in the coin + NATIVE</div>
           </div>
 
           {/* Pipeline explainer. Two steps on two contracts, and they stay
@@ -338,7 +338,7 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                 const busy = collector.tokenId === p.tokenId
                 // null = the read failed, so we don't know. Leave the button live
                 // rather than block on a failed read; only a known zero disables.
-                const nothing = p.earnedToken === 0n && p.earnedWeth === 0n
+                const nothing = p.earnedToken === 0n && p.earnedNative === 0n
                 const escrow = coinBucket(p.token)
                 return (
                   <div
@@ -371,7 +371,7 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                     {/* On the position: both sides are this position's own, so
                         both are attributable and shown together. */}
                     <FeeAmount
-                      weth={p.earnedWeth}
+                      native={p.earnedNative}
                       token={p.earnedToken}
                       symbol={p.symbol}
                       tone="foam"
@@ -396,7 +396,7 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                     </button>
 
                     {/* In escrow, coin side only. This coin's escrow IS per-coin;
-                        the WETH half of it is pooled across every position and
+                        the NATIVE half of it is pooled across every position and
                         lives in the summary bar instead. */}
                     <div className="text-right">
                       {!escrow || escrow.claimable === 0n ? (
@@ -433,11 +433,11 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                   >
                     {claimableBalances.length === 0
                       ? "Nothing yet"
-                      : `${fmtFee(wethBucket?.claimable ?? 0n)} Ξ`}
+                      : `${fmtFee(nativeBucket?.claimable ?? 0n)} USDC`}
                   </div>
-                  {/* Every non-WETH bucket, named. Ξ alone would hide the coin side. */}
+                  {/* Every non-NATIVE bucket, named. USDC alone would hide the coin side. */}
                   {claimableBalances
-                    .filter((b) => !b.isWeth)
+                    .filter((b) => !b.isNative)
                     .map((b) => (
                       <div key={b.token} className="text-mist text-xs">
                         + {fmtBalance(b.claimable)} ${b.symbol}
@@ -449,10 +449,10 @@ export function PortfolioTabs({ ethUsd }: { ethUsd: number | null }) {
                   <div className="text-mist text-xs">Lifetime claimed</div>
                   {/* Indexed from FeesClaimed — real history, no on-chain getter. */}
                   <div className="text-xl font-bold">
-                    {fmtFee(wethBucket?.lifetimeClaimed ?? 0n)} Ξ
+                    {fmtFee(nativeBucket?.lifetimeClaimed ?? 0n)} USDC
                   </div>
                   {claimedBalances
-                    .filter((b) => !b.isWeth)
+                    .filter((b) => !b.isNative)
                     .map((b) => (
                       <div key={b.token} className="text-mist text-xs">
                         + {fmtBalance(b.lifetimeClaimed!)} ${b.symbol}

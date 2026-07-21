@@ -8,7 +8,7 @@ import { usePublicClient, useWaitForTransactionReceipt, useWriteContract } from 
 import { FeeLockerAbi } from "@/lib/abis/feeLocker"
 import { LpLockerAbi } from "@/lib/abis/lpLocker"
 import { CONTRACTS, UNISWAP } from "@/lib/chain"
-import { coinIsToken0, coinSpaceTick, tickToPriceWeth } from "@/lib/indexer"
+import { coinIsToken0, coinSpaceTick, tickToPriceNative } from "@/lib/indexer"
 import { FACE_OPTIONS } from "@/lib/coin"
 
 /**
@@ -31,7 +31,7 @@ import { FACE_OPTIONS } from "@/lib/coin"
  *   - `positions` are keyed by tokenId       -> what `collect` acts on
  *   - `balances`  are keyed by token address -> what `claim` acts on
  * Escrow is (feeOwner, token), NOT (feeOwner, tokenId): if you're a recipient on
- * two positions, their WETH lands in ONE availableFees(owner, WETH) bucket.
+ * two positions, their NATIVE lands in ONE availableFees(owner, NATIVE) bucket.
  * Showing "claimable" per position row would double-count it.
  */
 
@@ -41,7 +41,7 @@ const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:420
 
 const LP_LOCKER = CONTRACTS.lpLocker as Address
 const FEE_LOCKER = CONTRACTS.feeLocker as Address
-const WETH = UNISWAP.weth9 as Address
+const NATIVE = UNISWAP.wrappedNative as Address
 
 /** A locked position the wallet is a fee recipient of. `collect` targets these. */
 export type FeePosition = {
@@ -58,7 +58,7 @@ export type FeePosition = {
    * null = we could not read it (never rendered as a fake 0).
    */
   earnedToken: bigint | null
-  earnedWeth: bigint | null
+  earnedNative: bigint | null
 }
 
 /** An escrow balance, keyed by token. `claim` targets these. */
@@ -68,8 +68,8 @@ export type FeeBalance = {
   emoji: string
   /** Withdrawable right now via claim(owner, token). Read from the CHAIN. */
   claimable: bigint
-  /** true for the WETH bucket — the one shared across every position. */
-  isWeth: boolean
+  /** true for the NATIVE bucket — the one shared across every position. */
+  isNative: boolean
   /**
    * Lifetime total ever withdrawn to the wallet for this token.
    *
@@ -86,8 +86,8 @@ export type Holding = {
   symbol: string
   emoji: string
   balance: bigint
-  /** Value in WETH from the pool's current tick. null when the pool has no price yet. */
-  valueWeth: number | null
+  /** Value in NATIVE from the pool's current tick. null when the pool has no price yet. */
+  valueNative: number | null
 }
 
 type RawRecipient = { tokenId: string; bps: number }
@@ -205,9 +205,9 @@ export function usePortfolio(owner?: Address) {
           const share = (amount: bigint) => (amount * BigInt(bps)) / 10_000n
           // collectFees returns (amount0, amount1) in POOL order, and the coin is
           // NOT always token0: the deployed factory mirrors the range instead of
-          // salt-mining the coin below WETH9. $SMOKE's pool is token0=WETH9,
+          // salt-mining the coin below WRAPPED_NATIVE. $SMOKE's pool is token0=WRAPPED_NATIVE,
           // token1=coin — so assuming coin==token0 swaps the two fee sides and
-          // reports WETH as coin earnings. Derive the ordering per coin.
+          // reports NATIVE as coin earnings. Derive the ordering per coin.
           const isToken0 = coin ? coinIsToken0(coin.address) : true
           const earned0 = total ? share(total[0]) : null
           const earned1 = total ? share(total[1]) : null
@@ -219,16 +219,16 @@ export function usePortfolio(owner?: Address) {
             emoji: coin ? emojiFor(coin.address) : "🎫",
             bps,
             earnedToken: isToken0 ? earned0 : earned1,
-            earnedWeth: isToken0 ? earned1 : earned0,
+            earnedNative: isToken0 ? earned1 : earned0,
           }
         })
       )
 
       // --- balances: what `claim` acts on (keyed by token, deduped) ---
-      // Fees accrue in BOTH sides of every pool: the coin AND WETH. Both shown.
+      // Fees accrue in BOTH sides of every pool: the coin AND NATIVE. Both shown.
       const feeTokens: Address[] = [
         ...new Set(positions.map((p) => p.token).filter((t): t is Address => !!t)),
-        WETH,
+        NATIVE,
       ]
       const claimedByToken = new Map(
         claimed.map((b) => [b.token.toLowerCase(), BigInt(b.lifetimeClaimed)])
@@ -244,17 +244,20 @@ export function usePortfolio(owner?: Address) {
           const coin = coins.find((c) => c.address === token)
           return {
             token,
-            symbol: token === WETH ? "WETH" : (coin?.symbol ?? "?"),
-            emoji: token === WETH ? "Ξ" : emojiFor(token),
+            // Fees accrue in the pool's quote asset, which is the WUSDC wrapper --
+            // not native USDC. Naming it precisely matters: a creator seeing "USDC"
+            // would expect it spendable as gas, and it is not until unwrapped.
+            symbol: token === NATIVE ? "WUSDC" : (coin?.symbol ?? "?"),
+            emoji: token === NATIVE ? "💵" : emojiFor(token),
             claimable,
-            isWeth: token === WETH,
+            isNative: token === NATIVE,
             lifetimeClaimed: claimedByToken.get(token.toLowerCase()) ?? null,
           }
         })
       )
 
       // --- holdings: real ERC20 balances of coins launched here ---
-      // ponytail: one eth_call per coin. Multicall3 IS live on 4663 at the
+      // ponytail: one eth_call per coin. Multicall3 IS live on Arc at the
       // canonical 0xcA11bde0…, but lib/chain.ts doesn't declare it — declare it
       // there and wagmi/viem batch these for free.
       const held = await Promise.all(
@@ -274,18 +277,18 @@ export function usePortfolio(owner?: Address) {
           // `coin.tick` silently changes meaning: the launch handler writes the
           // event's coin-space tick, the swap handler writes the raw pool tick.
           // coinSpaceTick() normalises both (and handles either token ordering)
-          // — feeding the raw tick here priced a coin at ~4.6e22 WETH.
-          const priceWeth = tickToPriceWeth(coinSpaceTick(c))
+          // — feeding the raw tick here priced a coin at ~4.6e22 NATIVE.
+          const priceNative = tickToPriceNative(coinSpaceTick(c))
           return {
             token: c.address,
             name: c.name,
             symbol: c.symbol,
             emoji: emojiFor(c.address),
             balance,
-            valueWeth: isFinite(priceWeth) ? Number(formatEther(balance)) * priceWeth : null,
+            valueNative: isFinite(priceNative) ? Number(formatEther(balance)) * priceNative : null,
           }
         })
-        .sort((a, b) => (b.valueWeth ?? 0) - (a.valueWeth ?? 0))
+        .sort((a, b) => (b.valueNative ?? 0) - (a.valueNative ?? 0))
 
       return { positions, balances, holdings }
     },
@@ -400,7 +403,7 @@ export function useClaim(onDone: () => void): {
   }
 }
 
-/** Fees are 18dp on both sides: every launched coin is 18dp, and so is WETH9. */
+/** Fees are 18dp on both sides: every launched coin is 18dp, and so is WRAPPED_NATIVE. */
 export function fmtFee(amount: bigint | null): string {
   if (amount === null) return "—"
   if (amount === 0n) return "0"

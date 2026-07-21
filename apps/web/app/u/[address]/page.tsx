@@ -80,7 +80,7 @@ export default async function UserPage({
         <Stat label="Sells" value={String(captain.sells)} color="#F87171" />
         <Stat
           label="Volume"
-          value={captain.volumeWeth > 0 ? fmtMc(captain.volumeUsd) : "—"}
+          value={captain.volumeNative > 0 ? fmtMc(captain.volumeUsd) : "—"}
           color="#A3E635"
         />
       </div>

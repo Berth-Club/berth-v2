@@ -44,7 +44,7 @@ export function PriceChart({ points, volume }: { points: PricePoint[]; volume: s
 
   const first = shown[0]
   const last = shown[shown.length - 1]
-  const up = first && last ? last.weth >= first.weth : true
+  const up = first && last ? last.native >= first.native : true
   const stroke = up ? "#A3E635" : "#F87171"
   const gid = `grad-${up ? "up" : "down"}`
 

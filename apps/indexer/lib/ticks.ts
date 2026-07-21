@@ -10,31 +10,31 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 
-/** Pinned WETH9 on Robinhood Chain (4663) — the quote asset of every pool. */
-export const WETH9 = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
+/** Pinned WRAPPED_NATIVE on Robinhood Chain (4663) — the quote asset of every pool. */
+export const WRAPPED_NATIVE = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
 
 /**
  * Which side of the pool the coin landed on.
  *
  * Uniswap sorts pool tokens by address, and the DEPLOYED factory does NOT
- * salt-mine the coin below WETH9 (whatever the contracts repo does) — when the
- * coin sorts above WETH9 it mirrors the tick range instead. So the coin is
+ * salt-mine the coin below WRAPPED_NATIVE (whatever the contracts repo does) — when the
+ * coin sorts above WRAPPED_NATIVE it mirrors the tick range instead. So the coin is
  * token0 only ~5% of the time. Never assume it; always ask.
  */
 export function isCoinToken0(token: string): boolean {
   // Equal-length lowercase hex compares lexicographically the same as by uint160.
-  return token.toLowerCase() < WETH9;
+  return token.toLowerCase() < WRAPPED_NATIVE;
 }
 
 /**
  * Pool-space tick -> COIN-SPACE tick. THE ONE PLACE ordering is normalised.
  *
  * Pool space measures token1 per token0. When the coin is token1 that reads
- * "coin per WETH", which runs BACKWARDS: buying the coin makes it dearer, so
- * fewer coin per WETH, so the tick goes DOWN — such a pool starts at its upper
+ * "coin per NATIVE", which runs BACKWARDS: buying the coin makes it dearer, so
+ * fewer coin per NATIVE, so the tick goes DOWN — such a pool starts at its upper
  * tick and graduates at its lower one.
  *
- * Negating flips it back to "WETH per whole coin" (both tokens are 18 decimals,
+ * Negating flips it back to "NATIVE per whole coin" (both tokens are 18 decimals,
  * so no decimal shift). In coin space the TokenLaunched ticks apply verbatim for
  * BOTH orderings: price rises with tick, graduation is always tick >= tickUpper.
  */
@@ -80,10 +80,10 @@ export function pctChange(tickNow: number, tickThen: number): number {
 function main(): void {
   const SMOKE = "0x4b70e93E05f3CaAAf3c1Fcb0a06E8D73ab3B694A";
 
-  // Ground truth: pool.token0() = WETH9, pool.token1() = SMOKE.
-  assert.equal(isCoinToken0(SMOKE), false, "SMOKE sorts above WETH9 => token1");
+  // Ground truth: pool.token0() = WRAPPED_NATIVE, pool.token1() = SMOKE.
+  assert.equal(isCoinToken0(SMOKE), false, "SMOKE sorts above WRAPPED_NATIVE => token1");
   assert.equal(isCoinToken0("0x0000000000000000000000000000000000000001"), true);
-  assert.equal(isCoinToken0(WETH9.toUpperCase()), false, "case-insensitive, equal is not below");
+  assert.equal(isCoinToken0(WRAPPED_NATIVE.toUpperCase()), false, "case-insensitive, equal is not below");
 
   // TokenLaunched emitted [-268600, -199400]; positions() reports [199400, 268600].
   const { poolTickLower, poolTickUpper } = poolRange(-268600, -199400, false);
@@ -118,7 +118,7 @@ function main(): void {
   assert.ok(pctChange(toCoinTick(268600, true), toCoinTick(268000, true)) > 0);
 
   // Both orderings must price identically for the same real move: one tick of
-  // WETH-per-coin is +0.01% either way.
+  // NATIVE-per-coin is +0.01% either way.
   assert.ok(Math.abs(pctChange(1, 0) - 0.01) < 1e-6);
   assert.equal(pctChange(0, 0), 0, "no move, no change");
 

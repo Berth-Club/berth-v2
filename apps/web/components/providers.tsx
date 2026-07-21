@@ -4,7 +4,7 @@ import { PrivyProvider, type PrivyClientConfig } from "@privy-io/react-auth"
 import { WagmiProvider } from "@privy-io/wagmi"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
-import { robinhood } from "@/lib/chain"
+import { arc } from "@/lib/chain"
 import { wagmiConfig } from "@/lib/wagmi"
 
 const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? ""
@@ -17,8 +17,8 @@ export const PRIVY_CONFIGURED = appId !== "" && appId !== "your-privy-app-id"
 const queryClient = new QueryClient()
 
 const privyConfig: PrivyClientConfig = {
-  defaultChain: robinhood,
-  supportedChains: [robinhood],
+  defaultChain: arc,
+  supportedChains: [arc],
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
   loginMethods: ["wallet", "email"],
   appearance: {

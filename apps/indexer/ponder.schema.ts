@@ -13,7 +13,7 @@ export const coin = onchainTable(
     pool: t.hex().notNull(),
     supply: t.bigint().notNull(),
     /**
-     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "WETH per
+     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "NATIVE per
      * whole coin", so higher = coin more expensive, and graduation is at
      * tickUpper. Compare these ONLY against `coin.tick`/`swap.tick`, which are
      * normalised into the same space. See src/index.ts `toCoinTick`.
@@ -23,7 +23,7 @@ export const coin = onchainTable(
     /**
      * Uniswap token ordering for this pool. The deployed factory does NOT force
      * the coin to token0 — it mirrors the tick range when the coin sorts above
-     * WETH9 instead. Verified on chain for $SMOKE: pool.token0() = WETH9.
+     * WRAPPED_NATIVE instead. Verified on chain for $SMOKE: pool.token0() = WRAPPED_NATIVE.
      */
     coinIsToken0: t.boolean().notNull(),
     /**
@@ -44,7 +44,7 @@ export const coin = onchainTable(
     // --- market state, maintained from pool Swap events ---
     /**
      * Latest tick in COIN SPACE (negated when the coin is token1), so
-     * `1.0001^tick` is always WETH per whole coin regardless of pool ordering.
+     * `1.0001^tick` is always NATIVE per whole coin regardless of pool ordering.
      * NOT the raw slot0 tick — use poolTick for that.
      */
     tick: t.integer(),
@@ -55,8 +55,8 @@ export const coin = onchainTable(
     /** 0–1 progress along the range toward graduation. */
     curve: t.real().notNull().default(0),
     graduated: t.boolean().notNull().default(false),
-    /** Cumulative WETH volume, wei. */
-    volumeWeth: t.bigint().notNull().default(0n),
+    /** Cumulative NATIVE volume, wei. */
+    volumeNative: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),
     lastTradeAt: t.bigint(),
     /** Addresses holding a non-zero balance. The locked LP pool is one of them. */
@@ -83,11 +83,11 @@ export const swap = onchainTable(
     coin: t.hex().notNull(),
     sender: t.hex().notNull(),
     recipient: t.hex().notNull(),
-    /** true = someone bought the coin (WETH in). */
+    /** true = someone bought the coin (NATIVE in). */
     isBuy: t.boolean().notNull(),
     /** Absolute amounts, wei. */
     amountToken: t.bigint().notNull(),
-    amountWeth: t.bigint().notNull(),
+    amountNative: t.bigint().notNull(),
     /** COIN-SPACE tick after the swap — see coin.tick. Drives the 24h change. */
     tick: t.integer().notNull(),
     timestamp: t.bigint().notNull(),
@@ -168,7 +168,7 @@ export const captain = onchainTable("captain", (t) => ({
   coinsCreated: t.integer().notNull().default(0),
   buys: t.integer().notNull().default(0),
   sells: t.integer().notNull().default(0),
-  volumeWeth: t.bigint().notNull().default(0n),
+  volumeNative: t.bigint().notNull().default(0n),
   firstSeenAt: t.bigint().notNull(),
 }));
 

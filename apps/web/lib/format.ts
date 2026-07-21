@@ -12,7 +12,7 @@ function toSubscript(n: number): string {
 }
 
 /**
- * Prices here are absurdly small — a coin opens at ~0.216 WETH market cap over
+ * Prices here are absurdly small — a coin opens at ~0.216 NATIVE market cap over
  * a fixed 100B supply, so ~$0.0000000041 per token. Printing that literally is
  * nine leading zeros nobody can count at a glance, and it gets worse the lower
  * the price goes.

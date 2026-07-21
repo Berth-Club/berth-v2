@@ -5,7 +5,7 @@ import { useAccount, useBalance, useSwitchChain } from "wagmi"
 import { formatEther } from "viem"
 
 import { PRIVY_CONFIGURED } from "@/components/providers"
-import { robinhood } from "@/lib/chain"
+import { arc } from "@/lib/chain"
 
 export type Wallet = {
   ready: boolean
@@ -14,11 +14,11 @@ export type Wallet = {
   /** Short display form, e.g. 0x7aE3…9F2d */
   short?: string
   balance?: string
-  /** Button label: "Connect wallet" or "0x7aE3…9F2d · 1.24 Ξ" */
+  /** Button label: "Connect wallet" or "0x7aE3…9F2d · 1.24 USDC" */
   label: string
-  /** true when connected but on the wrong network (must be 4663). */
+  /** true when connected but on the wrong network (must be Arc, 5042002). */
   wrongNetwork: boolean
-  switchToRobinhood: () => void
+  switchToArc: () => void
   connect: () => void
   disconnect: () => void
 }
@@ -43,7 +43,7 @@ export function useWallet(): Wallet {
       connected: false,
       label: "Connect wallet",
       wrongNetwork: false,
-      switchToRobinhood: warn,
+      switchToArc: warn,
       connect: warn,
       disconnect: () => {},
     }
@@ -57,7 +57,7 @@ export function useWallet(): Wallet {
   /* eslint-enable react-hooks/rules-of-hooks */
 
   const connected = authenticated && !!address
-  const wrongNetwork = connected && chainId !== robinhood.id
+  const wrongNetwork = connected && chainId !== arc.id
   const eth = bal ? Number(formatEther(bal.value)).toFixed(2) : undefined
 
   return {
@@ -66,9 +66,9 @@ export function useWallet(): Wallet {
     address,
     short: short(address),
     balance: eth,
-    label: connected ? `${short(address)}${eth ? ` · ${eth} Ξ` : ""}` : "Connect wallet",
+    label: connected ? `${short(address)}${eth ? ` · ${eth} USDC` : ""}` : "Connect wallet",
     wrongNetwork,
-    switchToRobinhood: () => switchChain({ chainId: robinhood.id }),
+    switchToArc: () => switchChain({ chainId: arc.id }),
     connect: () => (authenticated ? logout() : login()),
     disconnect: logout,
   }

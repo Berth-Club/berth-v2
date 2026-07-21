@@ -1,4 +1,5 @@
-// AUTO-SOURCED from the DEPLOYED contracts on Robinhood Chain (4663).
+// AUTO-SOURCED from the contracts as deployed on Robinhood Chain (4663).
+// The ABI surface is unchanged by the Arc retarget -- only addresses moved.
 //
 // These are the real ABIs: all 50 selectors across the three contracts were
 // verified present in the deployed bytecode. Do NOT regenerate these from

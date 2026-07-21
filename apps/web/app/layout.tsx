@@ -17,7 +17,7 @@ const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" 
 export const metadata: Metadata = {
   title: "berth.club — Build something that floats",
   description:
-    "Launch a coin on Robinhood Chain in one transaction: mint, pool, and lock the liquidity forever. Fixed 100B supply, no admin over your coin, 1% of every trade to the creator.",
+    "Launch a coin on Arc in one transaction: mint, pool, and lock the liquidity forever. Fixed 100B supply, no admin over your coin, 1% of every trade to the creator.",
 }
 
 export default function RootLayout({

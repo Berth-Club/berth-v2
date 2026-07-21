@@ -11,12 +11,12 @@ import { useTrade, type Side } from "@/lib/trade"
 import { explorerTx } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
-// ~6.9 WETH buys through the whole range — the total exit liquidity.
-// Measured, not assumed: tracing a 20 WETH buy against the live $SMOKE pool shows
-// the pool taking exactly 6.956359525294265233 WETH for the full 100B supply and
-// halting at MIN_TICK. The remaining 13.04 WETH is handed back by the refundETH()
+// ~6.9 NATIVE buys through the whole range — the total exit liquidity.
+// Measured, not assumed: tracing a 20 NATIVE buy against the live $SMOKE pool shows
+// the pool taking exactly 6.956359525294265233 NATIVE for the full 100B supply and
+// halting at MIN_TICK. The remaining 13.04 NATIVE is handed back by the refundETH()
 // leg that lib/trade.ts bundles into the swap — that is what the note below means.
-const EXIT_WETH = 6.9
+const EXIT_NATIVE = 6.9
 const CHIPS = ["0.05", "0.1", "0.5", "1"]
 const SELL_CHIPS: [string, bigint][] = [
   ["25%", 25n],
@@ -25,7 +25,7 @@ const SELL_CHIPS: [string, bigint][] = [
 ]
 
 /** ETH amounts are small and precision matters — no compact notation. */
-function fmtEth(n: number): string {
+function fmtUsdc(n: number): string {
   if (n === 0) return "0"
   if (n < 0.000001) return "<0.000001"
   return n.toLocaleString("en-US", { maximumFractionDigits: 6 })
@@ -36,14 +36,14 @@ export function TradePanel({ coin }: { coin: Coin }) {
   const [amount, setAmount] = React.useState("")
   const [lastTx, setLastTx] = React.useState<`0x${string}`>()
   const { celebrate } = useFx()
-  const { connected, wrongNetwork, connect, switchToRobinhood } = useWallet()
+  const { connected, wrongNetwork, connect, switchToArc } = useWallet()
   const trade = useTrade(coin, side, amount)
 
   const eth = parseFloat(amount) || 0
-  // remaining range = (100 − grad%)/100 × 6.9 WETH
-  const remaining = (1 - coin.curve) * EXIT_WETH
-  const impact = eth ? Math.min(95, (eth / EXIT_WETH) * 100) : 0
-  const showImpact = side === "buy" && eth >= EXIT_WETH * 0.03
+  // remaining range = (100 − grad%)/100 × 6.9 NATIVE
+  const remaining = (1 - coin.curve) * EXIT_NATIVE
+  const impact = eth ? Math.min(95, (eth / EXIT_NATIVE) * 100) : 0
+  const showImpact = side === "buy" && eth >= EXIT_NATIVE * 0.03
   const overshoots = side === "buy" && eth > remaining && !coin.graduated
 
   const { success, hash, reset } = trade
@@ -91,7 +91,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
           </label>
           {trade.balance !== undefined && (
             <span className="text-faint tabular text-[11px]">
-              {fmtEth(Number(formatUnits(trade.balance, 18)))} {side === "buy" ? "Ξ" : `$${coin.ticker}`}
+              {fmtUsdc(Number(formatUnits(trade.balance, 18)))} {side === "buy" ? "USDC" : `$${coin.ticker}`}
             </span>
           )}
         </div>
@@ -104,7 +104,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
             className="tabular w-full bg-transparent py-2 text-[20px] outline-none"
           />
           <span className="text-mist pr-2 text-[15px]" aria-hidden>
-            {side === "buy" ? "Ξ" : `$${coin.ticker}`}
+            {side === "buy" ? "USDC" : `$${coin.ticker}`}
           </span>
         </div>
         <div className="flex gap-2">
@@ -115,7 +115,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
                   onClick={() => setAmount(c)}
                   className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs"
                 >
-                  {c} Ξ
+                  {c} USDC
                 </button>
               ))
             : SELL_CHIPS.map(([label, pct]) => (
@@ -145,7 +145,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
               ) : side === "buy" ? (
                 `${fmtAmount(trade.amountOutFloat)} $${coin.ticker}`
               ) : (
-                `${fmtEth(trade.amountOutFloat)} Ξ`
+                `${fmtUsdc(trade.amountOutFloat)} USDC`
               )}
             </span>
           </div>
@@ -167,7 +167,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
           }}
         >
           ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — the entire market
-          has ~6.9 WETH of exit liquidity.
+          has ~6.9 NATIVE of exit liquidity.
         </div>
       )}
 
@@ -192,7 +192,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
           CONNECT WALLET
         </button>
       ) : wrongNetwork ? (
-        <button onClick={switchToRobinhood} className="btn-deck btn-quiet w-full py-3 text-[19px]">
+        <button onClick={switchToArc} className="btn-deck btn-quiet w-full py-3 text-[19px]">
           SWITCH TO ROBINHOOD CHAIN
         </button>
       ) : (
