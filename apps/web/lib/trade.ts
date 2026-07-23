@@ -185,6 +185,18 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const receipt = useWaitForTransactionReceipt({ hash, chainId: arc.id })
   const [step, setStep] = React.useState<"idle" | "approve" | "swap">("idle")
+  // The hash of the approve tx, remembered across the approve->swap hand-off.
+  //
+  // A buy is two transactions now (approve, then swap), and `hash` is shared by
+  // both. When the approve confirms we flip `step` to "swap" and fire the swap,
+  // but for one render `step` is already "swap" while `hash`/`receipt` still
+  // refer to the just-succeeded approve. Without this guard, `success` flashed
+  // true against the approve receipt: the UI celebrated a completed trade,
+  // linked to the approve tx, and cleared the form before the swap ever ran.
+  const approveHash = React.useRef<`0x${string}` | undefined>(undefined)
+  React.useEffect(() => {
+    if (step === "approve" && hash) approveHash.current = hash
+  }, [step, hash])
 
   const swap = React.useCallback(() => {
     if (!address || amountOut === undefined || amountOut === 0n) return
@@ -217,6 +229,7 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
   const submit = React.useCallback(() => {
     if (needsApproval) {
       setStep("approve")
+      approveHash.current = undefined
       writeContract({
         address: spendToken,
         abi: erc20Abi,
@@ -289,7 +302,9 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
     submit,
     busy,
     hash,
-    success: step === "swap" && receipt.isSuccess,
+    // Only a swap receipt counts: during the approve->swap hand-off `hash`
+    // still points at the approve, so its lingering success must not register.
+    success: step === "swap" && receipt.isSuccess && hash !== approveHash.current,
     error: writeError ? shortError(writeError.message) : undefined,
     reset: () => {
       setStep("idle")

@@ -8,7 +8,7 @@ import { fmtAmount } from "@/lib/format"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { useTrade, type Side } from "@/lib/trade"
-import { explorerTx } from "@/lib/chain"
+import { explorerTx, USDC, COIN_DECIMALS } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
 // ~20,000 USDC buys through the whole range -- the graduation threshold read
@@ -86,11 +86,12 @@ export function TradePanel({ coin }: { coin: Coin }) {
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between">
           <label className="text-mist text-xs">
-            {side === "buy" ? "Amount (ETH)" : `Amount ($${coin.ticker})`}
+            {side === "buy" ? "Amount (USDC)" : `Amount ($${coin.ticker})`}
           </label>
           {trade.balance !== undefined && (
             <span className="text-faint tabular text-[11px]">
-              {fmtUsdc(Number(formatUnits(trade.balance, 18)))} {side === "buy" ? "USDC" : `$${coin.ticker}`}
+              {fmtUsdc(Number(formatUnits(trade.balance, side === "buy" ? USDC.decimals : COIN_DECIMALS)))}{" "}
+              {side === "buy" ? "USDC" : `$${coin.ticker}`}
             </span>
           )}
         </div>
@@ -122,7 +123,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
                   key={label}
                   disabled={!trade.balance}
                   onClick={() =>
-                    trade.balance && setAmount(formatUnits((trade.balance * pct) / 100n, 18))
+                    trade.balance && setAmount(formatUnits((trade.balance * pct) / 100n, COIN_DECIMALS))
                   }
                   className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs disabled:opacity-40"
                 >
