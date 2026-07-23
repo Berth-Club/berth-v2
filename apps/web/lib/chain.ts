@@ -21,23 +21,15 @@ import { defineChain } from "viem"
  * yourself reaching for IWETH.deposit, the model is wrong.
  */
 /**
- * Where RPC calls go, which differs by side and deliberately so.
+ * The RPC endpoint, used directly by both server and browser.
  *
- * The browser goes through /api/rpc, a server-side proxy. The reliable endpoint
- * is a paid Alchemy URL with the API key in its path, and anything named
- * NEXT_PUBLIC_ is inlined into the JS bundle we ship — so exposing it directly
- * would publish a billable credential to every visitor and every scraper.
- *
- * The server has no such problem: it reads RPC_URL (server-only) straight.
- *
- * NEXT_PUBLIC_RPC_URL still exists as an override for anyone pointing the
- * browser at their own node. Do NOT put a keyed URL in it.
+ * NOTE: this is NEXT_PUBLIC_, so whatever is set here is inlined into the JS
+ * bundle and visible to anyone who opens devtools. That is a deliberate choice
+ * — the free public endpoint drops connections often enough to blank the
+ * portfolio, and a keyed endpoint is what makes the app usable. Restrict the
+ * key by domain at the provider if that exposure ever matters.
  */
-const RPC_URL =
-  process.env.NEXT_PUBLIC_RPC_URL ??
-  (typeof window === "undefined"
-    ? (process.env.RPC_URL ?? "https://rpc.testnet.arc.network")
-    : "/api/rpc")
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.network"
 const EXPLORER_URL = "https://testnet.arcscan.app"
 
 export const arc = defineChain({
