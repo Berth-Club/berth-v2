@@ -25,8 +25,8 @@ const STEPS = ["Papers", "Sea trial", "Set sail"] as const
  */
 const DEV_BUY_PRESETS: { label: string; value: string }[] = [
   { label: "none", value: "0" },
-  { label: "0.001 USDC", value: "0.001" },
-  { label: "0.0025 USDC", value: "0.0025" },
+  { label: "1 USDC", value: "1" },
+  { label: "10 USDC", value: "10" },
   { label: `MAX · ${DEV_BUY_CAP_USDC} USDC`, value: String(DEV_BUY_CAP_USDC) },
 ]
 
@@ -241,8 +241,34 @@ export function LaunchWizard() {
                     Sound it again
                   </button>
                 </div>
+              ) : launch.mining ? (
+                // Indeterminate on purpose. Completion is geometrically
+                // distributed -- a percentage bar would be a fabricated number
+                // that stalls near the end or jumps straight to done. Count
+                // candidates actually found, and show the real work done.
+                <div className="mt-1" role="status" aria-live="polite">
+                  <div className="text-[13px]">
+                    Sounding for a berth ending{" "}
+                    <span className="tabular">8787</span>
+                    {launch.miningAttempts > 0 && (
+                      <span className="text-faint">
+                        {" "}· {launch.miningAttempts.toLocaleString()} soundings
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-white/40 transition-[width] duration-300"
+                      style={{ width: `${Math.max(4, launch.miningProgress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-faint mt-1 text-[11px]">
+                    Every berth.club coin lands on an address ending 8787. Your browser is
+                    finding yours — a few seconds.
+                  </p>
+                </div>
               ) : (
-                <div className="text-faint mt-1 text-[13px]">
+                <div className="text-faint mt-1 text-[13px]" role="status" aria-live="polite">
                   {gate ? "Connect on Arc Testnet to sound the address." : "Sounding the address…"}
                 </div>
               )}

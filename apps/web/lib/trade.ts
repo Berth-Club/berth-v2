@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from "viem"
+import { erc20Abi, formatUnits, parseUnits } from "viem"
 import {
   useBalance,
   useReadContract,
@@ -10,7 +10,7 @@ import {
   useWriteContract,
 } from "wagmi"
 
-import { UNISWAP, arc } from "@/lib/chain"
+import { UNISWAP, USDC, COIN_DECIMALS, arc } from "@/lib/chain"
 import { swapRouterAbi } from "@/lib/router-abi"
 import { useWallet } from "@/components/wallet-provider"
 import type { Coin } from "@/lib/coin"
@@ -59,14 +59,10 @@ const quoterV2Abi = [
 // The ABI, its traps, and the selectors that pin them live in lib/router-abi.ts
 // and are verified by lib/router-abi.selfcheck.ts. Do not inline them here again.
 
-/**
- * Every launchpad coin is 18 decimals: LaunchToken.sol takes OpenZeppelin's
- * default and never overrides `decimals()`. Verified on-chain against $SMOKE.
- */
-const COIN_DECIMALS = 18
 
 /**
- * 5%. Deliberately wide: the whole market is ~6.9 USDC deep, so any concurrent
+ * 5%. Deliberately wide: a launch opens at a ~$4,923 market cap, so any
+ * concurrent
  * trade moves the price several percent. A tighter tolerance would revert honest
  * trades far more often than it would save anyone from a sandwich — there is no
  * meaningful MEV on a pool this thin.
@@ -82,20 +78,6 @@ export function applySlippage(amountOut: bigint): bigint {
   return (amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n
 }
 
-/** How long a signed swap stays valid. Arc blocks are ~0.5s, so this is generous. */
-const DEADLINE_SECONDS = 600n
-
-/**
- * Absolute unix deadline for the v1 router. Computed at click time, not module
- * load, or a long-lived tab would sign an already-expired swap.
- *
- * Arc caveat: block timestamps are non-decreasing, not strictly increasing —
- * consecutive blocks may share one. The router's check is `block.timestamp <=
- * deadline`, which a repeated timestamp cannot break.
- */
-export function swapDeadline(now: number = Date.now()): bigint {
-  return BigInt(Math.floor(now / 1000)) + DEADLINE_SECONDS
-}
 
 /** Tolerant parse — the input allows digits and dots, so "1.2.3" and "." reach here. */
 function parseAmount(value: string, decimals: number): bigint {
@@ -110,17 +92,17 @@ function parseAmount(value: string, decimals: number): bigint {
 export type Side = "buy" | "sell"
 
 export type Trade = {
-  /** Quoted output in base units — coin for a buy, wrapped USDC for a sell. */
+  /** Quoted output in base units — coin (18dp) for a buy, USDC (6dp) for a sell. */
   amountOut?: bigint
   /** Same, as a display float. */
   amountOutFloat: number
   quoting: boolean
-  /** Spendable balance for the current side — native USDC for a buy, coin for a sell. */
+  /** Spendable balance in the units of whatever this side spends. */
   balance?: bigint
   /** Why the trade can't be submitted. Render it; the button is disabled. */
   disabledReason?: string
   canSubmit: boolean
-  /** True while the sell's approve tx is in flight (button stays "ABANDON SHIP"). */
+  /** True while an approve tx is in flight — either side can need one. */
   approving: boolean
   submit: () => void
   /** Wallet prompt open, or a tx in flight. */
@@ -140,14 +122,15 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
   const { address } = useWallet()
   const coinAddress = coin.address as `0x${string}`
 
-  const amountIn = parseAmount(amount, side === "buy" ? 18 : COIN_DECIMALS)
+  // A buy spends USDC (6dp); a sell spends the coin (18dp). Parsing a buy at
+  // 18 would ask the pool for 1e12x the intended size.
+  const amountIn = parseAmount(amount, side === "buy" ? USDC.decimals : COIN_DECIMALS)
 
   // Token ordering is NOT assumed. The router derives zeroForOne from
   // tokenIn < tokenOut itself, and we pass sqrtPriceLimitX96 = 0 so it picks the
-  // correct directional bound. This matters more on Arc than it did on
-  // Robinhood: WUSDC sits mid-range (0x911b…), so coins sort either side of it
-  // roughly half the time rather than ~4.6%.
-  const [tokenIn, tokenOut] = side === "buy" ? [UNISWAP.wrappedNative, coinAddress] : [coinAddress, UNISWAP.wrappedNative]
+  // correct directional bound.
+  const [tokenIn, tokenOut] =
+    side === "buy" ? [USDC.address, coinAddress] : [coinAddress, USDC.address]
 
   // chainId is pinned so quotes still work before connect and while the wallet
   // sits on the wrong network — the user sees real numbers before committing.
@@ -166,8 +149,13 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
   })
   const amountOut = quote.data?.result?.[0]
 
-  const usdcBalance = useBalance({
-    address,
+  // The ERC20 view of the SAME balance the wallet shows as native. Reading the
+  // 6dp view keeps every number on this side of the app in one unit.
+  const usdcBalance = useReadContract({
+    address: USDC.address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
     chainId: arc.id,
     query: { enabled: side === "buy" && !!address },
   })
@@ -179,16 +167,20 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
     chainId: arc.id,
     query: { enabled: side === "sell" && !!address },
   })
+  // BOTH sides need an allowance now. On Robinhood a buy sent native ETH and the
+  // router wrapped it, so only sells approved. Here a buy spends ERC20 USDC, so
+  // it needs the same approve step -- a two-tx buy, not one.
+  const spendToken = side === "buy" ? USDC.address : coinAddress
   const allowance = useReadContract({
-    address: coinAddress,
+    address: spendToken,
     abi: erc20Abi,
     functionName: "allowance",
     args: address ? [address, UNISWAP.swapRouter] : undefined,
     chainId: arc.id,
-    query: { enabled: side === "sell" && !!address },
+    query: { enabled: !!address },
   })
 
-  const needsApproval = side === "sell" && amountIn > 0n && (allowance.data ?? 0n) < amountIn
+  const needsApproval = amountIn > 0n && (allowance.data ?? 0n) < amountIn
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const receipt = useWaitForTransactionReceipt({ hash, chainId: arc.id })
@@ -196,75 +188,28 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
 
   const swap = React.useCallback(() => {
     if (!address || amountOut === undefined || amountOut === 0n) return
-    const minOut = applySlippage(amountOut)
 
-    const calls =
-      side === "buy"
-        ? [
-            encodeFunctionData({
-              abi: swapRouterAbi,
-              functionName: "exactInputSingle",
-              args: [
-                {
-                  tokenIn,
-                  tokenOut,
-                  fee: UNISWAP.feeTier,
-                  recipient: address,
-                  deadline: swapDeadline(),
-                  amountIn,
-                  amountOutMinimum: minOut,
-                  sqrtPriceLimitX96: 0n,
-                },
-              ],
-            }),
-            // MANDATORY, not politeness. A v3 swap only pulls what the range can
-            // absorb: quoting 100 USDC into this pool consumes ~6.9 and stops at
-            // the tick boundary. The router wraps only what the pool actually
-            // takes, so the remainder would sit in the router as loose native
-            // USDC that *anyone* could sweep with refundUSDC(). Bundling it here
-            // is what makes the "extra USDC auto-refunds" note true and safe.
-            encodeFunctionData({ abi: swapRouterAbi, functionName: "refundUSDC" }),
-          ]
-        : [
-            // Sell pays out to the router, then unwraps, so the seller receives
-            // native USDC rather than WUSDC they'd have to unwrap themselves.
-            // recipient is the router's literal address rather than the
-            // ADDRESS_THIS sentinel (address(2)) — if this fork's sentinel ever
-            // differed, address(2) would be a burn. The literal is always correct.
-            encodeFunctionData({
-              abi: swapRouterAbi,
-              functionName: "exactInputSingle",
-              args: [
-                {
-                  tokenIn,
-                  tokenOut,
-                  fee: UNISWAP.feeTier,
-                  recipient: UNISWAP.swapRouter,
-                  deadline: swapDeadline(),
-                  amountIn,
-                  amountOutMinimum: minOut,
-                  sqrtPriceLimitX96: 0n,
-                },
-              ],
-            }),
-            encodeFunctionData({
-              abi: swapRouterAbi,
-              functionName: "unwrapWUSDC",
-              args: [minOut, address],
-            }),
-          ]
-
+    // One plain call, both directions. No multicall, no wrap, no unwrap, no
+    // refund leg: on Arc the quote asset is an ordinary ERC20 that happens to
+    // also be the gas token, so a swap is just a swap. `value` is 0 -- sending
+    // native alongside would be a second, unrelated payment the router would
+    // strand, since it has no wrapped-native path to spend it through.
     setStep("swap")
     writeContract({
       address: UNISWAP.swapRouter,
       abi: swapRouterAbi,
-      functionName: "multicall",
-      args: [calls],
-      // Buys send native ETH: the router wraps exactly what the pool consumes via
-      // WRAPPED_NATIVE.deposit() inside its pay() path, so the user never needs a separate
-      // wrap tx *or* a NATIVE approval. Chosen over wrapping manually (deposit →
-      // approve → swap = 3 txs, and leaves stray NATIVE behind on a partial fill).
-      value: side === "buy" ? amountIn : 0n,
+      functionName: "exactInputSingle",
+      args: [
+        {
+          tokenIn,
+          tokenOut,
+          fee: UNISWAP.feeTier,
+          recipient: address,
+          amountIn,
+          amountOutMinimum: applySlippage(amountOut),
+          sqrtPriceLimitX96: 0n,
+        },
+      ],
       chainId: arc.id,
     })
   }, [address, amountOut, amountIn, side, tokenIn, tokenOut, writeContract])
@@ -273,22 +218,21 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
     if (needsApproval) {
       setStep("approve")
       writeContract({
-        address: coinAddress,
+        address: spendToken,
         abi: erc20Abi,
         functionName: "approve",
-        // Exact amount, not max. This router is a third-party fork (UnitFlow)
-        // verified only by selector probe, and Arc is a public testnet full of
-        // lookalike contracts (see the
-        // warning in lib/chain.ts). An unlimited allowance to it is a standing
-        // risk; one extra tx per sell is the cheaper trade. The swap auto-chains
-        // off the approve receipt, so it's still a single click.
+        // Exact amount, not max. Arc testnet is full of lookalike contracts (see
+        // the warning in lib/chain.ts), and this allowance is over the user's
+        // actual dollars, not a memecoin. An unlimited approval is a standing
+        // risk; one extra tx is the cheaper trade. The swap auto-chains off the
+        // approve receipt, so it stays a single click.
         args: [UNISWAP.swapRouter, amountIn],
         chainId: arc.id,
       })
       return
     }
     swap()
-  }, [needsApproval, writeContract, coinAddress, amountIn, swap])
+  }, [needsApproval, writeContract, spendToken, amountIn, swap])
 
   // Approve landed → fire the swap automatically (one click for the user).
   // Swap landed → refetch allowance/balance, otherwise a stale allowance would
@@ -305,7 +249,7 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
     }
   }, [receipt.isSuccess, step, swap, refetchAllowance, refetchCoinBalance])
 
-  const balance = side === "buy" ? usdcBalance.data?.value : coinBalance.data
+  const balance = side === "buy" ? usdcBalance.data : coinBalance.data
   const quoting = quote.isFetching && amountOut === undefined
 
   let disabledReason: string | undefined
@@ -317,8 +261,8 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
   } else if (quoting) {
     disabledReason = undefined
   } else if (quote.error) {
-    // Live example: every $SMOKE sell quote reverts today — nobody has bought, so
-    // the pool holds zero NATIVE and there is nothing to sell into.
+    // A sell quote reverts when nobody has bought yet: the position is 100%
+    // token and holds zero USDC, so there is nothing to sell into.
     disabledReason =
       side === "sell"
         ? `No exit liquidity — nobody has bought $${coin.ticker} yet`
@@ -331,7 +275,12 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
 
   return {
     amountOut,
-    amountOutFloat: amountOut === undefined ? 0 : Number(formatUnits(amountOut, 18)),
+    // A buy receives the coin (18dp); a sell receives USDC (6dp). Formatting a
+    // sell at 18 would render every payout as 0.000000.
+    amountOutFloat:
+      amountOut === undefined
+        ? 0
+        : Number(formatUnits(amountOut, side === "buy" ? COIN_DECIMALS : USDC.decimals)),
     quoting,
     balance,
     disabledReason,

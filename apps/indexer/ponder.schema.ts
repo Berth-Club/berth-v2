@@ -34,7 +34,8 @@ export const coin = onchainTable(
     poolTickLower: t.integer().notNull(),
     poolTickUpper: t.integer().notNull(),
     protocolFeeBps: t.integer().notNull(),
-    devBuyEthIn: t.bigint().notNull(),
+    /** Native (18dp) the creator spent on their atomic first buy. */
+    devBuyNativeIn: t.bigint().notNull(),
     name: t.text().notNull(),
     symbol: t.text().notNull(),
     metadataURI: t.text().notNull(),
@@ -52,9 +53,23 @@ export const coin = onchainTable(
     poolTick: t.integer(),
     /** Raw slot0 sqrtPriceX96 — pool space, i.e. token1 per token0. */
     sqrtPriceX96: t.bigint(),
-    /** 0–1 progress along the range toward graduation. */
+    /**
+     * 0-1 progress toward graduation.
+     *
+     * NOT a position within the tick range. Graduation is an owner-set USDC
+     * threshold on the position's paired principal, and the range runs to
+     * MAX_USABLE_TICK, so tick position is the wrong scale entirely: a coin
+     * that has genuinely graduated sits ~2.4% along its tick range and would
+     * never cross a tick-based finish line. Derived from progressBps returned
+     * by the factory's own graduationStatus(), so the UI and the contract can
+     * never disagree.
+     */
     curve: t.real().notNull().default(0),
     graduated: t.boolean().notNull().default(false),
+    /** USDC (6dp) of principal currently in the position. From graduationStatus. */
+    pairedPrincipal: t.bigint().notNull().default(0n),
+    /** USDC (6dp) needed to graduate. Frozen per launch, off the TokenLaunched event. */
+    graduationThreshold: t.bigint().notNull().default(0n),
     /** Cumulative NATIVE volume, wei. */
     volumeNative: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),

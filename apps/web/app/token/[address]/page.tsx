@@ -86,7 +86,7 @@ export default async function TokenPage({
           <div className="mt-5">
             <GraduationMeter progress={coin.curve} graduated={coin.graduated} size="page" />
             <p className="text-mist mt-3 text-[13px]">
-              Graduation — how far price has climbed the v3 range (~6.9 NATIVE buys it through). No
+              Graduation — how far price has climbed the v3 range (~20,000 USDC buys it through). No
               migration, it just keeps trading.
             </p>
           </div>

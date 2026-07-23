@@ -11,13 +11,12 @@ import { useTrade, type Side } from "@/lib/trade"
 import { explorerTx } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
-// ~6.9 NATIVE buys through the whole range — the total exit liquidity.
-// Measured, not assumed: tracing a 20 NATIVE buy against the live $SMOKE pool shows
-// the pool taking exactly 6.956359525294265233 NATIVE for the full 100B supply and
-// halting at MIN_TICK. The remaining 13.04 NATIVE is handed back by the refundETH()
-// leg that lib/trade.ts bundles into the swap — that is what the note below means.
-const EXIT_NATIVE = 6.9
-const CHIPS = ["0.05", "0.1", "0.5", "1"]
+// ~20,000 USDC buys through the whole range -- the graduation threshold read
+// from the deployed factory's curve preset 0 (getCurveConfig(0) => -444600,
+// 20000e6). Not a constant of the system: the factory admin can rewrite the
+// preset, so treat this as today's reading.
+const EXIT_NATIVE = 20000
+const CHIPS = ["50", "100", "500", "1000"]
 const SELL_CHIPS: [string, bigint][] = [
   ["25%", 25n],
   ["50%", 50n],
@@ -40,7 +39,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
   const trade = useTrade(coin, side, amount)
 
   const eth = parseFloat(amount) || 0
-  // remaining range = (100 − grad%)/100 × 6.9 NATIVE
+  // remaining range = (100 − grad%)/100 × 5000 USDC
   const remaining = (1 - coin.curve) * EXIT_NATIVE
   const impact = eth ? Math.min(95, (eth / EXIT_NATIVE) * 100) : 0
   const showImpact = side === "buy" && eth >= EXIT_NATIVE * 0.03
@@ -167,7 +166,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
           }}
         >
           ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — the entire market
-          has ~6.9 NATIVE of exit liquidity.
+          has ~20,000 USDC of exit liquidity.
         </div>
       )}
 

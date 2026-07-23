@@ -22,14 +22,17 @@ const privyConfig: PrivyClientConfig = {
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
   loginMethods: ["wallet", "email"],
   appearance: {
-    walletList: [
-      "rainbow",
-      "rabby_wallet",
-      "metamask",
-      "wallet_connect",
-      "coinbase_wallet",
-      "detected_wallets",
-    ],
+    // `detected_wallets` is a catch-all for every browser extension Privy
+    // finds, so listing injected wallets explicitly alongside it invites
+    // duplicates — which is what produced React's "unique key prop" warning
+    // from inside Privy's own wallet list. Keep only the entries that are NOT
+    // browser extensions (wallet_connect is a QR flow, coinbase_wallet has its
+    // own SDK path) and let detection handle the rest.
+    //
+    // `rabby_wallet` was also in here and is marked @deprecated in
+    // @privy-io/react-auth 3.35 — "no longer supported". Detection picks Rabby
+    // up anyway if it is installed.
+    walletList: ["detected_wallets", "wallet_connect", "coinbase_wallet"],
     // berth.club: abyss ground, lime signal
     theme: "#0C130E",
     accentColor: "#A3E635",

@@ -9,9 +9,9 @@ import {
   UniswapV3PoolAbi,
 } from "./abis/berth";
 
-// Arc Testnet (5042002). Env-driven because the stack has not been deployed to
-// Arc yet — deploy with launchpad-contracts/script/Deploy.s.sol, then set these
-// alongside START_BLOCK. They must match apps/web/lib/chain.ts CONTRACTS.
+// Arc Testnet (5042002). The launchpad is deployed from
+// github.com/Arcane-build/arc-launchpad — that repo is the source of truth for
+// ABIs and addresses. These must match apps/web/lib/chain.ts CONTRACTS.
 function required(name: string): string {
   const v = process.env[name];
   if (!v) {
@@ -42,16 +42,41 @@ const FEE_LOCKER = requiredAddress("FEE_LOCKER");
  */
 const START_BLOCK = Number(required("START_BLOCK"));
 
-/** Every launch emits this — carries everything a discovery row needs. */
+/**
+ * Every launch emits this — carries everything a discovery row needs.
+ *
+ * ⚠️ MUST match the deployed event byte for byte. Ponder resolves the factory()
+ * patterns below by topic0, which is keccak of the TYPE list — so a single wrong
+ * type silently watches nothing. `graduationThreshold` is **uint128**, not
+ * uint256; getting that one word wrong shifts topic0 from 35551eae to 07d05491
+ * and the indexer discovers zero pools and zero tokens while still happily
+ * recording coins (those come off the full ABI, which is generated). The symptom
+ * is a launchpad with coins but no trades and no holders, and no error anywhere.
+ *
+ * Verified against a real log on chain, not against the ABI file:
+ *   eth_getLogs on the factory returns topic0
+ *   0x35551eae3963d8bb4555e823210e27db7efed291f9307cb3cac27189c7c1601e
+ */
 const tokenLaunchedEvent = parseAbiItem(
-  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, uint256 supply, int24 tickLower, int24 tickUpper, uint16 protocolFeeBps, uint256 devBuyEthIn, string name, string symbol, string metadataURI)",
+  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, uint256 supply, int24 initialTick, uint256 curveConfigId, uint128 graduationThreshold, uint16 protocolFeeBps, uint256 devBuyNativeIn, string name, string symbol, string metadataURI)",
 );
 
 export default createConfig({
   chains: {
     arc: {
       id: 5042002,
-      rpc: process.env.PONDER_RPC_URL_5042002 ?? "https://rpc.testnet.arc.network",
+      // Deliberately NOT ponder's PONDER_RPC_URL_<chainId> convention: that bakes
+      // the chain id into the key, so every chain change strands a dead variable
+      // (this file previously carried PONDER_RPC_URL_4663). RPC_URL survives a move.
+      rpc: process.env.RPC_URL ?? "https://rpc.testnet.arc.network",
+      // Arc's public RPC collapses under ponder's default backfill concurrency
+      // -- it timed out at 73s and killed the process with an
+      // unhandledRejection. But 15/s was too far the other way: Arc produces
+      // ~0.5s blocks, so a factory deployed a day ago is already ~150k blocks
+      // back, and 15/s put the initial backfill at a 2.5-hour ETA. 50/s is the
+      // compromise that keeps it alive without the wait. A paid endpoint would
+      // let this go much higher -- see R11.
+      maxRequestsPerSecond: 50,
     },
   },
   contracts: {

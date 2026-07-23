@@ -1,127 +1,132 @@
 import { defineChain } from "viem"
 
 /**
- * Arc Testnet (Circle's L1, chain id 5042002) — verified live against
- * https://rpc.testnet.arc.network: reth/v1.11.3, base fee pinned at the
- * documented 20 Gwei floor, ~0.5s blocks.
+ * Arc Testnet (Circle's L1, chain id 5042002) — verified live: reth/v1.11.3,
+ * base fee pinned at the documented 20 Gwei floor, ~0.5s blocks.
  *
- * The defining property: Arc's native gas token IS USDC. It occupies ETH's
- * slot at 18 decimals, so `msg.value`, `balance` and gas all behave exactly
- * like ETH elsewhere — which is why the contracts ported with no economic
- * changes at all.
+ * THE ONE THING TO UNDERSTAND BEFORE READING ANY NUMBER IN THIS APP:
+ * Arc has no ether and no wrapped native. USDC *is* the chain's currency,
+ * exposed through two interfaces over ONE balance:
  *
- * The catch, and it is a real one: the USDC predeploy at 0x3600…0000 exposes
- * the SAME balance as a 6-decimal ERC20. One balance, two views. Verified on a
- * live address: native 13489266029671387940 vs balanceOf 13489266 — the
- * trailing 0.000000029671387940 is truncated away. Never mix the two views,
- * and never treat `balanceOf(x) === 0n` as "x is empty".
+ *   Native view   18 decimals   msg.value, balance, call{value:}, the dev buy
+ *   ERC20 view     6 decimals   0x3600…0000 — what Uniswap actually swaps
  *
- * We only ever touch the 18-decimal native view and the 18-decimal WUSDC
- * wrapper, so the 6-decimal view does not appear anywhere in this app.
+ * Fixed 1e12 ratio, exactly and always: `USDC.balanceOf(x) === x.balance / 1e12`.
+ * `1e18` native and `1e6` ERC20 are both one dollar. Verified on a live address:
+ * native 13489266029671387940 vs balanceOf 13489266.
+ *
+ * There is NO wrapping step anywhere. A payable call is already funded in ERC20
+ * terms, so the factory approves the router directly. Arc's Uniswap periphery
+ * points its WETH9 immutable at a stub that reverts on every call — if you find
+ * yourself reaching for IWETH.deposit, the model is wrong.
  */
-const RPC_URL = process.env.NEXT_PUBLIC_ARC_RPC ?? "https://rpc.testnet.arc.network"
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.network"
 const EXPLORER_URL = "https://testnet.arcscan.app"
 
 export const arc = defineChain({
   id: 5042002,
   name: "Arc Testnet",
-  // 18 decimals is the NATIVE view. Correct for msg.value, gas and balances —
-  // which is all viem/wagmi use this for.
+  // The NATIVE view — correct for msg.value, gas and balances, which is all
+  // viem/wagmi use this for. The 6-decimal ERC20 view lives in USDC below.
   nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
   rpcUrls: { default: { http: [RPC_URL] } },
-  blockExplorers: {
-    default: { name: "Arcscan", url: EXPLORER_URL },
-  },
+  blockExplorers: { default: { name: "Arcscan", url: EXPLORER_URL } },
   testnet: true,
-  // Multicall3 at the canonical address — verified live on Arc (3808 bytes of
-  // code). Declaring it lets wagmi/viem batch reads into one RPC call for free.
   contracts: {
     multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
   },
 })
 
 /**
- * Token ordering is NOT guaranteed.
- *
- * The repo source mines a salt so the coin always sorts below the quote asset
- * (coin = token0). The DEPLOYED factory does not do that — it mirrors the tick
- * range when the coin sorts above instead.
- *
- * On Arc this matters MORE than it did on Robinhood. Robinhood's WETH9 was a
- * very low address (0x0Bd7…), so a coin sorted below it only ~4.6% of the time
- * and token0 was the overwhelming default. Arc's WUSDC is mid-range (0x911b…),
- * so coins sort either side roughly half the time. The minority branch is no
- * longer the minority.
- *
- * Consequences, both orderings possible:
- *  - coin is token0  -> price(quote per coin) = 1.0001^tick,  buyers push tick UP
- *  - coin is token1  -> price(quote per coin) = 1.0001^-tick, buyers push tick DOWN
- *
- * Never hardcode an ordering. Derive it.
+ * USDC as Uniswap sees it: the predeploy, 6 decimals, the quote asset of every
+ * launch pool. Same money as the native balance — see the note above.
  */
-export function coinIsToken0(coin: string): boolean {
-  return coin.toLowerCase() < UNISWAP.wrappedNative.toLowerCase()
+export const USDC = {
+  address: "0x3600000000000000000000000000000000000000",
+  decimals: 6,
+} as const
+
+/** Native (18dp) units per ERC20 USDC (6dp) unit. */
+export const NATIVE_PER_USDC = 1_000_000_000_000n
+
+/** A launch token is always 18 decimals. */
+export const COIN_DECIMALS = 18
+
+/**
+ * Dollar price of ONE WHOLE COIN, from a coin-space tick.
+ *
+ * `1.0001^tick` is USDC-6dp-units per token *wei*, so converting to dollars per
+ * whole token is `× 1e18 / 1e6` = `× 1e12`. Skip that and every price is off by
+ * twelve orders of magnitude — which looks like a plausible small number rather
+ * than an obvious bug, so it is pinned by chain.selfcheck.ts.
+ */
+export function priceUsdFromTick(tick: number): number {
+  return Math.pow(1.0001, tick) * 1e12
 }
 
-/** Wrapped-native (= USDC) per whole coin, correct for either token ordering. */
-export function priceNativeFromTick(tick: number, coin: string): number {
-  return Math.pow(1.0001, coinIsToken0(coin) ? tick : -tick)
+/**
+ * Token ordering is NOT guaranteed, and must never be assumed.
+ *
+ * Uniswap sorts pool tokens by address. USDC sits at 0x3600…0000 — a low
+ * address — so a launch token sorts BELOW it only about 21% of the time. Both
+ * branches are live; the minority one is not rare enough to ignore.
+ *
+ *  - coin is token0 -> price = 1.0001^tick,  buyers push the tick UP
+ *  - coin is token1 -> price = 1.0001^-tick, buyers push the tick DOWN
+ */
+export function coinIsToken0(coin: string): boolean {
+  return coin.toLowerCase() < USDC.address.toLowerCase()
+}
+
+/** Coin-space tick from a raw pool tick, correct for either ordering. */
+export function toCoinTick(poolTick: number, isToken0: boolean): number {
+  return isToken0 ? poolTick : -poolTick
 }
 
 export const EXPLORER = EXPLORER_URL
-
-export function explorerAddress(address: string): string {
-  return `${EXPLORER_URL}/address/${address}`
-}
-
-export function explorerTx(hash: string): string {
-  return `${EXPLORER_URL}/tx/${hash}`
-}
+export const explorerAddress = (a: string) => `${EXPLORER_URL}/address/${a}`
+export const explorerTx = (h: string) => `${EXPLORER_URL}/tx/${h}`
 
 /**
- * Our launchpad on Arc. Env-driven because these do not exist yet — the stack
- * has to be deployed to Arc before the app can read anything. Deploy with
- * launchpad-contracts/script/Deploy.s.sol, then set these.
- */
-/**
- * The zero address stands in for "not deployed yet". It keeps the type a real
- * `0x${string}` for viem/wagmi instead of leaking `string` into every call site,
- * and any read against it returns empty rather than throwing — which is exactly
- * what {CONTRACTS_CONFIGURED} is for checking first.
+ * The launchpad on Arc testnet, deployed from github.com/Arcane-build/arc-launchpad.
+ * Verified live: LpLocker ownership renounced to 0x0, factoryLocked, wired both
+ * ways, preset 0 = (-444600, 20000e6, enabled).
+ *
+ * Env-overridable so a redeploy does not need a code change.
  */
 const UNDEPLOYED = "0x0000000000000000000000000000000000000000" as const
-
-function addr(value: string | undefined): `0x${string}` {
-  return value && /^0x[0-9a-fA-F]{40}$/.test(value) ? (value as `0x${string}`) : UNDEPLOYED
+function addr(v: string | undefined, fallback: string): `0x${string}` {
+  return (v && /^0x[0-9a-fA-F]{40}$/.test(v) ? v : fallback) as `0x${string}`
 }
 
 export const CONTRACTS = {
-  launchFactory: addr(process.env.NEXT_PUBLIC_LAUNCH_FACTORY),
-  lpLocker: addr(process.env.NEXT_PUBLIC_LP_LOCKER),
-  feeLocker: addr(process.env.NEXT_PUBLIC_FEE_LOCKER),
+  launchFactory: addr(process.env.NEXT_PUBLIC_LAUNCH_FACTORY, "0xb7738F4e07845fAa09b7694E5E882e00e0eE768B"),
+  lpLocker: addr(process.env.NEXT_PUBLIC_LP_LOCKER, "0x402f35e11cC6E89E80EFF4205956716aCd94be04"),
+  feeLocker: addr(process.env.NEXT_PUBLIC_FEE_LOCKER, "0x3bC8f037691Ce1d28c0bB224BD33563b49F99dE8"),
 } as const
 
-/** True once the launchpad has actually been deployed to Arc and wired up. */
 export const CONTRACTS_CONFIGURED = CONTRACTS.launchFactory !== UNDEPLOYED
 
 /**
- * The Uniswap v3 stack on Arc, mirroring
- * launchpad-contracts/src/libraries/Addresses.sol. Keep the two in lockstep.
+ * Uniswap v3 on Arc testnet, from arc-launchpad/config/5042002.json and
+ * confirmed against the factory's own immutables on-chain.
  *
- * This is UnitFlow Finance, a third-party v3 fork — Arc has no canonical
- * Uniswap deployment. Do NOT look these up by name on the explorer: Arc is a
- * public testnet where anyone deploys, and a search for
- * "NonfungiblePositionManager" returns 31 unrelated contracts.
+ * This is a real SwapRouter02: `exactInputSingle` is selector 0x04e45aaf and has
+ * NO deadline field. Its unwrapWETH9/refundETH helpers exist but must never be
+ * called — Arc has no wrapped native and the periphery's WETH9 is an inert stub.
+ * Do NOT look these addresses up by name on the explorer: Arc testnet lists
+ * dozens of verified contracts with these exact names.
  */
 export const UNISWAP = {
-  factory: "0xAb6A8AAb7d490007634ef59d424b5d89688a1971",
-  nfpm: "0x77c39eB310BE31e60068CE29855F83359bf85fc4",
-  // v1 SwapRouter — its exactInputSingle TAKES a deadline, unlike the
-  // SwapRouter02 used on Robinhood.
-  swapRouter: "0x509cF58CdA08C7aee83a2BdBb4A1Eac907343D01",
-  quoterV2: "0x121aeB6DEf00F6F67665008CaC1C19805886ed1a",
-  /** WUSDC — wrapped native USDC, 18 decimals. The quote asset of every pool. */
-  wrappedNative: "0x911b4000D3422F482F4062a913885f7b035382Df",
+  factory: "0x065b21b296F56186452B4482f62f56EE7D11a010",
+  nfpm: "0x78e21fff6711a81b8b2E02Cef063f7852d2f5fC2",
+  swapRouter: "0xB5D2f3Aae27dd5F4682B059A20c47f0a5B831c7f",
+  // Not in arc-launchpad's config (the contracts never quote on-chain), but the
+  // trade panel needs one. Found by checking every explorer hit named "QuoterV2"
+  // against `factory()` -- only this one answers with the factory above. The
+  // spec notes the "canonical" quoter address has code on Arc but reverts on
+  // factory(), so name-matching alone would have picked a dud.
+  quoterV2: "0xb1A5136826aDE2C39aBA4800442dCc223A2A7604",
   feeTier: 10_000,
   tickSpacing: 200,
 } as const

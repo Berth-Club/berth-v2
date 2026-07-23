@@ -1,6 +1,6 @@
 import { formatEther, isAddress } from "viem"
 
-import { CONTRACTS, UNISWAP } from "@/lib/chain"
+import { CONTRACTS, USDC } from "@/lib/chain"
 import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
@@ -28,6 +28,9 @@ type IndexedCoin = {
   // Landing in the indexer separately — absent on older builds, see coinsQuery.
   holderCount?: number | null
   change24h?: number | null
+  /** 0-1 toward the USDC graduation threshold. From the factory, not from ticks. */
+  curve?: number | null
+  graduated?: boolean | null
 }
 
 /**
@@ -40,7 +43,7 @@ const coinsQuery = (extended: boolean) => `{
   coins(orderBy: "createdAt", orderDirection: "desc", limit: 100) {
     items {
       address creator tokenId pool name symbol metadataURI
-      tickLower tickUpper tick
+      tickLower tickUpper tick curve graduated
       volumeNative swapCount lastTradeAt createdAt
       ${extended ? "holderCount change24h" : ""}
     }
@@ -129,7 +132,7 @@ export async function fetchCoinsByCreator(address: string): Promise<Coin[] | nul
       coins(where: { creator: $creator }, orderBy: "createdAt", orderDirection: "desc", limit: 50) {
         items {
           address creator tokenId pool name symbol metadataURI
-          tickLower tickUpper tick
+          tickLower tickUpper tick curve graduated
           volumeNative swapCount lastTradeAt createdAt
           holderCount change24h
         }
@@ -232,7 +235,7 @@ export function tickToPriceNative(tick: number): number {
  *   but TokenLaunched emitted tickLower -268600 / tickUpper -199400.
  */
 export function coinIsToken0(coinAddress: string): boolean {
-  return BigInt(coinAddress) < BigInt(UNISWAP.wrappedNative)
+  return BigInt(coinAddress) < BigInt(USDC.address)
 }
 
 /** The fields of a coin row needed to place its price on the curve. */
@@ -324,11 +327,14 @@ function toCoin(c: IndexedCoin): Coin {
   // whose URI is literally "ipfs://placeholder").
   const meta = parseMetadata(c.metadataURI)
 
-  // curve/graduated are recomputed rather than read off the row: the indexer
-  // still derives them from a raw pool tick against coin-space bounds, which
-  // pins any traded coin to curve=1 + graduated. In coin-space the direction is
-  // uniform for both orderings — buyers always walk the tick up toward tickUpper.
-  const curve = Math.min(1, Math.max(0, (tick - c.tickLower) / (c.tickUpper - c.tickLower)))
+  // curve/graduated are taken from the indexer, NOT recomputed here.
+  //
+  // They used to be re-derived from tick position within [tickLower, tickUpper],
+  // which is simply the wrong measure: graduation is an owner-set USDC threshold
+  // on the position's paired principal, and the range runs to MAX_USABLE_TICK.
+  // A coin that has genuinely graduated sits ~2.4% along its tick range, so that
+  // bar would read 2% at the finish line and `graduated` would never flip.
+  // The indexer now reads progressBps from the factory's own graduationStatus().
 
   return {
     address: c.address,
@@ -343,8 +349,8 @@ function toCoin(c: IndexedCoin): Coin {
     change24h: c.change24h ?? null,
     marketCapUsd: marketCapNative,
     marketCapNative,
-    curve: c.tickUpper > c.tickLower ? curve : 0,
-    graduated: tick >= c.tickUpper,
+    curve: c.curve ?? 0,
+    graduated: c.graduated ?? false,
     lore: meta.description ?? "",
     vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
   }

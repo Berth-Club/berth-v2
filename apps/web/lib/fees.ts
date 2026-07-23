@@ -7,7 +7,7 @@ import { usePublicClient, useWaitForTransactionReceipt, useWriteContract } from 
 
 import { FeeLockerAbi } from "@/lib/abis/feeLocker"
 import { LpLockerAbi } from "@/lib/abis/lpLocker"
-import { CONTRACTS, UNISWAP } from "@/lib/chain"
+import { CONTRACTS, USDC } from "@/lib/chain"
 import { coinIsToken0, coinSpaceTick, tickToPriceNative } from "@/lib/indexer"
 import { FACE_OPTIONS } from "@/lib/coin"
 
@@ -41,7 +41,8 @@ const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:420
 
 const LP_LOCKER = CONTRACTS.lpLocker as Address
 const FEE_LOCKER = CONTRACTS.feeLocker as Address
-const NATIVE = UNISWAP.wrappedNative as Address
+/** The quote asset every fee accrues in: USDC, 6 decimals. */
+const NATIVE = USDC.address as Address
 
 /** A locked position the wallet is a fee recipient of. `collect` targets these. */
 export type FeePosition = {
