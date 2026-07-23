@@ -67,8 +67,9 @@ export type FeeBalance = {
   token: Address
   symbol: string
   emoji: string
-  /** Withdrawable right now via claim(owner, token). Read from the CHAIN. */
-  claimable: bigint
+  /** Withdrawable right now via claim(owner, token). Read from the CHAIN.
+   *  null when that read failed — render a dash, never a zero. */
+  claimable: bigint | null
   /** true for the NATIVE bucket — the one shared across every position. */
   isNative: boolean
   /**
@@ -156,6 +157,27 @@ function emojiFor(address: string): string {
  * Safe to simulate from anyone: collectFees is permissionless (proved from 0xdEaD).
  * Returns the position TOTAL (amount0, amount1); the caller takes its bps share.
  */
+/**
+ * One flaky read must not blank the whole portfolio.
+ *
+ * Arc's public RPC drops connections intermittently ("Connection reset by peer"
+ * on a call that succeeds four times in a row a second later). Every read below
+ * used to be unguarded inside a Promise.all, so a single transient failure
+ * rejected the entire query and the page showed "Can't reach the harbor ledger"
+ * -- blaming the indexer, which was fine.
+ *
+ * Returning null degrades that one figure to a dash instead, which is the same
+ * policy simulateCollect already had, and the same rule the rest of the app
+ * follows: never invent a number, but never throw away the ones we do have.
+ */
+async function tryRead<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read()
+  } catch {
+    return null
+  }
+}
+
 async function simulateCollect(
   client: PublicClient,
   tokenId: bigint,
@@ -236,12 +258,14 @@ export function usePortfolio(owner?: Address) {
       )
       const balances: FeeBalance[] = await Promise.all(
         feeTokens.map(async (token) => {
-          const claimable = await client.readContract({
-            address: FEE_LOCKER,
-            abi: FeeLockerAbi,
-            functionName: "availableFees",
-            args: [addr, token],
-          })
+          const claimable = await tryRead(() =>
+            client.readContract({
+              address: FEE_LOCKER,
+              abi: FeeLockerAbi,
+              functionName: "availableFees",
+              args: [addr, token],
+            })
+          )
           const coin = coins.find((c) => c.address === token)
           return {
             token,
@@ -263,17 +287,16 @@ export function usePortfolio(owner?: Address) {
       // there and wagmi/viem batch these for free.
       const held = await Promise.all(
         coins.map(async (c) => {
-          const balance = await client.readContract({
-            address: c.address,
-            abi: erc20Abi,
-            functionName: "balanceOf",
-            args: [addr],
-          })
+          const balance = await tryRead(() =>
+            client.readContract({ address: c.address, abi: erc20Abi, functionName: "balanceOf", args: [addr] })
+          )
           return { c, balance }
         })
       )
       const holdings: Holding[] = held
-        .filter(({ balance }) => balance > 0n)
+        // null = the read failed, which is NOT the same as holding zero. Both are
+        // excluded from the list, but only zero is a claim we can stand behind.
+        .filter((h): h is { c: RawCoin; balance: bigint } => h.balance !== null && h.balance > 0n)
         .map(({ c, balance }) => {
           // `coin.tick` silently changes meaning: the launch handler writes the
           // event's coin-space tick, the swap handler writes the raw pool tick.
@@ -388,7 +411,8 @@ export function useClaim(onDone: () => void): {
      * when nothing is claimable rather than sending a no-op tx.
      */
     claimMany: (owner: Address, balances: FeeBalance[]) => {
-      const tokens = balances.filter((b) => b.claimable > 0n).map((b) => b.token)
+      // Never sign against a figure we failed to read.
+      const tokens = balances.filter((b) => (b.claimable ?? 0n) > 0n).map((b) => b.token)
       if (tokens.length === 0) return
       start()
       writeContract({

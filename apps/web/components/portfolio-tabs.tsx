@@ -209,7 +209,8 @@ export function PortfolioTabs() {
   const nativeBucket = balances.find((b) => b.isNative)
   const coinBucket = (token?: string) =>
     token ? balances.find((b) => !b.isNative && b.token === token) : undefined
-  const claimableBalances = balances.filter((b) => b.claimable > 0n)
+  // null = the chain read failed. Not claimable, because we cannot say it is.
+  const claimableBalances = balances.filter((b) => (b.claimable ?? 0n) > 0n)
   const claimedBalances = balances.filter((b) => (b.lifetimeClaimed ?? 0n) > 0n)
 
   return (
@@ -405,7 +406,7 @@ export function PortfolioTabs() {
                         </div>
                       ) : (
                         <div className="font-bold" style={{ color: "#A3E635" }}>
-                          {fmtBalance(escrow.claimable)}{" "}
+                          {escrow.claimable === null ? "—" : fmtBalance(escrow.claimable)}{" "}
                           <span className="text-mist text-xs font-normal">${escrow.symbol}</span>
                         </div>
                       )}
@@ -440,7 +441,7 @@ export function PortfolioTabs() {
                     .filter((b) => !b.isNative)
                     .map((b) => (
                       <div key={b.token} className="text-mist text-xs">
-                        + {fmtBalance(b.claimable)} ${b.symbol}
+                        + {b.claimable === null ? "—" : fmtBalance(b.claimable)} ${b.symbol}
                       </div>
                     ))}
                 </div>

@@ -20,7 +20,24 @@ import { defineChain } from "viem"
  * points its WETH9 immutable at a stub that reverts on every call — if you find
  * yourself reaching for IWETH.deposit, the model is wrong.
  */
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.network"
+/**
+ * Where RPC calls go, which differs by side and deliberately so.
+ *
+ * The browser goes through /api/rpc, a server-side proxy. The reliable endpoint
+ * is a paid Alchemy URL with the API key in its path, and anything named
+ * NEXT_PUBLIC_ is inlined into the JS bundle we ship — so exposing it directly
+ * would publish a billable credential to every visitor and every scraper.
+ *
+ * The server has no such problem: it reads RPC_URL (server-only) straight.
+ *
+ * NEXT_PUBLIC_RPC_URL still exists as an override for anyone pointing the
+ * browser at their own node. Do NOT put a keyed URL in it.
+ */
+const RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL ??
+  (typeof window === "undefined"
+    ? (process.env.RPC_URL ?? "https://rpc.testnet.arc.network")
+    : "/api/rpc")
 const EXPLORER_URL = "https://testnet.arcscan.app"
 
 export const arc = defineChain({
