@@ -4,7 +4,6 @@ import { TokenCard, ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
-import { arc } from "@/lib/chain"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -16,7 +15,6 @@ const TRUST = [
   { icon: "💸", title: "1% fee → the creator", body: "every trade pays the ship's builder, not a middleman" },
 ]
 
-const GREEN = { color: "#4ADE80", background: "rgba(74,222,128,.12)", border: "1px solid rgba(74,222,128,.35)" }
 const GOLD = { color: "#FBBF24", background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.35)" }
 
 export default async function HarborPage() {
@@ -26,21 +24,21 @@ export default async function HarborPage() {
   // grid of plausible fake coins with prices and graduation meters.
   const [coins, status] = await Promise.all([fetchCoins(), fetchIndexerStatus()])
 
+  // Shown ONLY when the page is incomplete. "Live · chain 5042002" and a block
+  // height are developer status: they told a visitor nothing they could act on,
+  // and put a number on screen that invited questions the page could not answer.
+  //
+  // The lag warning stays, and is load-bearing — a behind indexer means launches
+  // that already happened are missing from this grid, and silently showing a
+  // short list as if it were the whole harbor is the failure this replaced.
   const badge =
     status && !status.synced
       ? {
-          // Behind means launches are missing from this page — say so.
           label: `● syncing · ${formatLag(status.lagSeconds)}`,
           style: GOLD,
-          title: `Indexed to block ${status.block.toLocaleString()}. Coins launched more recently than this aren't here yet.`,
+          title: `Coins launched in the last ${formatLag(status.lagSeconds)} aren't here yet.`,
         }
-      : {
-          label: `● live · chain ${arc.id}`,
-          style: GREEN,
-          title: status
-            ? `Indexed to block ${status.block.toLocaleString()} (${formatLag(status.lagSeconds)})`
-            : `Indexed from chain ${arc.id}`,
-        }
+      : null
 
   const king = coins?.length ? [...coins].sort((a, b) => b.marketCapNative - a.marketCapNative)[0]! : null
   const fleet = king && coins ? coins.filter((c) => c.address !== king.address) : []
@@ -147,16 +145,15 @@ export default async function HarborPage() {
               {coins.length === 1 ? "ship" : "ships"} in the water
             </span>
           )}
-          {/* Three states, not two. "Answering" != "current": the badge used to
-              say live while the indexer sat 18 minutes back, silently missing a
-              coin that had already launched. Lag is now stated, not implied. */}
-          <span
-            className="rounded-[20px] px-2.5 py-1 text-[11px] font-bold"
-            style={badge.style}
-            title={badge.title}
-          >
-            {badge.label}
-          </span>
+          {badge && (
+            <span
+              className="rounded-[20px] px-2.5 py-1 text-[11px] font-bold"
+              style={badge.style}
+              title={badge.title}
+            >
+              {badge.label}
+            </span>
+          )}
         </div>
         <div
           className="grid gap-3.5"

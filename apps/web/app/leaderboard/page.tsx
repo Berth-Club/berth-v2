@@ -45,7 +45,7 @@ export default async function LeaderboardPage() {
               background: "rgba(251,191,36,.12)",
               border: "1px solid rgba(251,191,36,.35)",
             }}
-            title={`Indexed to block ${status.block.toLocaleString()}`}
+            title={`Trades in the last ${formatLag(status.lagSeconds)} are not counted yet.`}
           >
             ● syncing · {formatLag(status.lagSeconds)}
           </span>
