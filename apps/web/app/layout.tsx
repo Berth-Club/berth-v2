@@ -15,6 +15,7 @@ const fontDisplay = Lilita_One({ subsets: ["latin"], weight: "400", variable: "-
 const fontMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "berth.club — Build something that floats",
   description:
     "Launch a coin on Arc in one transaction: mint, pool, and lock the liquidity forever. Fixed 100B supply, no admin over your coin, 1% of every trade to the creator.",

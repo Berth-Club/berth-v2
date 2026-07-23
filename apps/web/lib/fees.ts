@@ -8,7 +8,7 @@ import { usePublicClient, useWaitForTransactionReceipt, useWriteContract } from 
 import { FeeLockerAbi } from "@/lib/abis/feeLocker"
 import { LpLockerAbi } from "@/lib/abis/lpLocker"
 import { CONTRACTS, USDC } from "@/lib/chain"
-import { coinIsToken0, coinSpaceTick, tickToPriceNative } from "@/lib/indexer"
+import { coinIsToken0, coinSpaceTick, parseMetadata, tickToPriceNative } from "@/lib/indexer"
 import { FACE_OPTIONS } from "@/lib/coin"
 
 /**
@@ -45,6 +45,12 @@ const FEE_LOCKER = CONTRACTS.feeLocker as Address
 const NATIVE = USDC.address as Address
 
 /** A locked position the wallet is a fee recipient of. `collect` targets these. */
+/** Only an uploaded ipfs:// image counts; the https placeholder stays null. */
+function ipfsImage(metadataURI: string | undefined): string | null {
+  const img = metadataURI ? parseMetadata(metadataURI).image : undefined
+  return img?.startsWith("ipfs://") ? img : null
+}
+
 export type FeePosition = {
   tokenId: bigint
   /** The launched coin (token0 of the pool). undefined if the indexer has no coin row. */
@@ -52,6 +58,8 @@ export type FeePosition = {
   name: string
   symbol: string
   emoji: string
+  /** Uploaded coin art (ipfs://CID) or null — null renders the emoji. */
+  image: string | null
   /** The wallet's share of this position in bps, SUMMED across its slots. */
   bps: number
   /**
@@ -87,6 +95,8 @@ export type Holding = {
   name: string
   symbol: string
   emoji: string
+  /** Uploaded coin art (ipfs://CID) or null — null renders the emoji. */
+  image: string | null
   balance: bigint
   /** Value in NATIVE from the pool's current tick. null when the pool has no price yet. */
   valueNative: number | null
@@ -99,6 +109,7 @@ type RawCoin = {
   name: string
   symbol: string
   tokenId: string
+  metadataURI?: string
   tick: number | null
   tickLower: number
   // Required by coinSpaceTick(): `tick` is coin-space until the first swap,
@@ -120,7 +131,7 @@ const PORTFOLIO_QUERY = `query($addr: String!) {
     items { token lifetimeClaimed }
   }
   coins(limit: 100) {
-    items { address name symbol tokenId tick tickLower swapCount }
+    items { address name symbol tokenId metadataURI tick tickLower swapCount }
   }
 }`
 
@@ -240,6 +251,7 @@ export function usePortfolio(owner?: Address) {
             name: coin?.name ?? `Position #${tokenId}`,
             symbol: coin?.symbol ?? "?",
             emoji: coin ? emojiFor(coin.address) : "🎫",
+            image: ipfsImage(coin?.metadataURI),
             bps,
             earnedToken: isToken0 ? earned0 : earned1,
             earnedNative: isToken0 ? earned1 : earned0,
@@ -308,6 +320,7 @@ export function usePortfolio(owner?: Address) {
             name: c.name,
             symbol: c.symbol,
             emoji: emojiFor(c.address),
+            image: ipfsImage(c.metadataURI),
             balance,
             valueNative: isFinite(priceNative) ? Number(formatEther(balance)) * priceNative : null,
           }

@@ -1,5 +1,7 @@
 "use client"
 
+import { normalizeTicker, buildMetadataURI } from "@/lib/metadata"
+
 import * as React from "react"
 import {
   BaseError,
@@ -88,10 +90,9 @@ const DEV_BUY_MIN_OUT = 0n
  */
 export const DEV_BUY_CAP_USDC = 100
 
-/** Ticker rule: uppercase A-Z0-9, max 8. */
-export function normalizeTicker(raw: string): string {
-  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
-}
+// Pure, node-testable metadata builders live in lib/metadata.ts (this file is
+// "use client"). Re-exported so callers import them from one place.
+export { normalizeTicker, buildMetadataURI } from "@/lib/metadata"
 
 /**
  * The dev-buy input only filters characters, so it still admits "1.2.3" and
@@ -108,44 +109,22 @@ export function parseUsdcInput(raw: string): bigint | undefined {
   }
 }
 
-/**
- * Build the metadata URI.
- *
- * There is no upload pipeline yet, and a bare placeholder threw away the lore
- * and face the creator picked. So we inline the metadata as a data: URI — it is
- * self-contained, needs no host, and makes the creator's choices actually
- * survive the launch (the indexer reads them straight back out of the event).
- *
- * `image` is a deterministic placeholder derived from the ticker; swap it for a
- * real upload (ipfs://…) when that lands — nothing else here needs to change.
- *
- * MUST be deterministic: metadataURI is a constructor arg, so it feeds the
- * CREATE2 initcode hash. Predict and deploy have to see byte-identical input or
- * the previewed address is a lie. Key order is fixed for that reason.
- */
-export function buildMetadataURI(name: string, ticker: string, lore: string, emoji: string): string {
-  const symbol = normalizeTicker(ticker)
-  const meta = {
-    name: name.trim(),
-    symbol,
-    description: lore.trim(),
-    emoji,
-    image: `https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(symbol || "berth")}`,
-  }
-  // Not base64: plain JSON keeps it readable on the explorer and in the event.
-  return `data:application/json,${encodeURIComponent(JSON.stringify(meta))}`
-}
 
 export function buildConfig(
   name: string,
   ticker: string,
   lore = "",
-  emoji = "🚢"
+  emoji = "🚢",
+  imageUri?: string
 ): LaunchConfig {
   return {
     name: name.trim(),
     symbol: normalizeTicker(ticker),
-    metadataURI: buildMetadataURI(name, ticker, lore, emoji),
+    // imageUri (an ipfs://CID) becomes part of metadataURI, so it feeds the
+    // CREATE2 initcode hash and therefore the salt: change the image and the
+    // mined address changes with it. The wizard must finish the upload before
+    // mining, which the mining effect's initCodeHash dependency already enforces.
+    metadataURI: buildMetadataURI(name, ticker, lore, emoji, imageUri),
     devBuyMinOut: DEV_BUY_MIN_OUT,
   }
 }

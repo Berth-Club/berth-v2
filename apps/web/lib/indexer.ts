@@ -356,6 +356,10 @@ function toCoin(c: IndexedCoin): Coin {
   return {
     address: c.address,
     emoji: meta.emoji ?? emojiFor(c.address),
+    // The gate: only an uploaded ipfs:// image counts. The DiceBear https
+    // placeholder every pre-upload coin carries is NOT an upload, so it stays
+    // null and the emoji face wins.
+    image: meta.image?.startsWith("ipfs://") ? meta.image : null,
     name: c.name,
     ticker: c.symbol,
     creator: short(c.creator),

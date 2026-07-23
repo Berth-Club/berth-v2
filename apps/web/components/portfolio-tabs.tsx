@@ -1,5 +1,6 @@
 "use client"
 
+import { CoinAvatar } from "@/components/coin-avatar"
 import * as React from "react"
 import Link from "next/link"
 
@@ -267,13 +268,15 @@ export function PortfolioTabs() {
                 style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid #1a281c" }}
               >
                 <span className="flex min-w-0 items-center gap-2.5">
-                  <span
-                    className="bg-deep grid size-[34px] shrink-0 place-items-center text-lg"
+                  <CoinAvatar
+                    image={h.image}
+                    emoji={h.emoji}
+                    name={h.name}
+                    ticker={h.symbol}
+                    size={34}
+                    className="bg-deep"
                     style={{ borderRadius: 10, border: "1px solid #263A28" }}
-                    aria-hidden
-                  >
-                    {h.emoji}
-                  </span>
+                  />
                   <span className="min-w-0">
                     <span className="block truncate font-bold">{h.name}</span>
                     <span className="text-mist block text-xs">${h.symbol}</span>
@@ -353,13 +356,15 @@ export function PortfolioTabs() {
                     }}
                   >
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <div
-                        className="bg-deep grid size-[38px] shrink-0 place-items-center text-[19px]"
+                      <CoinAvatar
+                        image={p.image}
+                        emoji={p.emoji}
+                        name={p.name}
+                        ticker={p.symbol}
+                        size={38}
+                        className="bg-deep"
                         style={{ borderRadius: 10, border: "1px solid #263A28" }}
-                        aria-hidden
-                      >
-                        {p.emoji}
-                      </div>
+                      />
                       <div className="min-w-0">
                         <div className="truncate font-bold">${p.symbol}</div>
                         <div className="text-mist text-xs">

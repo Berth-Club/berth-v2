@@ -1,3 +1,5 @@
+import { CoinAvatar } from "@/components/coin-avatar"
+import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -6,11 +8,42 @@ import { ChangeChip } from "@/components/token-card"
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
 import { AutoRefresh } from "@/components/auto-refresh"
-import { explorerTx } from "@/lib/chain"
+import { explorerTx, ipfsToGateway } from "@/lib/chain"
 import { fmtPrice } from "@/lib/format"
 import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
 
 export const dynamic = "force-dynamic"
+
+/**
+ * Per-coin social card. When the coin has uploaded ipfs:// art we resolve it to
+ * a gateway URL and use a large summary card; otherwise a plain summary, no
+ * fabricated image. The image is already a hosted URL, so no ImageResponse.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ address: string }>
+}): Promise<Metadata> {
+  const { address } = await params
+  const coin = await fetchCoin(address)
+  if (!coin) return { title: "Coin not found — berth.club" }
+
+  const title = `${coin.name} ($${coin.ticker}) — berth.club`
+  const description = coin.lore || `${coin.name} on berth.club`
+  const imageUrl = ipfsToGateway(coin.image)
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, ...(imageUrl ? { images: [imageUrl] } : {}) },
+    twitter: {
+      card: imageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(imageUrl ? { images: [imageUrl] } : {}),
+    },
+  }
+}
 
 export default async function TokenPage({
   params,
@@ -43,13 +76,15 @@ export default async function TokenPage({
 
       {/* header */}
       <div className="mt-5 flex flex-wrap items-start gap-4">
-        <span
-          className="bg-hull grid size-16 shrink-0 place-items-center text-[34px]"
+        <CoinAvatar
+          image={coin.image}
+          emoji={coin.emoji}
+          name={coin.name}
+          ticker={coin.ticker}
+          size={64}
+          className="bg-hull"
           style={{ border: "2px solid #263A28", borderRadius: 16 }}
-          aria-hidden
-        >
-          {coin.emoji}
-        </span>
+        />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[30px] leading-tight">
             {coin.name} <span className="text-mist tabular text-xl">${coin.ticker}</span>

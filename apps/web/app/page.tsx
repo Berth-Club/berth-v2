@@ -1,3 +1,4 @@
+import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
 
 import { TokenCard, ChangeChip } from "@/components/token-card"
@@ -82,13 +83,15 @@ export default async function HarborPage() {
             👑
           </span>
 
-          <span
-            className="bg-deep grid size-[76px] shrink-0 place-items-center text-[40px]"
+          <CoinAvatar
+            image={king.image}
+            emoji={king.emoji}
+            name={king.name}
+            ticker={king.ticker}
+            size={76}
+            className="bg-deep"
             style={{ border: "2px solid #FBBF24", borderRadius: 18 }}
-            aria-hidden
-          >
-            {king.emoji}
-          </span>
+          />
 
           <div className="min-w-0">
             <div className="text-gold animate-pulse-soft text-[11px] font-bold" style={{ letterSpacing: 2 }}>

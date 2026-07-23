@@ -96,6 +96,24 @@ export const EXPLORER = EXPLORER_URL
 export const explorerAddress = (a: string) => `${EXPLORER_URL}/address/${a}`
 export const explorerTx = (h: string) => `${EXPLORER_URL}/tx/${h}`
 
+/** Dedicated IPFS gateway that renders uploaded coin art. Falls back to the
+ *  public one; strip any trailing slash so joins are clean. */
+const IPFS_GATEWAY = (process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud").replace(/\/+$/, "")
+
+/**
+ * `ipfs://CID` -> a browser-loadable `https://<gateway>/ipfs/CID`. Returns null
+ * for anything that is not an `ipfs://` reference, so a coin with only the
+ * DiceBear/https placeholder (or no image) renders the emoji face instead of a
+ * broken <img>.
+ */
+export function ipfsToGateway(uri: string | null | undefined): string | null {
+  if (!uri || !uri.startsWith("ipfs://")) return null
+  const path = uri.slice("ipfs://".length).replace(/^\/+/, "")
+  if (!path) return null
+  return `${IPFS_GATEWAY}/ipfs/${path}`
+}
+
+
 /**
  * The launchpad on Arc testnet, deployed from github.com/Arcane-build/arc-launchpad.
  * Verified live: LpLocker ownership renounced to 0x0, factoryLocked, wired both

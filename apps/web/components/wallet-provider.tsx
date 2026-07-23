@@ -21,6 +21,12 @@ export type Wallet = {
   switchToArc: () => void
   connect: () => void
   disconnect: () => void
+  /**
+   * Mints a short-lived Privy access token for authenticating server calls (the
+   * image-pin route verifies it). undefined when Privy isn't configured — the
+   * caller treats that as "uploads unavailable" and offers the degraded path.
+   */
+  getAccessToken?: () => Promise<string | null>
 }
 
 function short(addr?: string): string | undefined {
@@ -50,7 +56,7 @@ export function useWallet(): Wallet {
   }
 
   /* eslint-disable react-hooks/rules-of-hooks */
-  const { ready, authenticated, login, logout } = usePrivy()
+  const { ready, authenticated, login, logout, getAccessToken } = usePrivy()
   const { address, chainId } = useAccount()
   const { switchChain } = useSwitchChain()
   const { data: bal } = useBalance({ address })
@@ -71,5 +77,6 @@ export function useWallet(): Wallet {
     switchToArc: () => switchChain({ chainId: arc.id }),
     connect: () => (authenticated ? logout() : login()),
     disconnect: logout,
+    getAccessToken,
   }
 }

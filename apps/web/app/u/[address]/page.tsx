@@ -1,3 +1,4 @@
+import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -103,9 +104,14 @@ export default async function UserPage({
                 href={`/token/${c.address}`}
                 className="rounded-card bg-hull hover:border-lime flex items-center gap-3 border p-3 transition-colors"
               >
-                <span className="bg-deep rounded-chip grid size-10 place-items-center text-xl" aria-hidden>
-                  {c.emoji}
-                </span>
+                <CoinAvatar
+                  image={c.image}
+                  emoji={c.emoji}
+                  name={c.name}
+                  ticker={c.ticker}
+                  size={40}
+                  className="bg-deep rounded-chip"
+                />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-bold">{c.name}</span>
                   <span className="tabular text-mist text-xs">

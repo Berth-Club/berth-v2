@@ -1,3 +1,4 @@
+import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -64,13 +65,15 @@ export function TokenCard({ coin }: { coin: Coin }) {
       )}
 
       <div className="flex items-center gap-3">
-        <span
-          className="rounded-chip bg-deep grid size-12 shrink-0 place-items-center text-2xl"
+        <CoinAvatar
+          image={coin.image}
+          emoji={coin.emoji}
+          name={coin.name}
+          ticker={coin.ticker}
+          size={48}
+          className="rounded-chip bg-deep"
           style={{ border: "1px solid #263A28" }}
-          aria-hidden
-        >
-          {coin.emoji}
-        </span>
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="truncate font-bold">{coin.name}</span>
