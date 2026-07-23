@@ -20,19 +20,24 @@ const privyConfig: PrivyClientConfig = {
   defaultChain: arc,
   supportedChains: [arc],
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-  loginMethods: ["wallet", "email"],
+  // Put detected extensions on the FIRST screen. With only `loginMethods`, Privy
+  // collapses every wallet behind a generic "Continue with a wallet" row, so an
+  // installed Rabby or MetaMask is two clicks deep and invisible until then.
+  // `primary` takes up to four entries and renders them in this order.
+  loginMethodsAndOrder: {
+    primary: ["detected_ethereum_wallets", "wallet_connect", "email"],
+  },
   appearance: {
-    // `detected_wallets` is a catch-all for every browser extension Privy
-    // finds, so listing injected wallets explicitly alongside it invites
-    // duplicates — which is what produced React's "unique key prop" warning
-    // from inside Privy's own wallet list. Keep only the entries that are NOT
-    // browser extensions (wallet_connect is a QR flow, coinbase_wallet has its
-    // own SDK path) and let detection handle the rest.
+    // Detection is the only supported way to surface browser extensions now:
+    // in @privy-io/react-auth 3.35 both `rabby_wallet` ("no longer supported")
+    // and the older `detected_wallets` catch-all are @deprecated, in favour of
+    // `detected_ethereum_wallets`. Rabby, MetaMask and the rest appear here by
+    // name when installed.
     //
-    // `rabby_wallet` was also in here and is marked @deprecated in
-    // @privy-io/react-auth 3.35 — "no longer supported". Detection picks Rabby
-    // up anyway if it is installed.
-    walletList: ["detected_wallets", "wallet_connect", "coinbase_wallet"],
+    // Nothing injected is listed explicitly alongside it: doing so double-lists
+    // whatever the visitor has installed, which is what produced React's
+    // "unique key prop" warning from inside Privy's own list renderer.
+    walletList: ["detected_ethereum_wallets", "wallet_connect", "coinbase_wallet"],
     // berth.club: abyss ground, lime signal
     theme: "#0C130E",
     accentColor: "#A3E635",
