@@ -5,6 +5,7 @@ import { GraduationMeter } from "@workspace/ui/components/graduation-meter"
 import { ChangeChip } from "@/components/token-card"
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
+import { AutoRefresh } from "@/components/auto-refresh"
 import { explorerTx } from "@/lib/chain"
 import { fmtPrice } from "@/lib/format"
 import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
@@ -33,6 +34,9 @@ export default async function TokenPage({
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-6">
+      {/* Re-runs this server component every 15s so trades, chart, volume and
+          holders track the chain without a manual refresh. */}
+      <AutoRefresh />
       <Link href="/" className="text-mist hover:text-foam inline-block text-sm font-bold transition-colors">
         ← Back to harbor
       </Link>

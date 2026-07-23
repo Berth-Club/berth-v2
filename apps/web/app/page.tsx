@@ -4,6 +4,7 @@ import { TokenCard, ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
+import { AutoRefresh } from "@/components/auto-refresh"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -45,6 +46,8 @@ export default async function HarborPage() {
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-7">
+      {/* Keeps the harbor grid and the syncing badge current without a reload. */}
+      <AutoRefresh seconds={20} />
       {/* hero */}
       <section className="mb-7 flex items-center gap-6">
         <div className="min-w-0 flex-1">
