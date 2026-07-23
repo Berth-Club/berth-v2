@@ -13,7 +13,7 @@ export const coin = onchainTable(
     pool: t.hex().notNull(),
     supply: t.bigint().notNull(),
     /**
-     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "WETH per
+     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "NATIVE per
      * whole coin", so higher = coin more expensive, and graduation is at
      * tickUpper. Compare these ONLY against `coin.tick`/`swap.tick`, which are
      * normalised into the same space. See src/index.ts `toCoinTick`.
@@ -23,7 +23,7 @@ export const coin = onchainTable(
     /**
      * Uniswap token ordering for this pool. The deployed factory does NOT force
      * the coin to token0 — it mirrors the tick range when the coin sorts above
-     * WETH9 instead. Verified on chain for $SMOKE: pool.token0() = WETH9.
+     * WRAPPED_NATIVE instead. Verified on chain for $SMOKE: pool.token0() = WRAPPED_NATIVE.
      */
     coinIsToken0: t.boolean().notNull(),
     /**
@@ -34,7 +34,8 @@ export const coin = onchainTable(
     poolTickLower: t.integer().notNull(),
     poolTickUpper: t.integer().notNull(),
     protocolFeeBps: t.integer().notNull(),
-    devBuyEthIn: t.bigint().notNull(),
+    /** Native (18dp) the creator spent on their atomic first buy. */
+    devBuyNativeIn: t.bigint().notNull(),
     name: t.text().notNull(),
     symbol: t.text().notNull(),
     metadataURI: t.text().notNull(),
@@ -44,7 +45,7 @@ export const coin = onchainTable(
     // --- market state, maintained from pool Swap events ---
     /**
      * Latest tick in COIN SPACE (negated when the coin is token1), so
-     * `1.0001^tick` is always WETH per whole coin regardless of pool ordering.
+     * `1.0001^tick` is always NATIVE per whole coin regardless of pool ordering.
      * NOT the raw slot0 tick — use poolTick for that.
      */
     tick: t.integer(),
@@ -52,11 +53,25 @@ export const coin = onchainTable(
     poolTick: t.integer(),
     /** Raw slot0 sqrtPriceX96 — pool space, i.e. token1 per token0. */
     sqrtPriceX96: t.bigint(),
-    /** 0–1 progress along the range toward graduation. */
+    /**
+     * 0-1 progress toward graduation.
+     *
+     * NOT a position within the tick range. Graduation is an owner-set USDC
+     * threshold on the position's paired principal, and the range runs to
+     * MAX_USABLE_TICK, so tick position is the wrong scale entirely: a coin
+     * that has genuinely graduated sits ~2.4% along its tick range and would
+     * never cross a tick-based finish line. Derived from progressBps returned
+     * by the factory's own graduationStatus(), so the UI and the contract can
+     * never disagree.
+     */
     curve: t.real().notNull().default(0),
     graduated: t.boolean().notNull().default(false),
-    /** Cumulative WETH volume, wei. */
-    volumeWeth: t.bigint().notNull().default(0n),
+    /** USDC (6dp) of principal currently in the position. From graduationStatus. */
+    pairedPrincipal: t.bigint().notNull().default(0n),
+    /** USDC (6dp) needed to graduate. Frozen per launch, off the TokenLaunched event. */
+    graduationThreshold: t.bigint().notNull().default(0n),
+    /** Cumulative NATIVE volume, wei. */
+    volumeNative: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),
     lastTradeAt: t.bigint(),
     /** Addresses holding a non-zero balance. The locked LP pool is one of them. */
@@ -83,11 +98,11 @@ export const swap = onchainTable(
     coin: t.hex().notNull(),
     sender: t.hex().notNull(),
     recipient: t.hex().notNull(),
-    /** true = someone bought the coin (WETH in). */
+    /** true = someone bought the coin (NATIVE in). */
     isBuy: t.boolean().notNull(),
     /** Absolute amounts, wei. */
     amountToken: t.bigint().notNull(),
-    amountWeth: t.bigint().notNull(),
+    amountNative: t.bigint().notNull(),
     /** COIN-SPACE tick after the swap — see coin.tick. Drives the 24h change. */
     tick: t.integer().notNull(),
     timestamp: t.bigint().notNull(),
@@ -168,7 +183,7 @@ export const captain = onchainTable("captain", (t) => ({
   coinsCreated: t.integer().notNull().default(0),
   buys: t.integer().notNull().default(0),
   sells: t.integer().notNull().default(0),
-  volumeWeth: t.bigint().notNull().default(0n),
+  volumeNative: t.bigint().notNull().default(0n),
   firstSeenAt: t.bigint().notNull(),
 }));
 

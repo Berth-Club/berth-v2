@@ -2,11 +2,11 @@ import { http } from "wagmi"
 // Import createConfig from @privy-io/wagmi, not wagmi.
 import { createConfig } from "@privy-io/wagmi"
 
-import { robinhood } from "@/lib/chain"
+import { arc } from "@/lib/chain"
 
 export const wagmiConfig = createConfig({
-  chains: [robinhood],
+  chains: [arc],
   transports: {
-    [robinhood.id]: http(),
+    [arc.id]: http(),
   },
 })

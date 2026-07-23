@@ -10,31 +10,52 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 
-/** Pinned WETH9 on Robinhood Chain (4663) — the quote asset of every pool. */
-export const WETH9 = "0x0bd7d308f8e1639fab988df18a8011f41eacad73";
+/**
+ * USDC on Arc Testnet (5042002) — the predeploy, 6 decimals, the quote
+ * asset of every pool. Must stay in lockstep with LaunchpadConstants.USDC in
+ * arc-launchpad and USDC.address in the web app.
+ *
+ * Arc has no wrapped native; this predeploy IS the quote asset. 6 decimals in
+ * this ERC20 view, 18 in the native view — one balance behind two interfaces.
+ *
+ * Lowercase: {isCoinToken0} compares raw strings.
+ */
+export const WRAPPED_NATIVE = "0x3600000000000000000000000000000000000000";
+
+/**
+ * The top of every launch range. v1.3 emits only `initialTick` and always runs
+ * the position to this bound, so there is no emitted tickUpper to read — the
+ * indexer supplies it. Mirrors MAX_USABLE_TICK in BerthClubLaunchFactory:
+ * TickMath.MAX_TICK rounded inward to a multiple of the 200 tick spacing.
+ */
+export const MAX_USABLE_TICK = 887200;
 
 /**
  * Which side of the pool the coin landed on.
  *
  * Uniswap sorts pool tokens by address, and the DEPLOYED factory does NOT
- * salt-mine the coin below WETH9 (whatever the contracts repo does) — when the
- * coin sorts above WETH9 it mirrors the tick range instead. So the coin is
- * token0 only ~5% of the time. Never assume it; always ask.
+ * salt-mine the coin below the quote asset (whatever the contracts repo does) —
+ * when the coin sorts above it, it mirrors the tick range instead.
+ *
+ * On Robinhood this was lopsided: WETH9 was 0x0Bd7…, so the coin was token0
+ * only ~5% of the time. Arc's WUSDC is mid-range (0x911b…), so it is close to a
+ * coin flip. The minority branch is no longer the minority — never assume it,
+ * always ask.
  */
 export function isCoinToken0(token: string): boolean {
   // Equal-length lowercase hex compares lexicographically the same as by uint160.
-  return token.toLowerCase() < WETH9;
+  return token.toLowerCase() < WRAPPED_NATIVE;
 }
 
 /**
  * Pool-space tick -> COIN-SPACE tick. THE ONE PLACE ordering is normalised.
  *
  * Pool space measures token1 per token0. When the coin is token1 that reads
- * "coin per WETH", which runs BACKWARDS: buying the coin makes it dearer, so
- * fewer coin per WETH, so the tick goes DOWN — such a pool starts at its upper
+ * "coin per NATIVE", which runs BACKWARDS: buying the coin makes it dearer, so
+ * fewer coin per NATIVE, so the tick goes DOWN — such a pool starts at its upper
  * tick and graduates at its lower one.
  *
- * Negating flips it back to "WETH per whole coin" (both tokens are 18 decimals,
+ * Negating flips it back to "NATIVE per whole coin" (both tokens are 18 decimals,
  * so no decimal shift). In coin space the TokenLaunched ticks apply verbatim for
  * BOTH orderings: price rises with tick, graduation is always tick >= tickUpper.
  */
@@ -74,16 +95,32 @@ export function pctChange(tickNow: number, tickThen: number): number {
 }
 
 /**
- * Self-check against values read off chain 4663 on 2026-07-16 for $SMOKE
- * (pool 0x12ff275AE94AD8b7BD8c10C4d466394Db40101D1, NFPM position 163160).
+ * Self-check. The tick-space assertions below are ground truth read off chain
+ * 4663 on 2026-07-16 for $SMOKE (pool 0x12ff275AE94AD8b7BD8c10C4d466394Db40101D1,
+ * NFPM position 163160). That maths is chain-independent — only the ORDERING
+ * fixtures had to change for Arc, because ordering is the one thing that depends
+ * on the quote asset's address.
  */
 function main(): void {
-  const SMOKE = "0x4b70e93E05f3CaAAf3c1Fcb0a06E8D73ab3B694A";
+  // Ordering, against Arc's WUSDC (0x911b…). Synthetic addresses that straddle
+  // it, rather than a real coin: no berth.club coin exists on Arc yet, and
+  // pinning to one would re-break this the next time the chain moves.
+  assert.equal(isCoinToken0("0x0000000000000000000000000000000000000001"), true, "far below => token0");
+  assert.equal(isCoinToken0("0xffffffffffffffffffffffffffffffffffffffff"), false, "far above => token1");
+  assert.equal(isCoinToken0(WRAPPED_NATIVE.toUpperCase()), false, "case-insensitive, equal is not below");
 
-  // Ground truth: pool.token0() = WETH9, pool.token1() = SMOKE.
-  assert.equal(isCoinToken0(SMOKE), false, "SMOKE sorts above WETH9 => token1");
-  assert.equal(isCoinToken0("0x0000000000000000000000000000000000000001"), true);
-  assert.equal(isCoinToken0(WETH9.toUpperCase()), false, "case-insensitive, equal is not below");
+  // The boundary is the quote asset itself: one below sorts token0, one above
+  // token1. This is what actually breaks if WRAPPED_NATIVE is left stale.
+  assert.equal(isCoinToken0("0x35ffffffffffffffffffffffffffffffffffffff"), true, "one below => token0");
+  assert.equal(isCoinToken0("0x3600000000000000000000000000000000000001"), false, "one above => token1");
+
+  // USDC sits at a LOW address, so a launch token sorts below it only ~21% of
+  // the time. The minority branch is live and must never be assumed away.
+  assert.equal(
+    isCoinToken0("0x4cfc207c7c5407848d18a1e75fb7d7020fef8787"),
+    false,
+    "a real launched coin sorts above the USDC predeploy => token1",
+  );
 
   // TokenLaunched emitted [-268600, -199400]; positions() reports [199400, 268600].
   const { poolTickLower, poolTickUpper } = poolRange(-268600, -199400, false);
@@ -118,7 +155,7 @@ function main(): void {
   assert.ok(pctChange(toCoinTick(268600, true), toCoinTick(268000, true)) > 0);
 
   // Both orderings must price identically for the same real move: one tick of
-  // WETH-per-coin is +0.01% either way.
+  // NATIVE-per-coin is +0.01% either way.
   assert.ok(Math.abs(pctChange(1, 0) - 0.01) < 1e-6);
   assert.equal(pctChange(0, 0), 0, "no move, no change");
 

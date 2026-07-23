@@ -22,7 +22,8 @@ import {
 
 import { PRIVY_CONFIGURED } from "@/components/providers"
 import { LaunchFactoryAbi } from "@/lib/abis"
-import { CONTRACTS, robinhood } from "@/lib/chain"
+import { CONTRACTS, arc } from "@/lib/chain"
+import { useSaltMiner } from "@/lib/use-salt-miner"
 
 /**
  * LaunchFactory.LaunchConfig. The caller supplies cosmetics only — supply is
@@ -49,6 +50,20 @@ export type LaunchConfig = {
 export const METADATA_URI_PLACEHOLDER = "ipfs://berth-placeholder"
 
 /**
+ * The curve preset every launch uses. deploy() takes it as a second argument —
+ * the factory now carries a MENU of owner-curated curves rather than one fixed
+ * pair of ticks, and preset 0 is the shipped one (opens ~$4,923, graduates at
+ * $20,000) -- read live from the deployed factory, not assumed.
+ *
+ * This argument did not exist on the Robinhood v1.1 deployment, and the app's
+ * hand-pinned ABI hid that: `deploy(config)` type-checked against the stale ABI
+ * and would have encoded a selector the deployed factory does not have. If a
+ * second preset is ever added, this becomes a user choice rather than a
+ * constant.
+ */
+const CURVE_CONFIG_ID = 0n
+
+/**
  * devBuyMinOut is a slippage floor, and 0 is safe here — deliberately, not
  * lazily. deploy() creates the pool in the same transaction at a price this
  * same call chose, so the fill is fully deterministic: there is no other trade
@@ -57,24 +72,21 @@ export const METADATA_URI_PLACEHOLDER = "ipfs://berth-placeholder"
 const DEV_BUY_MIN_OUT = 0n
 
 /**
- * ETH cost of the dev-buy cap — DISPLAY ONLY. Enforcement is the on-chain
+ * USDC cost of the dev-buy cap -- DISPLAY ONLY. Enforcement is the on-chain
  * simulation in useLaunch(); this number never gates a signature by itself.
  *
- * The cap is enforced on SUPPLY (bps of 100B), not on ETH, so there is no
- * exact ETH figure in the contract to read. Every launch opens on the same
- * owner-set curve though, so the ETH boundary is the same constant for all of
- * them. Measured against the live factory by bisecting deploy():
- *   0.004459884166717529 Ξ passes, 0.004459884762763976 Ξ reverts.
- * Floored to 0.00445 so the number we advertise is always actually payable.
+ * The cap is enforced on SUPPLY (2% of 100B), not on USDC, so there is no exact
+ * figure in the contract to read. It follows from the curve:
+ *   cost(f) = openingMcap * f/(1-f) = 4923.03 * 0.02/0.98 = 100.47 USDC
+ * floored to 100 so the advertised number is always payable.
  *
- * NOTE: the spec's "0.0045" is ABOVE the true boundary — it reverts on-chain
- * (verified: DevBuyExceedsCap / 0xefe14648). Do not restore it.
- *
- * ponytail: a hardcoded curve constant, correct while the owner leaves ticks
- * and maxDevBuyBps alone. If setTicks() / setMaxDevBuyBps() ever move, this
- * display drifts but nobody pays gas to fail — the simulation still blocks.
+ * ⚠️ These figures are outputs of curve preset 0, which the factory admin (the
+ * contract developer, not us) can rewrite at any time via updateCurveConfig.
+ * They are the expected reading today, not constants of the system. If the
+ * displayed numbers ever disagree with a launch, re-read getCurveConfig(0)
+ * before assuming a UI bug.
  */
-export const DEV_BUY_CAP_ETH = 0.00445
+export const DEV_BUY_CAP_USDC = 100
 
 /** Ticker rule: uppercase A-Z0-9, max 8. */
 export function normalizeTicker(raw: string): string {
@@ -85,7 +97,7 @@ export function normalizeTicker(raw: string): string {
  * The dev-buy input only filters characters, so it still admits "1.2.3" and
  * ".". parseEther throws on those — never let that reach a render.
  */
-export function parseEthInput(raw: string): bigint | undefined {
+export function parseUsdcInput(raw: string): bigint | undefined {
   const s = raw.trim()
   if (s === "") return 0n
   if (!/^\d*\.?\d*$/.test(s) || s === ".") return undefined
@@ -181,7 +193,7 @@ function shortMessage(err: unknown): string {
 function blockReason(err: unknown, capPct: number): string {
   switch (revertName(err)) {
     case "DevBuyExceedsCap":
-      return `Over the cap — max dev-buy is ${DEV_BUY_CAP_ETH} Ξ (~${capPct}% of supply). The launch would revert on-chain; we won't let you pay gas to fail.`
+      return `Over the cap — max dev-buy is ${DEV_BUY_CAP_USDC} USDC (~${capPct}% of supply). The launch would revert on-chain; we won't let you pay gas to fail.`
     case "SaltMiningFailed":
       return "The shipyard couldn't find a berth for this name. Nudge the name or ticker and try again."
     case "NotWhitelisted":
@@ -193,7 +205,7 @@ function blockReason(err: unknown, capPct: number): string {
     default: {
       const msg = shortMessage(err)
       if (/insufficient funds/i.test(msg)) {
-        return "Not enough Ξ in this wallet to cover the dev-buy plus gas."
+        return "Not enough USDC in this wallet to cover the dev-buy plus gas."
       }
       return `This launch would revert on-chain, so we won't let you pay gas to fail. ${msg}`
     }
@@ -207,11 +219,19 @@ export type Launch = {
   capBps?: number
   /** The same, as a percent of supply, for display. */
   capPct: number
-  capEth: number
+  capUsdc: number
   /** Real predictTokenAddress() read — the address that will be deployed. */
   predicted?: Address
   /** predictTokenAddress() returned address(0): no salt worked for this config. */
   predictFailed: boolean
+  /** Vanity mining: the factory rejects any address not ending 8787. */
+  mining: boolean
+  /** Hashes attempted, for an indeterminate readout. Completion is probabilistic. */
+  miningAttempts: number
+  /** 0-1 by candidates FOUND, never an extrapolated percentage. */
+  miningProgress: number
+  /** Mining failed outright — a config error, not bad luck. */
+  miningError?: string
   predictPending: boolean
   retryPredict: () => void
   /** Why we refuse to let them sign, if we do. */
@@ -231,8 +251,11 @@ export type Launch = {
 
 const IDLE: Launch = {
   capPct: 2,
-  capEth: DEV_BUY_CAP_ETH,
+  capUsdc: DEV_BUY_CAP_USDC,
   predictFailed: false,
+  mining: false,
+  miningAttempts: 0,
+  miningProgress: 0,
   predictPending: false,
   retryPredict: () => {},
   ready: false,
@@ -266,41 +289,76 @@ export function useLaunch(
   // Cheap, instant, and answers the most common failure before the simulation
   // round-trips: the wallet simply cannot pay. The sim is still the authority —
   // this exists so the UI can say WHY rather than dying quietly.
-  const { data: balance } = useBalance({ address, chainId: robinhood.id })
+  const { data: balance } = useBalance({ address, chainId: arc.id })
 
   const { data: capBps } = useReadContract({
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "maxDevBuyBps",
-    chainId: robinhood.id,
+    chainId: arc.id,
   })
 
   // Right chain, funded, papers filled in. Anything less and the reads below
   // are noise.
-  const onChain = chainId === robinhood.id
+  const onChain = chainId === arc.id
   const canRead = active && !!config && !!address && onChain
 
+  // The token's init code hash for THIS exact config. name, symbol and
+  // metadataURI are constructor args, so it moves with every edit — read it
+  // live rather than pinning, since it also tracks the token bytecode and
+  // compiler settings.
+  const initCodeHash = useReadContract({
+    address: CONTRACTS.launchFactory,
+    abi: LaunchFactoryAbi,
+    functionName: "tokenInitCodeHash",
+    args: config ? [config] : undefined,
+    chainId: arc.id,
+    query: { enabled: canRead },
+  })
+
+  const miner = useSaltMiner()
+
+  // Mine when (and only when) the inputs that determine the address are all
+  // known. The dependency list IS the invalidation rule: a new config yields a
+  // new initCodeHash, a wallet switch a new deployer, and either restarts the
+  // grind. Without that, the wizard could show an address the coin never lands
+  // on -- the one failure this whole path exists to prevent.
+  const hash_ = initCodeHash.data
+  const mine = miner.mine
+  const resetMiner = miner.reset
+  React.useEffect(() => {
+    if (!canRead || !address || !hash_) {
+      resetMiner()
+      return
+    }
+    mine(CONTRACTS.launchFactory, address, hash_)
+  }, [canRead, address, hash_, mine, resetMiner])
+
+  const salts = miner.salts.map((s) => s.salt)
+
+  // Confirm against the factory rather than trusting our own maths: it returns
+  // suffixOk and poolFree too, so a squatted candidate is visible before signing.
   const predict = useReadContract({
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "predictTokenAddress",
-    args: address && config ? [address, config] : undefined,
-    chainId: robinhood.id,
-    query: { enabled: canRead },
+    args: address && config && salts[0] ? [address, config, salts[0]] : undefined,
+    chainId: arc.id,
+    query: { enabled: canRead && salts.length > 0 },
   })
 
   const sim = useSimulateContract({
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "deploy",
-    args: config ? [config] : undefined,
+    args: config && salts.length > 0 ? [config, CURVE_CONFIG_ID, salts] : undefined,
     value: valueWei,
-    chainId: robinhood.id,
-    query: { enabled: canRead && valueWei !== undefined },
+    chainId: arc.id,
+    query: { enabled: canRead && valueWei !== undefined && salts.length > 0 },
   })
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
-  const receipt = useWaitForTransactionReceipt({ hash, chainId: robinhood.id })
+  const receipt = useWaitForTransactionReceipt({ hash, chainId: arc.id })
 
   const token = React.useMemo(
     () => (receipt.data ? tokenFromReceipt(receipt.data) : undefined),
@@ -309,7 +367,7 @@ export function useLaunch(
   /* eslint-enable react-hooks/rules-of-hooks */
 
   // address(0) means no salt in 256 tries produced a token that sorts against
-  // WETH9. The salt is keccak(deployer, nonce, i) — deterministic — so re-reading
+  // WRAPPED_NATIVE. The salt is keccak(deployer, nonce, i) — deterministic — so re-reading
   // the SAME config returns the SAME zero. Only a different initcode (name /
   // ticker) or a moved nonce changes the answer. Never present this as "retry".
   const predicted = predict.data?.[0]
@@ -317,7 +375,7 @@ export function useLaunch(
 
   const capPct = capBps !== undefined ? capBps / 100 : 2
 
-  // Gas headroom for the deploy itself (~0.00045 Ξ measured on the shipped
+  // Gas headroom for the deploy itself (~0.00045 USDC measured on the shipped
   // curve). Deliberately generous: telling someone they're short when they are
   // not is worse than letting the simulation catch the edge.
   const GAS_HEADROOM_WEI = 700_000_000_000_000n // 0.0007
@@ -329,11 +387,18 @@ export function useLaunch(
   if (valueWei === undefined) blocked = "That dev-buy isn't a number."
   else if (short)
     blocked =
-      `Not enough Ξ in this wallet. You have ${Number(formatEther(balance!.value)).toFixed(5)} Ξ; ` +
-      `this needs about ${Number(formatEther(needWei!)).toFixed(5)} Ξ (dev-buy + gas). ` +
+      `Not enough USDC in this wallet. You have ${Number(formatEther(balance!.value)).toFixed(5)} USDC; ` +
+      `this needs about ${Number(formatEther(needWei!)).toFixed(5)} USDC (dev-buy + gas). ` +
       `Lower the dev-buy or top the wallet up.`
+  // Mining failures are a config error, not bad luck: the miner only gives up
+  // after 2M attempts, ~30 sigma past the 1-in-65,536 odds.
+  else if (miner.error) blocked = `Couldn't mine a berth number: ${miner.error}`
   else if (predictFailed)
     blocked = "The shipyard couldn't find a berth for this name. Nudge the name or ticker and try again."
+  // Every candidate's pool is taken. Re-mining gives a fresh set; the factory
+  // only skips OCCUPIED candidates, so this is recoverable.
+  else if (predict.data && predict.data[2] === false)
+    blocked = "Another ship took that berth. Re-mining a new one…"
   else if (sim.error) blocked = blockReason(sim.error, capPct)
 
   let status: LaunchStatus = "idle"
@@ -354,9 +419,13 @@ export function useLaunch(
   return {
     capBps,
     capPct,
-    capEth: DEV_BUY_CAP_ETH,
+    capUsdc: DEV_BUY_CAP_USDC,
     predicted: predictFailed ? undefined : predicted,
     predictFailed,
+    mining: miner.status === "mining",
+    miningAttempts: miner.attempts,
+    miningProgress: miner.progress,
+    miningError: miner.error,
     predictPending: predict.isFetching,
     retryPredict: () => void predict.refetch(),
     blocked,

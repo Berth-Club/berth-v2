@@ -1,33 +1,57 @@
-// AUTO-SOURCED from the DEPLOYED contracts on Robinhood Chain (4663).
+// AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubLaunchFactory.json
+// (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// These are the real ABIs: all 50 selectors across the three contracts were
-// verified present in the deployed bytecode. Do NOT regenerate these from
-// launchpad-contracts/ — that source is a LATER revision than what is deployed
-// (it adds MAX_PROTOCOL_FEE_BPS(), which does not exist on-chain and reverts).
+// Verified against the DEPLOYED bytecode at 0xb7738F4e07845fAa09b7694E5E882e00e0eE768B
+// on Arc testnet: all 47 function selectors present. That check is the point —
+// this repo previously shipped an ABI hand-pinned to a stale deployment, and the
+// resulting TokenLaunched topic0 mismatch made the indexer match zero launches
+// with no error at all.
 
 export const LaunchFactoryAbi = [
   {
     "type": "constructor",
     "inputs": [
       {
-        "name": "lpLocker_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "feeLocker_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "owner_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "protocolFeeRecipient_",
-        "type": "address",
-        "internalType": "address"
+        "name": "d",
+        "type": "tuple",
+        "internalType": "struct IBerthClubLaunchFactory.Deployment",
+        "components": [
+          {
+            "name": "lpLocker",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "feeLocker",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "protocolFeeRecipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "uniswapV3Factory",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "positionManager",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "swapRouter02",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
       }
     ],
     "stateMutability": "nonpayable"
@@ -40,7 +64,7 @@ export const LaunchFactoryAbi = [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IFeeLocker"
+        "internalType": "contract IBerthClubFeeLocker"
       }
     ],
     "stateMutability": "view"
@@ -53,7 +77,72 @@ export const LaunchFactoryAbi = [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract ILpLocker"
+        "internalType": "contract IBerthClubLpLocker"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_SALT_CANDIDATES",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_USABLE_TICK",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NFPM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "QUOTE_TOKEN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "SWAP_ROUTER_02",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -73,10 +162,85 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "UNISWAP_V3_FACTORY",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VANITY_SUFFIX",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "acceptOwnership",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addCurveConfig",
+    "inputs": [
+      {
+        "name": "config",
+        "type": "tuple",
+        "internalType": "struct IBerthClubLaunchFactory.CurveConfig",
+        "components": [
+          {
+            "name": "initialTick",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "graduationThreshold",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "enabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "curveConfigCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "count",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -85,7 +249,7 @@ export const LaunchFactoryAbi = [
       {
         "name": "config",
         "type": "tuple",
-        "internalType": "struct ILaunchFactory.LaunchConfig",
+        "internalType": "struct IBerthClubLaunchFactory.LaunchConfig",
         "components": [
           {
             "name": "name",
@@ -108,6 +272,16 @@ export const LaunchFactoryAbi = [
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "curveConfigId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "salts",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       }
     ],
     "outputs": [
@@ -145,6 +319,95 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "getCurveConfig",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "config",
+        "type": "tuple",
+        "internalType": "struct IBerthClubLaunchFactory.CurveConfig",
+        "components": [
+          {
+            "name": "initialTick",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "graduationThreshold",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "enabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "graduationStatus",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "pairedPrincipal",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "threshold",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "graduated",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "progressBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "graduationThresholdOf",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "threshold",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "isWhitelisted",
     "inputs": [
       {
@@ -158,6 +421,19 @@ export const LaunchFactoryAbi = [
         "name": "allowed",
         "type": "bool",
         "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "launchFee",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -233,7 +509,7 @@ export const LaunchFactoryAbi = [
       {
         "name": "config",
         "type": "tuple",
-        "internalType": "struct ILaunchFactory.LaunchConfig",
+        "internalType": "struct IBerthClubLaunchFactory.LaunchConfig",
         "components": [
           {
             "name": "name",
@@ -256,6 +532,11 @@ export const LaunchFactoryAbi = [
             "internalType": "uint256"
           }
         ]
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -265,9 +546,14 @@ export const LaunchFactoryAbi = [
         "internalType": "address"
       },
       {
-        "name": "salt",
-        "type": "bytes32",
-        "internalType": "bytes32"
+        "name": "suffixOk",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "poolFree",
+        "type": "bool",
+        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -343,6 +629,61 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "saltFor",
+    "inputs": [
+      {
+        "name": "deployer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "salt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "effectiveSalt",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "setCurveConfigEnabled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setLaunchFee",
+    "inputs": [
+      {
+        "name": "fee",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setMaxDevBuyBps",
     "inputs": [
       {
@@ -375,24 +716,6 @@ export const LaunchFactoryAbi = [
         "name": "recipient",
         "type": "address",
         "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setTicks",
-    "inputs": [
-      {
-        "name": "lower",
-        "type": "int24",
-        "internalType": "int24"
-      },
-      {
-        "name": "upper",
-        "type": "int24",
-        "internalType": "int24"
       }
     ],
     "outputs": [],
@@ -449,32 +772,6 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
-    "name": "tickLower",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "int24",
-        "internalType": "int24"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "tickUpper",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "int24",
-        "internalType": "int24"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "tokenIdOf",
     "inputs": [
       {
@@ -488,6 +785,47 @@ export const LaunchFactoryAbi = [
         "name": "tokenId",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tokenInitCodeHash",
+    "inputs": [
+      {
+        "name": "config",
+        "type": "tuple",
+        "internalType": "struct IBerthClubLaunchFactory.LaunchConfig",
+        "components": [
+          {
+            "name": "name",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "symbol",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "metadataURI",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "devBuyMinOut",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "name": "initCodeHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "stateMutability": "view"
@@ -533,6 +871,41 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "updateCurveConfig",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "config",
+        "type": "tuple",
+        "internalType": "struct IBerthClubLaunchFactory.CurveConfig",
+        "components": [
+          {
+            "name": "initialTick",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "graduationThreshold",
+            "type": "uint128",
+            "internalType": "uint128"
+          },
+          {
+            "name": "enabled",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "whitelistEnabled",
     "inputs": [],
     "outputs": [
@@ -546,6 +919,87 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "event",
+    "name": "CurveConfigAdded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "initialTick",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "graduationThreshold",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CurveConfigEnabledSet",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CurveConfigUpdated",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "initialTick",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "graduationThreshold",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "DevBuyRefunded",
     "inputs": [
       {
@@ -556,6 +1010,38 @@ export const LaunchFactoryAbi = [
       },
       {
         "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LaunchFeePaid",
+    "inputs": [
+      {
+        "name": "recipient",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LaunchFeeSet",
+    "inputs": [
+      {
+        "name": "fee",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -680,25 +1166,6 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "event",
-    "name": "TicksSet",
-    "inputs": [
-      {
-        "name": "tickLower",
-        "type": "int24",
-        "indexed": false,
-        "internalType": "int24"
-      },
-      {
-        "name": "tickUpper",
-        "type": "int24",
-        "indexed": false,
-        "internalType": "int24"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "TokenLaunched",
     "inputs": [
       {
@@ -732,16 +1199,22 @@ export const LaunchFactoryAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "tickLower",
+        "name": "initialTick",
         "type": "int24",
         "indexed": false,
         "internalType": "int24"
       },
       {
-        "name": "tickUpper",
-        "type": "int24",
+        "name": "curveConfigId",
+        "type": "uint256",
         "indexed": false,
-        "internalType": "int24"
+        "internalType": "uint256"
+      },
+      {
+        "name": "graduationThreshold",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
       },
       {
         "name": "protocolFeeBps",
@@ -750,7 +1223,7 @@ export const LaunchFactoryAbi = [
         "internalType": "uint16"
       },
       {
-        "name": "devBuyEthIn",
+        "name": "devBuyNativeIn",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -823,7 +1296,23 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "BadVanitySuffix",
+    "inputs": [
+      {
+        "name": "predicted",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "Create2EmptyBytecode",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CurveConfigDisabled",
     "inputs": []
   },
   {
@@ -874,12 +1363,42 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "error",
+    "name": "InvalidCurveConfigId",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidTickRange",
     "inputs": []
   },
   {
     "type": "error",
     "name": "InvalidTickSpacing",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidUniswapDeployment",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "LaunchFeeNotPaid",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "LaunchFeeTransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoSaltCandidates",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoUsableSalt",
     "inputs": []
   },
   {
@@ -937,7 +1456,12 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "error",
-    "name": "SaltMiningFailed",
+    "name": "TokenNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TooManySaltCandidates",
     "inputs": []
   },
   {

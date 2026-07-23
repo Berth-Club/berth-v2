@@ -11,15 +11,15 @@ const W = 600
 const H = 220
 
 assert.equal(chartGeometry([], W, H), null, "no trades: nothing to draw")
-assert.equal(chartGeometry([{ t: 1, weth: 2e-12 }], W, H), null, "one trade cannot make a line")
+assert.equal(chartGeometry([{ t: 1, native: 2e-12 }], W, H), null, "one trade cannot make a line")
 
 // The live $SHIPP case: two real swaps that landed on the SAME tick (a buy and
 // a sell netting out), so hi === lo. Without the flat guard this emits NaN into
 // the path and the chart silently disappears.
 const flat = chartGeometry(
   [
-    { t: 100, weth: 2.167e-12 },
-    { t: 200, weth: 2.167e-12 },
+    { t: 100, native: 2.167e-12 },
+    { t: 200, native: 2.167e-12 },
   ],
   W,
   H
@@ -33,8 +33,8 @@ assert.equal(flat.line, "M0.0,110.0 L600.0,110.0", "flat series pins mid-height,
 // point must have the SMALLER y. Get this backwards and every chart is inverted.
 const rise = chartGeometry(
   [
-    { t: 0, weth: 1e-12 },
-    { t: 100, weth: 2e-12 },
+    { t: 0, native: 1e-12 },
+    { t: 100, native: 2e-12 },
   ],
   W,
   H
@@ -46,9 +46,9 @@ assert.ok(yOf(segs[1]!) < yOf(segs[0]!), "a price rise must go UP the screen (y 
 // Same-timestamp burst: zero time span must not divide by zero.
 const burst = chartGeometry(
   [
-    { t: 5, weth: 1e-12 },
-    { t: 5, weth: 2e-12 },
-    { t: 5, weth: 3e-12 },
+    { t: 5, native: 1e-12 },
+    { t: 5, native: 2e-12 },
+    { t: 5, native: 3e-12 },
   ],
   W,
   H

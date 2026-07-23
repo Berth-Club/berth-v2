@@ -9,25 +9,25 @@ import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { explorerTx } from "@/lib/chain"
 import {
-  DEV_BUY_CAP_ETH,
+  DEV_BUY_CAP_USDC,
   buildConfig,
   normalizeTicker,
-  parseEthInput,
+  parseUsdcInput,
   useLaunch,
 } from "@/lib/launch"
 
 const STEPS = ["Papers", "Sea trial", "Set sail"] as const
 
 /**
- * Dev-buy quick picks. Sourced from DEV_BUY_CAP_ETH so MAX lands exactly ON the
- * boundary — the cap is only ~0.00445 Ξ, so generic amounts (0.1, 0.5) would
+ * Dev-buy quick picks. Sourced from DEV_BUY_CAP_USDC so MAX lands exactly ON the
+ * boundary — the cap is only ~0.00445 USDC, so generic amounts (0.1, 0.5) would
  * every one of them revert with DevBuyExceedsCap.
  */
 const DEV_BUY_PRESETS: { label: string; value: string }[] = [
   { label: "none", value: "0" },
-  { label: "0.001 Ξ", value: "0.001" },
-  { label: "0.0025 Ξ", value: "0.0025" },
-  { label: `MAX · ${DEV_BUY_CAP_ETH} Ξ`, value: String(DEV_BUY_CAP_ETH) },
+  { label: "1 USDC", value: "1" },
+  { label: "10 USDC", value: "10" },
+  { label: `MAX · ${DEV_BUY_CAP_USDC} USDC`, value: String(DEV_BUY_CAP_USDC) },
 ]
 
 export function LaunchWizard() {
@@ -38,9 +38,9 @@ export function LaunchWizard() {
   const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
-  const { connected, wrongNetwork, switchToRobinhood, connect } = useWallet()
+  const { connected, wrongNetwork, switchToArc, connect } = useWallet()
 
-  const valueWei = parseEthInput(devBuy)
+  const valueWei = parseUsdcInput(devBuy)
   const tickerUp = normalizeTicker(ticker) || "TICKER"
 
   // Memoized: this object is a query key for the predict read and the deploy
@@ -61,11 +61,11 @@ export function LaunchWizard() {
   // where it is about to gate a signature.
   const launch = useLaunch(config, valueWei, step === 1)
 
-  const devEth = valueWei !== undefined ? Number(devBuy) || 0 : 0
+  const devUsdc = valueWei !== undefined ? Number(devBuy) || 0 : 0
   // Advisory only — instant, works before connecting. The authority is the
   // on-chain simulation on the review step (launch.blocked).
-  const overCap = devEth > launch.capEth
-  const devPct = (devEth / launch.capEth) * launch.capPct
+  const overCap = devUsdc > launch.capUsdc
+  const devPct = (devUsdc / launch.capUsdc) * launch.capPct
   const badDevBuy = valueWei === undefined
 
   const canAdvance = !!config && !overCap && !badDevBuy
@@ -73,7 +73,7 @@ export function LaunchWizard() {
   const gate = !connected
     ? { label: "Connect wallet to launch", act: connect }
     : wrongNetwork
-      ? { label: "Switch to Robinhood Chain", act: switchToRobinhood }
+      ? { label: "Switch to Arc Testnet", act: switchToArc }
       : undefined
 
   // Fire once, on the receipt — never on click. The real token address only
@@ -139,7 +139,7 @@ export function LaunchWizard() {
                 inputMode="decimal"
                 className="tabular w-full bg-transparent py-2.5 outline-none"
               />
-              <span className="text-mist" aria-hidden>Ξ</span>
+              <span className="text-mist" aria-hidden>USDC</span>
             </div>
           </Field>
           {/* Presets are derived from the live cap, not typed out — a hardcoded
@@ -170,12 +170,12 @@ export function LaunchWizard() {
             </p>
           ) : overCap ? (
             <p className="text-[13px]" style={{ color: "#F87171" }}>
-              Over the cap — max dev-buy is <span className="tabular">{launch.capEth} Ξ</span> (~
+              Over the cap — max dev-buy is <span className="tabular">{launch.capUsdc} USDC</span> (~
               {launch.capPct}% of supply). The launch would revert on-chain; we won&apos;t let you pay
               gas to fail.
             </p>
           ) : (
-            devEth > 0 && (
+            devUsdc > 0 && (
               <p className="text-mist text-[13px]">
                 ≈ <span className="tabular">{devPct.toFixed(2)}</span>% of supply
               </p>
@@ -227,7 +227,7 @@ export function LaunchWizard() {
             <Row k="Supply — fixed, every coin" v="100,000,000,000" mono />
             <Row k="Team allocation" v="0%" />
             <Row k="Liquidity" v="Locked forever 🔒" />
-            <Row k="Your dev-buy" v={`${devEth} Ξ`} mono />
+            <Row k="Your dev-buy" v={`${devUsdc} USDC`} mono />
             <div className="mt-2">
               <div className="text-mist text-xs">Predicted coin address — computed before you sign</div>
               {launch.predicted ? (
@@ -241,9 +241,35 @@ export function LaunchWizard() {
                     Sound it again
                   </button>
                 </div>
+              ) : launch.mining ? (
+                // Indeterminate on purpose. Completion is geometrically
+                // distributed -- a percentage bar would be a fabricated number
+                // that stalls near the end or jumps straight to done. Count
+                // candidates actually found, and show the real work done.
+                <div className="mt-1" role="status" aria-live="polite">
+                  <div className="text-[13px]">
+                    Sounding for a berth ending{" "}
+                    <span className="tabular">8787</span>
+                    {launch.miningAttempts > 0 && (
+                      <span className="text-faint">
+                        {" "}· {launch.miningAttempts.toLocaleString()} soundings
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-white/40 transition-[width] duration-300"
+                      style={{ width: `${Math.max(4, launch.miningProgress * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-faint mt-1 text-[11px]">
+                    Every berth.club coin lands on an address ending 8787. Your browser is
+                    finding yours — a few seconds.
+                  </p>
+                </div>
               ) : (
-                <div className="text-faint mt-1 text-[13px]">
-                  {gate ? "Connect on Robinhood Chain to sound the address." : "Sounding the address…"}
+                <div className="text-faint mt-1 text-[13px]" role="status" aria-live="polite">
+                  {gate ? "Connect on Arc Testnet to sound the address." : "Sounding the address…"}
                 </div>
               )}
             </div>

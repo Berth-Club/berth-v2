@@ -26,10 +26,10 @@ export default async function LeaderboardPage() {
   // "Ranked by volume" is only true once somebody has traded. Until then every
   // captain sits at 0 and the order is arbitrary — so say so, and order by the
   // one thing that IS real (coins launched) rather than implying a contest.
-  const ranked = (raw ?? []).some((c) => c.volumeWeth > 0)
+  const ranked = (raw ?? []).some((c) => c.volumeNative > 0)
   const captains = raw
     ? [...raw].sort((a, b) =>
-        ranked ? b.volumeWeth - a.volumeWeth : b.coinsCreated - a.coinsCreated
+        ranked ? b.volumeNative - a.volumeNative : b.coinsCreated - a.coinsCreated
       )
     : null
 
@@ -110,7 +110,7 @@ export default async function LeaderboardPage() {
                 <span className="tabular text-right text-sm">{c.coinsCreated}</span>
                 <span className="tabular text-right text-sm">{c.buys + c.sells}</span>
                 <span className="tabular text-right text-sm">
-                  {c.volumeWeth > 0 ? fmtMc(c.volumeUsd) : "—"}
+                  {c.volumeNative > 0 ? fmtMc(c.volumeUsd) : "—"}
                 </span>
               </Link>
             )

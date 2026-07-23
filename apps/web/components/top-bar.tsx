@@ -53,7 +53,7 @@ export function TopBar() {
           </Link>
           {wallet.wrongNetwork ? (
             <button
-              onClick={wallet.switchToRobinhood}
+              onClick={wallet.switchToArc}
               className="btn-deck btn-gold px-4 py-2 text-[15px]"
             >
               Wrong network — switch

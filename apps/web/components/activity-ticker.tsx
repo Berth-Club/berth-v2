@@ -6,7 +6,7 @@ import * as React from "react"
  * Ticker tape under the header — real launches and trades from the indexer.
  *
  * This used to be a hardcoded MOCK_FEED inventing specific trades ("0x3f2…a91
- * loaded 0.42 Ξ into $KRAKEN") on a platform where nobody had traded at all. It
+ * loaded 0.42 USDC into $KRAKEN") on a platform where nobody had traded at all. It
  * sat on every page of a public site, which made it the most-seen untruth we
  * shipped. If there is nothing to report, the tape renders nothing.
  */
@@ -14,7 +14,7 @@ const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:420
 
 /**
  * The SwapRouter appears as `sender` on every swap, and as `recipient` on sells
- * too (unwrapWETH9 sends WETH back through it before unwrapping to the user).
+ * too (unwrapWUSDC sends WUSDC back through it before unwrapping to the user).
  * So a sell has no attributable trader in the event — we say what happened
  * without inventing who did it, rather than crediting the router as a person.
  */
@@ -22,7 +22,7 @@ const ROUTER = "0xcaf681a66d020601342297493863e78c959e5cb2"
 
 const ACTIVITY_QUERY = `{
   swaps(orderBy: "timestamp", orderDirection: "desc", limit: 12) {
-    items { id coin isBuy amountWeth amountToken recipient timestamp }
+    items { id coin isBuy amountNative amountToken recipient timestamp }
   }
   coins(orderBy: "createdAt", orderDirection: "desc", limit: 12) {
     items { address symbol createdAt }
@@ -61,7 +61,7 @@ type RawSwap = {
   id: string
   coin: string
   isBuy: boolean
-  amountWeth: string
+  amountNative: string
   amountToken: string
   recipient: string
   timestamp: string
@@ -81,7 +81,7 @@ function build(swaps: RawSwap[], coins: RawCoin[]): Item[] {
     const sym = symbolOf.get(s.coin.toLowerCase()) ?? "???"
     const who = s.recipient.toLowerCase() === ROUTER ? null : short(s.recipient)
     const text = s.isBuy
-      ? `🟢 ${who ? `${who} ` : ""}loaded ${eth(s.amountWeth)} Ξ into $${sym}`
+      ? `🟢 ${who ? `${who} ` : ""}loaded ${eth(s.amountNative)} USDC into $${sym}`
       : `🔴 ${who ? `${who} ` : ""}cashed out ${tokens(s.amountToken)} $${sym}`
     return { key: `swap-${s.id}`, text, ts: Number(s.timestamp) }
   })

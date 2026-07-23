@@ -1,9 +1,11 @@
-// AUTO-SOURCED from the DEPLOYED contracts on Robinhood Chain (4663).
+// AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubLpLocker.json
+// (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// These are the real ABIs: all 50 selectors across the three contracts were
-// verified present in the deployed bytecode. Do NOT regenerate these from
-// launchpad-contracts/ — that source is a LATER revision than what is deployed
-// (it adds MAX_PROTOCOL_FEE_BPS(), which does not exist on-chain and reverts).
+// Verified against the DEPLOYED bytecode at 0x402f35e11cC6E89E80EFF4205956716aCd94be04
+// on Arc testnet: all 14 function selectors present. That check is the point —
+// this repo previously shipped an ABI hand-pinned to a stale deployment, and the
+// resulting TokenLaunched topic0 mismatch made the indexer match zero launches
+// with no error at all.
 
 export const LpLockerAbi = [
   {
@@ -30,7 +32,7 @@ export const LpLockerAbi = [
       {
         "name": "",
         "type": "address",
-        "internalType": "contract IFeeLocker"
+        "internalType": "contract IBerthClubFeeLocker"
       }
     ],
     "stateMutability": "view"
@@ -172,7 +174,7 @@ export const LpLockerAbi = [
       {
         "name": "",
         "type": "tuple[]",
-        "internalType": "struct ILpLocker.Recipient[]",
+        "internalType": "struct IBerthClubLpLocker.Recipient[]",
         "components": [
           {
             "name": "addr",
@@ -201,7 +203,7 @@ export const LpLockerAbi = [
       {
         "name": "recipients_",
         "type": "tuple[]",
-        "internalType": "struct ILpLocker.Recipient[]",
+        "internalType": "struct IBerthClubLpLocker.Recipient[]",
         "components": [
           {
             "name": "addr",
@@ -389,7 +391,7 @@ export const LpLockerAbi = [
         "name": "recipients",
         "type": "tuple[]",
         "indexed": false,
-        "internalType": "struct ILpLocker.Recipient[]",
+        "internalType": "struct IBerthClubLpLocker.Recipient[]",
         "components": [
           {
             "name": "addr",

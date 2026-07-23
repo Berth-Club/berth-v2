@@ -1,0 +1,45 @@
+/**
+ * SwapRouter02 on Arc — minimal ABI.
+ *
+ * Split out of `lib/trade.ts` (which is "use client" and pulls in wagmi) so the
+ * selectors can be pinned by a runnable self-check. See `router-abi.selfcheck.ts`.
+ *
+ * ⚠️ `ExactInputSingleParams` has SEVEN fields and NO `deadline` (selector
+ * 0x04e45aaf). This is a genuine SwapRouter02, not v3-periphery's SwapRouter v1
+ * (0x414bf389, eight fields). Adding a deadline silently changes the selector
+ * and encodes a call to a function this router does not have.
+ *
+ * ⚠️ There is NO wrap, unwrap or refund leg here, and there must never be. On
+ * Arc, USDC is both the native currency and an ERC20 over one balance, so a swap
+ * is a plain `approve` + `exactInputSingle` in both directions -- never payable.
+ * The periphery's WETH9 immutable points at a stub that reverts on every call,
+ * so `unwrapWETH9`/`refundETH` would revert even though the selectors exist.
+ */
+export const swapRouterAbi = [
+  {
+    type: "function",
+    name: "exactInputSingle",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "params",
+        type: "tuple",
+        components: [
+          { name: "tokenIn", type: "address" },
+          { name: "tokenOut", type: "address" },
+          { name: "fee", type: "uint24" },
+          { name: "recipient", type: "address" },
+          { name: "amountIn", type: "uint256" },
+          { name: "amountOutMinimum", type: "uint256" },
+          { name: "sqrtPriceLimitX96", type: "uint160" },
+        ],
+      },
+    ],
+    outputs: [{ name: "amountOut", type: "uint256" }],
+  },
+] as const
+
+/** Read out of the deployed router's bytecode on Arc testnet. */
+export const EXPECTED_SELECTORS: Record<string, `0x${string}`> = {
+  exactInputSingle: "0x04e45aaf",
+}

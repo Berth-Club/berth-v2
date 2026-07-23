@@ -9,42 +9,91 @@ import {
   UniswapV3PoolAbi,
 } from "./abis/berth";
 
-// Deployed on Robinhood Chain (4663) — verified on-chain: factory <-> lockers
-// wired both ways, factoryLocked = true, LpLocker ownership renounced (0x0).
-const LAUNCH_FACTORY = "0x5DA172F7D4464DDCD43e748E9458DbdBE943c016";
-const LP_LOCKER = "0x022A133a1FDD513dC06AD3b8BaD30b454C074b4d";
-const FEE_LOCKER = "0xC4Cc6784d32a3732fB991D0E5bA5553757B54E1a";
+// Arc Testnet (5042002). The launchpad is deployed from
+// github.com/Arcane-build/arc-launchpad — that repo is the source of truth for
+// ABIs and addresses. These must match apps/web/lib/chain.ts CONTRACTS.
+function required(name: string): string {
+  const v = process.env[name];
+  if (!v) {
+    throw new Error(
+      `${name} is not set. Deploy the launchpad to Arc first, then set ` +
+        `LAUNCH_FACTORY, LP_LOCKER, FEE_LOCKER and START_BLOCK.`,
+    );
+  }
+  return v;
+}
 
-/** Block the LaunchFactory was deployed in (found by binary search). */
-const START_BLOCK = 11_105_088;
+/** Validates the shape too — a truncated paste would otherwise index nothing, silently. */
+function requiredAddress(name: string): `0x${string}` {
+  const v = required(name);
+  if (!/^0x[0-9a-fA-F]{40}$/.test(v)) {
+    throw new Error(`${name}="${v}" is not a 20-byte hex address.`);
+  }
+  return v as `0x${string}`;
+}
 
-/** Every launch emits this — carries everything a discovery row needs. */
+const LAUNCH_FACTORY = requiredAddress("LAUNCH_FACTORY");
+const LP_LOCKER = requiredAddress("LP_LOCKER");
+const FEE_LOCKER = requiredAddress("FEE_LOCKER");
+
+/**
+ * Block the LaunchFactory was deployed in. NOT optional on Arc: the chain is
+ * past 52M blocks at ~0.5s each, so starting from 0 would backfill for days.
+ */
+const START_BLOCK = Number(required("START_BLOCK"));
+
+/**
+ * Every launch emits this — carries everything a discovery row needs.
+ *
+ * ⚠️ MUST match the deployed event byte for byte. Ponder resolves the factory()
+ * patterns below by topic0, which is keccak of the TYPE list — so a single wrong
+ * type silently watches nothing. `graduationThreshold` is **uint128**, not
+ * uint256; getting that one word wrong shifts topic0 from 35551eae to 07d05491
+ * and the indexer discovers zero pools and zero tokens while still happily
+ * recording coins (those come off the full ABI, which is generated). The symptom
+ * is a launchpad with coins but no trades and no holders, and no error anywhere.
+ *
+ * Verified against a real log on chain, not against the ABI file:
+ *   eth_getLogs on the factory returns topic0
+ *   0x35551eae3963d8bb4555e823210e27db7efed291f9307cb3cac27189c7c1601e
+ */
 const tokenLaunchedEvent = parseAbiItem(
-  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, uint256 supply, int24 tickLower, int24 tickUpper, uint16 protocolFeeBps, uint256 devBuyEthIn, string name, string symbol, string metadataURI)",
+  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, uint256 supply, int24 initialTick, uint256 curveConfigId, uint128 graduationThreshold, uint16 protocolFeeBps, uint256 devBuyNativeIn, string name, string symbol, string metadataURI)",
 );
 
 export default createConfig({
   chains: {
-    robinhood: {
-      id: 4663,
-      rpc: process.env.PONDER_RPC_URL_4663 ?? "https://rpc.mainnet.chain.robinhood.com",
+    arc: {
+      id: 5042002,
+      // Deliberately NOT ponder's PONDER_RPC_URL_<chainId> convention: that bakes
+      // the chain id into the key, so every chain change strands a dead variable
+      // (this file previously carried PONDER_RPC_URL_4663). RPC_URL survives a move.
+      rpc: process.env.RPC_URL ?? "https://rpc.testnet.arc.network",
+      // Arc's public RPC collapses under ponder's default backfill concurrency
+      // -- it timed out at 73s and killed the process with an
+      // unhandledRejection. But 15/s was too far the other way: Arc produces
+      // ~0.5s blocks, so a factory deployed a day ago is already ~150k blocks
+      // back, and 15/s put the initial backfill at a 2.5-hour ETA. 50/s is the
+      // compromise that keeps it alive without the wait. A paid endpoint would
+      // let this go much higher -- see R11.
+      maxRequestsPerSecond: 50,
     },
   },
   contracts: {
     LaunchFactory: {
-      chain: "robinhood",
+      chain: "arc",
       abi: LaunchFactoryAbi,
       address: LAUNCH_FACTORY,
       startBlock: START_BLOCK,
     },
     LpLocker: {
-      chain: "robinhood",
+      chain: "arc",
       abi: LpLockerAbi,
       address: LP_LOCKER,
       startBlock: START_BLOCK,
     },
     FeeLocker: {
-      chain: "robinhood",
+      chain: "arc",
       abi: FeeLockerAbi,
       address: FEE_LOCKER,
       startBlock: START_BLOCK,
@@ -52,7 +101,7 @@ export default createConfig({
     // Factory pattern: every pool a launch creates, discovered from the `pool`
     // param of TokenLaunched. Drives price + graduation progress.
     LaunchPool: {
-      chain: "robinhood",
+      chain: "arc",
       abi: UniswapV3PoolAbi,
       address: factory({
         address: LAUNCH_FACTORY,
@@ -64,7 +113,7 @@ export default createConfig({
     // Same factory pattern, on the `token` param: the ERC20 Transfer log of every
     // launched coin. Drives the holder table + coin.holderCount.
     LaunchToken: {
-      chain: "robinhood",
+      chain: "arc",
       abi: LaunchTokenAbi,
       address: factory({
         address: LAUNCH_FACTORY,
@@ -78,10 +127,12 @@ export default createConfig({
     // change24h is a *moving* window, so it has to be recomputed as time passes
     // and not only when a swap fires — otherwise a coin that pumped and then went
     // quiet would keep showing its old number forever.
-    // ~0.1s blocks here, so 6000 blocks ≈ 10 minutes of drift at worst.
+    // Arc blocks are ~0.5s (Robinhood was ~0.1s), so the same wall-clock drift
+    // needs a FIFTH of the interval: 1200 blocks ≈ 10 minutes. Leaving this at
+    // 6000 would have silently stretched the window to ~50 minutes.
     Clock: {
-      chain: "robinhood",
-      interval: 6_000,
+      chain: "arc",
+      interval: 1_200,
       startBlock: START_BLOCK,
     },
   },

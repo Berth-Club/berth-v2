@@ -1,8 +1,7 @@
 import { formatEther, isAddress } from "viem"
 
-import { CONTRACTS, UNISWAP } from "@/lib/chain"
+import { CONTRACTS, USDC } from "@/lib/chain"
 import { FACE_OPTIONS, type Coin } from "@/lib/coin"
-import { getEthUsd } from "@/lib/prices"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
 
@@ -22,13 +21,16 @@ type IndexedCoin = {
   tickUpper: number
   /** Coin-space at launch, raw pool tick once swapCount > 0. See coinSpaceTick. */
   tick: number | null
-  volumeWeth: string
+  volumeNative: string
   swapCount: number
   lastTradeAt: string | null
   createdAt: string
   // Landing in the indexer separately — absent on older builds, see coinsQuery.
   holderCount?: number | null
   change24h?: number | null
+  /** 0-1 toward the USDC graduation threshold. From the factory, not from ticks. */
+  curve?: number | null
+  graduated?: boolean | null
 }
 
 /**
@@ -41,8 +43,8 @@ const coinsQuery = (extended: boolean) => `{
   coins(orderBy: "createdAt", orderDirection: "desc", limit: 100) {
     items {
       address creator tokenId pool name symbol metadataURI
-      tickLower tickUpper tick
-      volumeWeth swapCount lastTradeAt createdAt
+      tickLower tickUpper tick curve graduated
+      volumeNative swapCount lastTradeAt createdAt
       ${extended ? "holderCount change24h" : ""}
     }
   }
@@ -50,7 +52,7 @@ const coinsQuery = (extended: boolean) => `{
 
 const SWAPS_QUERY = `query ($coin: String!) {
   swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "desc", limit: 20) {
-    items { id isBuy amountWeth timestamp txHash }
+    items { id isBuy amountNative timestamp txHash }
   }
 }`
 
@@ -73,15 +75,14 @@ export type Captain = {
   coinsCreated: number
   buys: number
   sells: number
-  volumeWeth: number
-  /** null = ETH/USD feed unreachable. Rank on volumeWeth, which is always real. */
+  volumeNative: number
   volumeUsd: number | null
   firstSeenAt: number
 }
 
 const CAPTAINS_QUERY = `{
-  captains(orderBy: "volumeWeth", orderDirection: "desc", limit: 50) {
-    items { address coinsCreated buys sells volumeWeth firstSeenAt }
+  captains(orderBy: "volumeNative", orderDirection: "desc", limit: 50) {
+    items { address coinsCreated buys sells volumeNative firstSeenAt }
   }
 }`
 
@@ -90,7 +91,7 @@ type RawCaptain = {
   coinsCreated: number
   buys: number
   sells: number
-  volumeWeth: string
+  volumeNative: string
   firstSeenAt: string
 }
 
@@ -98,16 +99,16 @@ type RawCaptain = {
 export async function fetchCaptains(): Promise<Captain[] | null> {
   const data = await gql<{ captains: { items: RawCaptain[] } }>(CAPTAINS_QUERY)
   if (!data?.captains?.items) return null
-  const ethUsd = await getEthUsd()
   return data.captains.items.map((c) => {
-    const volumeWeth = Number(formatEther(BigInt(c.volumeWeth)))
+    const volumeNative = Number(formatEther(BigInt(c.volumeNative)))
     return {
       address: c.address,
       coinsCreated: c.coinsCreated,
       buys: c.buys,
       sells: c.sells,
-      volumeWeth,
-      volumeUsd: ethUsd === null ? null : volumeWeth * ethUsd.usd,
+      volumeNative,
+      // On Arc the quote asset IS the dollar. No rate, no conversion, no staleness.
+      volumeUsd: volumeNative,
       firstSeenAt: Number(c.firstSeenAt),
     }
   })
@@ -131,8 +132,8 @@ export async function fetchCoinsByCreator(address: string): Promise<Coin[] | nul
       coins(where: { creator: $creator }, orderBy: "createdAt", orderDirection: "desc", limit: 50) {
         items {
           address creator tokenId pool name symbol metadataURI
-          tickLower tickUpper tick
-          volumeWeth swapCount lastTradeAt createdAt
+          tickLower tickUpper tick curve graduated
+          volumeNative swapCount lastTradeAt createdAt
           holderCount change24h
         }
       }
@@ -140,8 +141,7 @@ export async function fetchCoinsByCreator(address: string): Promise<Coin[] | nul
     { creator: address.toLowerCase() }
   )
   if (!data?.coins?.items) return null
-  const ethUsd = await getEthUsd()
-  return data.coins.items.map((c) => toCoin(c, ethUsd?.usd ?? null))
+  return data.coins.items.map(toCoin)
 }
 
 export type IndexerStatus = {
@@ -156,7 +156,7 @@ export type IndexerStatus = {
 /**
  * How far behind the indexer is.
  *
- * Measured in TIME, not blocks: chain 4663 produces a block every ~0.098s, so
+ * Measured in TIME, not blocks: Arc produces a block every ~0.5s, so
  * "11,000 blocks behind" is meaningless to a reader while "18 minutes behind"
  * is not. Lag comes from the indexed block's own timestamp, so it needs no
  * extra RPC round-trip.
@@ -170,7 +170,7 @@ export async function fetchIndexerStatus(): Promise<IndexerStatus | null> {
     const res = await fetch(`${INDEXER_URL}/status`, { cache: "no-store" })
     if (!res.ok) return null
     const json = await res.json()
-    const block = json?.robinhood?.block
+    const block = json?.arc?.block
     if (!block?.number || !block?.timestamp) return null
     // Clamp at 0: a chain timestamp can sit marginally ahead of local clock.
     const lagSeconds = Math.max(0, Math.floor(Date.now() / 1000) - Number(block.timestamp))
@@ -213,28 +213,29 @@ async function gql<T>(query: string, variables?: Record<string, unknown>): Promi
 
 /**
  * Uniswap v3 tick -> price, for a tick already in COIN SPACE (see
- * `coinSpaceTick`). Both sides are 18dp, so 1.0001^tick is WETH per whole coin.
+ * `coinSpaceTick`). Both sides are 18dp, so 1.0001^tick is NATIVE per whole coin.
  *
  * Do NOT hand this a raw pool tick — pass it through `coinSpaceTick` first, or
  * you get the reciprocal price (off by ~1e22 for a real launch range).
  */
-export function tickToPriceWeth(tick: number): number {
+export function tickToPriceNative(tick: number): number {
   return Math.pow(1.0001, tick)
 }
 
 /**
  * Uniswap sorts pool tokens by address, and the DEPLOYED factory does not force
  * the coin to token0 — it mirrors the tick range when the coin sorts above
- * WETH9. So ordering is derived from the addresses (deterministic, no schema
+ * WRAPPED_NATIVE. So ordering is derived from the addresses (deterministic, no schema
  * coupling) rather than assumed.
  *
- * Verified on chain 4663 for $SMOKE (0x4b70e9…, pool 0x12ff27…):
- *   token0 = 0x0Bd7D308… (WETH9), token1 = 0x4b70e93E… (the coin)
+ * Verified on Robinhood (4663) for $SMOKE (0x4b70e9…, pool 0x12ff27…). The
+ * tick maths is chain-independent; only the addresses moved:
+ *   token0 = 0x0Bd7D308… (WRAPPED_NATIVE), token1 = 0x4b70e93E… (the coin)
  *   slot0.tick = +268600, position range +199400/+268600
  *   but TokenLaunched emitted tickLower -268600 / tickUpper -199400.
  */
 export function coinIsToken0(coinAddress: string): boolean {
-  return BigInt(coinAddress) < BigInt(UNISWAP.weth9)
+  return BigInt(coinAddress) < BigInt(USDC.address)
 }
 
 /** The fields of a coin row needed to place its price on the curve. */
@@ -246,7 +247,7 @@ type TickSource = {
 }
 
 /**
- * The tick as if the coin were token0 — the space where 1.0001^tick is WETH per
+ * The tick as if the coin were token0 — the space where 1.0001^tick is NATIVE per
  * coin and the launch event's tickLower/tickUpper already live.
  *
  * The indexer's `tick` column changes meaning: at launch it's seeded from the
@@ -262,7 +263,7 @@ export function coinSpaceTick(c: TickSource): number {
   // Do NOT negate it here for token1 coins. This function used to, back when the
   // column held a raw pool tick, and the two fixes composed into a double
   // negation: -(-268591) = +268591, so 1.0001^tick returned ~$843 TRILLION per
-  // token and curve clamped to 1, badging a coin "GRADUATED" off a 0.0001 Ξ buy.
+  // token and curve clamped to 1, badging a coin "GRADUATED" off a 0.0001 USDC buy.
   //
   // It hid because swapCount === 0 short-circuited to tickLower — every coin had
   // zero trades, so the wrong branch was unreachable until the first real swap.
@@ -310,22 +311,30 @@ function short(addr: string): string {
   return `${addr.slice(0, 5)}…${addr.slice(-5)}`
 }
 
-/** `ethUsd` is null when the price feed is unreachable — USD fields go null, not fake. */
-function toCoin(c: IndexedCoin, ethUsd: number | null): Coin {
+/**
+ * The USD fields here are EXACT, not derived. Arc's quote asset is USDC, so
+ * price-in-quote already IS price-in-dollars — there is no rate to fetch, no
+ * cache to go stale, and no fallback to invent. That is why they are plain
+ * numbers rather than `number | null` as they were on Robinhood.
+ */
+function toCoin(c: IndexedCoin): Coin {
   const tick = coinSpaceTick(c)
-  const priceWeth = tickToPriceWeth(tick)
-  const marketCapWeth = priceWeth * SUPPLY_TOKENS
-  const volWeth = Number(formatEther(BigInt(c.volumeWeth)))
+  const priceNative = tickToPriceNative(tick)
+  const marketCapNative = priceNative * SUPPLY_TOKENS
+  const volNative = Number(formatEther(BigInt(c.volumeNative)))
   // The creator's face + lore, read back out of the launch event. Falls back to
   // a derived face for coins launched before metadata was inlined (e.g. $SMOKE,
   // whose URI is literally "ipfs://placeholder").
   const meta = parseMetadata(c.metadataURI)
 
-  // curve/graduated are recomputed rather than read off the row: the indexer
-  // still derives them from a raw pool tick against coin-space bounds, which
-  // pins any traded coin to curve=1 + graduated. In coin-space the direction is
-  // uniform for both orderings — buyers always walk the tick up toward tickUpper.
-  const curve = Math.min(1, Math.max(0, (tick - c.tickLower) / (c.tickUpper - c.tickLower)))
+  // curve/graduated are taken from the indexer, NOT recomputed here.
+  //
+  // They used to be re-derived from tick position within [tickLower, tickUpper],
+  // which is simply the wrong measure: graduation is an owner-set USDC threshold
+  // on the position's paired principal, and the range runs to MAX_USABLE_TICK.
+  // A coin that has genuinely graduated sits ~2.4% along its tick range, so that
+  // bar would read 2% at the finish line and `graduated` would never flip.
+  // The indexer now reads progressBps from the factory's own graduationStatus().
 
   return {
     address: c.address,
@@ -334,16 +343,16 @@ function toCoin(c: IndexedCoin, ethUsd: number | null): Coin {
     ticker: c.symbol,
     creator: short(c.creator),
     age: ago(Number(c.createdAt)),
-    priceUsd: ethUsd === null ? null : priceWeth * ethUsd,
+    priceUsd: priceNative,
     // Real and nullable: the indexer returns null when there's no ~24h-old
     // trade to compare against. Never fake a 0 — null renders a neutral "—".
     change24h: c.change24h ?? null,
-    marketCapUsd: ethUsd === null ? null : marketCapWeth * ethUsd,
-    marketCapWeth,
-    curve: c.tickUpper > c.tickLower ? curve : 0,
-    graduated: tick >= c.tickUpper,
+    marketCapUsd: marketCapNative,
+    marketCapNative,
+    curve: c.curve ?? 0,
+    graduated: c.graduated ?? false,
     lore: meta.description ?? "",
-    vol: ethUsd === null ? null : volWeth > 0 ? `$${Math.round(volWeth * ethUsd).toLocaleString()}` : "$0",
+    vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
   }
 }
 
@@ -359,8 +368,7 @@ export async function fetchCoins(): Promise<Coin[] | null> {
   const items = data?.coins?.items
   if (!items) return null
 
-  const ethUsd = await getEthUsd()
-  return items.map((c) => toCoin(c, ethUsd?.usd ?? null))
+  return items.map(toCoin)
 }
 
 export async function fetchCoin(address: string): Promise<Coin | null> {
@@ -372,7 +380,7 @@ export type Trade = {
   /** `${txHash}-${logIndex}` — one tx can hold two swaps, so this is the row key. */
   id: string
   kind: "buy" | "sell"
-  /** WETH in/out of the swap, preformatted. */
+  /** NATIVE in/out of the swap, preformatted. */
   eth: string
   ago: string
   txHash: string
@@ -381,7 +389,7 @@ export type Trade = {
 type IndexedSwap = {
   id: string
   isBuy: boolean
-  amountWeth: string
+  amountNative: string
   timestamp: string
   txHash: string
 }
@@ -407,7 +415,7 @@ export async function fetchTrades(address: string): Promise<Trade[] | null> {
     id: s.id,
     kind: s.isBuy ? ("buy" as const) : ("sell" as const),
     // Pool amounts are signed from the pool's perspective; we only want size.
-    eth: Number(formatEther(abs(BigInt(s.amountWeth)))).toLocaleString("en-US", {
+    eth: Number(formatEther(abs(BigInt(s.amountNative)))).toLocaleString("en-US", {
       maximumFractionDigits: 4,
     }),
     ago: ago(Number(s.timestamp)),
@@ -419,9 +427,9 @@ export async function fetchTrades(address: string): Promise<Trade[] | null> {
 export type PricePoint = {
   /** Unix seconds. */
   t: number
-  /** null when the ETH/USD feed is unreachable — the line still plots, in WETH. */
+  /** null when the ETH/USD feed is unreachable — the line still plots, in NATIVE. */
   usd: number | null
-  weth: number
+  native: number
 }
 
 /**
@@ -450,12 +458,11 @@ export async function fetchPriceHistory(address: string): Promise<PricePoint[] |
   const items = data?.swaps?.items
   if (!items) return null
 
-  const ethUsd = await getEthUsd()
   return items.map((s) => {
     // swap.tick is already coin-space (the indexer normalises on write), so
-    // 1.0001^tick is WETH per coin directly. Do NOT re-negate — see coinSpaceTick.
-    const weth = tickToPriceWeth(s.tick)
-    return { t: Number(s.timestamp), weth, usd: ethUsd ? weth * ethUsd.usd : null }
+    // 1.0001^tick is NATIVE per coin directly. Do NOT re-negate — see coinSpaceTick.
+    const native = tickToPriceNative(s.tick)
+    return { t: Number(s.timestamp), native, usd: native }
   })
 }
 

@@ -4,6 +4,7 @@ import { TokenCard, ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
+import { arc } from "@/lib/chain"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -34,14 +35,14 @@ export default async function HarborPage() {
           title: `Indexed to block ${status.block.toLocaleString()}. Coins launched more recently than this aren't here yet.`,
         }
       : {
-          label: "● live · chain 4663",
+          label: `● live · chain ${arc.id}`,
           style: GREEN,
           title: status
             ? `Indexed to block ${status.block.toLocaleString()} (${formatLag(status.lagSeconds)})`
-            : "Indexed from chain 4663",
+            : `Indexed from chain ${arc.id}`,
         }
 
-  const king = coins?.length ? [...coins].sort((a, b) => b.marketCapWeth - a.marketCapWeth)[0]! : null
+  const king = coins?.length ? [...coins].sort((a, b) => b.marketCapNative - a.marketCapNative)[0]! : null
   const fleet = king && coins ? coins.filter((c) => c.address !== king.address) : []
 
   return (

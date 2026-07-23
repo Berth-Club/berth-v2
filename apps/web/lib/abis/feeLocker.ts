@@ -1,9 +1,11 @@
-// AUTO-SOURCED from the DEPLOYED contracts on Robinhood Chain (4663).
+// AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubFeeLocker.json
+// (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// These are the real ABIs: all 50 selectors across the three contracts were
-// verified present in the deployed bytecode. Do NOT regenerate these from
-// launchpad-contracts/ — that source is a LATER revision than what is deployed
-// (it adds MAX_PROTOCOL_FEE_BPS(), which does not exist on-chain and reverts).
+// Verified against the DEPLOYED bytecode at 0x3bC8f037691Ce1d28c0bB224BD33563b49F99dE8
+// on Arc testnet: all 4 function selectors present. That check is the point —
+// this repo previously shipped an ABI hand-pinned to a stale deployment, and the
+// resulting TokenLaunched topic0 mismatch made the indexer match zero launches
+// with no error at all.
 
 export const FeeLockerAbi = [
   {

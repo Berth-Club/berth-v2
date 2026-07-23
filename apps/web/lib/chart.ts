@@ -7,7 +7,7 @@
 // must not pull in node builtins.
 
 /** Minimal shape the geometry needs — mirrors indexer.ts PricePoint. */
-export type Vertex = { t: number; weth: number }
+export type Vertex = { t: number; native: number }
 
 export type Geometry = { line: string; area: string }
 
@@ -23,7 +23,7 @@ export function chartGeometry(points: Vertex[], w: number, h: number): Geometry 
 
   const first = points[0]!
   const last = points[points.length - 1]!
-  const ys = points.map((p) => p.weth)
+  const ys = points.map((p) => p.native)
   const lo = Math.min(...ys)
   const hi = Math.max(...ys)
 
@@ -38,7 +38,7 @@ export function chartGeometry(points: Vertex[], w: number, h: number): Geometry 
     // Space by time when the trades span any real duration, else evenly —
     // otherwise a burst of same-second trades would stack on a single x.
     const x = span > 0 ? ((p.t - first.t) / span) * w : (i / (points.length - 1)) * w
-    return [x, h - norm(p.weth) * (h - 20) - 10] as const
+    return [x, h - norm(p.native) * (h - 20) - 10] as const
   })
 
   const line = pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
