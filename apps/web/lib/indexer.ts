@@ -1,6 +1,18 @@
-import { formatEther, isAddress } from "viem"
+import { formatUnits, isAddress } from "viem"
 
-import { CONTRACTS, USDC } from "@/lib/chain"
+import { CONTRACTS, USDC, priceUsdFromTick } from "@/lib/chain"
+
+/**
+ * Native (quote-asset) base units -> whole USDC.
+ *
+ * The quote asset is the 6-decimal USDC predeploy, NOT an 18-decimal wrapper, so
+ * every `amountNative` / `volumeNative` off the indexer is 6dp. formatEther (18)
+ * divided a ~7 USDC swap down to 0.000000000007, which rounded to "0 USDC" in
+ * the trade feed and the volume figures. There is no ether on this chain.
+ */
+function nativeToUsdc(base: bigint | string): number {
+  return Number(formatUnits(BigInt(base), USDC.decimals))
+}
 import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
@@ -100,7 +112,7 @@ export async function fetchCaptains(): Promise<Captain[] | null> {
   const data = await gql<{ captains: { items: RawCaptain[] } }>(CAPTAINS_QUERY)
   if (!data?.captains?.items) return null
   return data.captains.items.map((c) => {
-    const volumeNative = Number(formatEther(BigInt(c.volumeNative)))
+    const volumeNative = nativeToUsdc(c.volumeNative)
     return {
       address: c.address,
       coinsCreated: c.coinsCreated,
@@ -212,14 +224,19 @@ async function gql<T>(query: string, variables?: Record<string, unknown>): Promi
 }
 
 /**
- * Uniswap v3 tick -> price, for a tick already in COIN SPACE (see
- * `coinSpaceTick`). Both sides are 18dp, so 1.0001^tick is NATIVE per whole coin.
+ * Coin-space tick -> dollar price of one whole coin.
  *
- * Do NOT hand this a raw pool tick — pass it through `coinSpaceTick` first, or
- * you get the reciprocal price (off by ~1e22 for a real launch range).
+ * Delegates to the single canonical implementation in chain.ts, which pins the
+ * decimal boundary in chain.selfcheck.ts. This used to be a second copy that
+ * returned `1.0001^tick` on the assumption both sides were 18dp -- true for the
+ * old wrapper, wrong for the 6-decimal USDC predeploy. It was off by exactly
+ * 1e12, so a $4,923 market cap rendered as $0.0000000000000000000049.
+ *
+ * Do NOT hand this a raw pool tick -- pass it through `coinSpaceTick` first, or
+ * you get the reciprocal price.
  */
 export function tickToPriceNative(tick: number): number {
-  return Math.pow(1.0001, tick)
+  return priceUsdFromTick(tick)
 }
 
 /**
@@ -321,7 +338,7 @@ function toCoin(c: IndexedCoin): Coin {
   const tick = coinSpaceTick(c)
   const priceNative = tickToPriceNative(tick)
   const marketCapNative = priceNative * SUPPLY_TOKENS
-  const volNative = Number(formatEther(BigInt(c.volumeNative)))
+  const volNative = nativeToUsdc(c.volumeNative)
   // The creator's face + lore, read back out of the launch event. Falls back to
   // a derived face for coins launched before metadata was inlined (e.g. $SMOKE,
   // whose URI is literally "ipfs://placeholder").
@@ -415,7 +432,7 @@ export async function fetchTrades(address: string): Promise<Trade[] | null> {
     id: s.id,
     kind: s.isBuy ? ("buy" as const) : ("sell" as const),
     // Pool amounts are signed from the pool's perspective; we only want size.
-    eth: Number(formatEther(abs(BigInt(s.amountNative)))).toLocaleString("en-US", {
+    eth: nativeToUsdc(abs(BigInt(s.amountNative))).toLocaleString("en-US", {
       maximumFractionDigits: 4,
     }),
     ago: ago(Number(s.timestamp)),
@@ -504,7 +521,8 @@ export async function fetchHolders(address: string): Promise<Holders | null> {
   return {
     rows: items.map((h) => ({
       address: h.address,
-      pct: (Number(formatEther(BigInt(h.balance))) / SUPPLY_TOKENS) * 100,
+      // Holder balance is a launch token: 18dp, genuinely. (Not the 6dp quote asset.)
+      pct: (Number(formatUnits(BigInt(h.balance), 18)) / SUPPLY_TOKENS) * 100,
       locked: locked.has(h.address.toLowerCase()),
     })),
     count: meta?.holderCount ?? null,
