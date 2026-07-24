@@ -40,11 +40,39 @@ export function LaunchWizard() {
   const [twitter, setTwitter] = React.useState("")
   const [telegram, setTelegram] = React.useState("")
   const [website, setWebsite] = React.useState("")
+  const [dragging, setDragging] = React.useState(false)
+
+  // Accept the first dropped/picked image whose type is one the pin route allows.
   const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
   const { connected, wrongNetwork, switchToArc, connect, getAccessToken } = useWallet()
   const upload = useImageUpload(getAccessToken)
+
+  // If the creator picked art before connecting, the pin failed on auth. Retry
+  // it ONCE the moment a wallet connects, so they don't have to re-pick. The ref
+  // stops an infinite loop if a token genuinely never arrives — after one auto
+  // attempt the "Retry upload" button takes over.
+  const retryUpload = upload.retry
+  const autoRetried = React.useRef(false)
+  React.useEffect(() => {
+    if (!connected) {
+      autoRetried.current = false
+      return
+    }
+    if (upload.status === "error" && upload.needsAuth && !autoRetried.current) {
+      autoRetried.current = true
+      retryUpload()
+    }
+  }, [connected, upload.status, upload.needsAuth, retryUpload])
+
+  const acceptFile = React.useCallback(
+    (files: FileList | null) => {
+      const f = files?.[0]
+      if (f && /^image\/(png|jpeg|webp|gif)$/.test(f.type)) upload.pick(f)
+    },
+    [upload]
+  )
 
   const valueWei = parseUsdcInput(devBuy)
   const tickerUp = normalizeTicker(ticker) || "TICKER"
@@ -207,7 +235,20 @@ export function LaunchWizard() {
           )}
 
           <Field label="Coin art">
-            <div className="flex items-center gap-3">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragging(false)
+                acceptFile(e.dataTransfer.files)
+              }}
+              className="rounded-btn flex items-center gap-3 border border-dashed p-2.5 transition-colors"
+              style={{ borderColor: dragging ? "#A3E635" : "#263A28", background: dragging ? "rgba(163,230,53,.06)" : "transparent" }}
+            >
               {/* Preview is the LOCAL file (object URL), not the gateway — a
                   just-pinned CID can briefly 404 and would flash the fallback. */}
               <div
@@ -240,8 +281,7 @@ export function LaunchWizard() {
                     accept="image/png,image/jpeg,image/webp,image/gif"
                     className="hidden"
                     onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) upload.pick(f)
+                      acceptFile(e.target.files)
                       e.target.value = "" // allow re-picking the same file
                     }}
                   />
@@ -250,6 +290,16 @@ export function LaunchWizard() {
                   <p className="text-mist text-[13px]">Pinning to IPFS…</p>
                 ) : upload.status === "done" ? (
                   <p className="text-lime text-[13px]">Pinned ✓ — this is your coin&apos;s face.</p>
+                ) : upload.status === "error" && upload.needsAuth ? (
+                  // Not an outage — just not signed in (or a token glitch). If a
+                  // wallet is connected, offer a retry; otherwise offer connect.
+                  <button
+                    type="button"
+                    onClick={() => (connected ? upload.retry() : connect())}
+                    className="text-lime text-[13px] underline underline-offset-2"
+                  >
+                    {connected ? "Retry upload →" : "Connect your wallet to upload art →"}
+                  </button>
                 ) : upload.status === "error" && !upload.outage ? (
                   <p className="text-[13px]" style={{ color: "#F87171" }}>
                     {upload.error}
@@ -263,6 +313,7 @@ export function LaunchWizard() {
                 )}
               </div>
             </div>
+            <p className="text-faint mt-1.5 text-[11px]">Drag an image here, or use the button.</p>
           </Field>
 
           <Field label="Fallback face">

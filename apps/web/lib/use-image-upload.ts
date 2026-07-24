@@ -14,6 +14,9 @@ export type ImageUpload = {
   /** true when the last failure was a pin OUTAGE (or uploads are unavailable) —
    *  the wizard offers a degraded emoji-only launch. false = a bad file to fix. */
   outage: boolean
+  /** true when the ONLY thing missing is a signed-in wallet — distinct from a
+   *  genuine pin outage, so the UI can say "connect" instead of "unavailable". */
+  needsAuth: boolean
   error: string | null
   /** Whether uploads can be authenticated at all (false without Privy). */
   available: boolean
@@ -21,6 +24,9 @@ export type ImageUpload = {
   pick: (file: File) => void
   /** Clear the current image (used by "replace"). Invalidates any in-flight upload. */
   reset: () => void
+  /** Re-attempt the pin for the already-picked file — e.g. after the wallet
+   *  connects. No-op if nothing is picked. */
+  retry: () => void
 }
 
 /**
@@ -35,9 +41,11 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
   const [imageUri, setImageUri] = React.useState<string | null>(null)
   const [status, setStatus] = React.useState<UploadStatus>("idle")
   const [outage, setOutage] = React.useState(false)
+  const [needsAuth, setNeedsAuth] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const objectUrl = React.useRef<string | null>(null)
   const reqId = React.useRef(0)
+  const lastFile = React.useRef<File | null>(null)
 
   const clearPreview = React.useCallback(() => {
     if (objectUrl.current) {
@@ -48,23 +56,23 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
 
   const reset = React.useCallback(() => {
     reqId.current++ // invalidate any in-flight upload
+    lastFile.current = null
     clearPreview()
     setPreviewUrl(null)
     setImageUri(null)
     setStatus("idle")
     setOutage(false)
+    setNeedsAuth(false)
     setError(null)
   }, [clearPreview])
 
-  const pick = React.useCallback(
-    (file: File) => {
-      clearPreview()
-      const url = URL.createObjectURL(file)
-      objectUrl.current = url
-      const id = ++reqId.current
-      setPreviewUrl(url)
+  // The actual pin, shared by pick() and retry(). `id` guards against a stale
+  // in-flight response overwriting a newer pick/reset.
+  const runUpload = React.useCallback(
+    (file: File, id: number) => {
       setImageUri(null)
       setOutage(false)
+      setNeedsAuth(false)
       setError(null)
       setStatus("uploading")
 
@@ -74,8 +82,12 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
           if (!token) {
             if (reqId.current === id) {
               setStatus("error")
-              setOutage(true) // can't auth -> treat as unavailable -> degraded allowed
-              setError("Sign in to upload art.")
+              // Not a real outage — the pin route is fine, the user just isn't
+              // signed in. Degraded launch is still allowed, but the message
+              // should say "connect", not "unavailable".
+              setNeedsAuth(true)
+              setOutage(true)
+              setError("Connect your wallet to upload art.")
             }
             return
           }
@@ -111,8 +123,29 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
         }
       })()
     },
-    [getAccessToken, clearPreview]
+    [getAccessToken]
   )
+
+  const pick = React.useCallback(
+    (file: File) => {
+      clearPreview()
+      const url = URL.createObjectURL(file)
+      objectUrl.current = url
+      lastFile.current = file
+      const id = ++reqId.current
+      setPreviewUrl(url)
+      runUpload(file, id)
+    },
+    [clearPreview, runUpload]
+  )
+
+  // Re-pin the same file, e.g. once the wallet connects after a needsAuth fail.
+  const retry = React.useCallback(() => {
+    const file = lastFile.current
+    if (!file) return
+    const id = ++reqId.current
+    runUpload(file, id)
+  }, [runUpload])
 
   React.useEffect(() => () => clearPreview(), [clearPreview])
 
@@ -123,7 +156,9 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
     outage,
     error,
     available: !!getAccessToken,
+    needsAuth,
     pick,
     reset,
+    retry,
   }
 }
