@@ -9,6 +9,12 @@
 export type Coin = {
   address: string
   emoji: string
+  /**
+   * Uploaded coin art as `ipfs://CID`, or null when the coin has none (an older
+   * coin, a placeholder, the degraded emoji-only path). null renders the emoji
+   * face — only a real ipfs:// upload counts as an image.
+   */
+  image: string | null
   name: string
   ticker: string
   creator: string

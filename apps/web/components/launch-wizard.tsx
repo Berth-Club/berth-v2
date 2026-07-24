@@ -7,7 +7,9 @@ import { cn } from "@workspace/ui/lib/utils"
 import { FACE_OPTIONS } from "@/lib/coin"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
+import { useImageUpload } from "@/lib/use-image-upload"
 import { explorerTx } from "@/lib/chain"
+import { CoinAvatar } from "@/components/coin-avatar"
 import {
   DEV_BUY_CAP_USDC,
   buildConfig,
@@ -38,7 +40,8 @@ export function LaunchWizard() {
   const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
-  const { connected, wrongNetwork, switchToArc, connect } = useWallet()
+  const { connected, wrongNetwork, switchToArc, connect, getAccessToken } = useWallet()
+  const upload = useImageUpload(getAccessToken)
 
   const valueWei = parseUsdcInput(devBuy)
   const tickerUp = normalizeTicker(ticker) || "TICKER"
@@ -52,9 +55,9 @@ export function LaunchWizard() {
   const config = React.useMemo(
     () =>
       name.trim() && normalizeTicker(ticker)
-        ? buildConfig(name, ticker, lore, emoji)
+        ? buildConfig(name, ticker, lore, emoji, upload.imageUri ?? undefined)
         : undefined,
-    [name, ticker, lore, emoji]
+    [name, ticker, lore, emoji, upload.imageUri]
   )
 
   // The simulation is a full deploy eth_call — only run it on the review step,
@@ -68,7 +71,13 @@ export function LaunchWizard() {
   const devPct = (devUsdc / launch.capUsdc) * launch.capPct
   const badDevBuy = valueWei === undefined
 
-  const canAdvance = !!config && !overCap && !badDevBuy
+  // The image is part of metadataURI, so a pin in flight means the config (and
+  // thus the mined address) is not final yet — block until it settles. An
+  // upload OUTAGE or unconfigured pinning unlocks the degraded emoji-only launch
+  // rather than trapping the user (R6).
+  const degradedAllowed = upload.outage || !upload.available
+  const imageBlocking = upload.status === "uploading" || (!upload.imageUri && !degradedAllowed)
+  const canAdvance = !!config && !overCap && !badDevBuy && !imageBlocking
 
   const gate = !connected
     ? { label: "Connect wallet to launch", act: connect }
@@ -182,7 +191,66 @@ export function LaunchWizard() {
             )
           )}
 
-          <Field label="Pick a face">
+          <Field label="Coin art">
+            <div className="flex items-center gap-3">
+              {/* Preview is the LOCAL file (object URL), not the gateway — a
+                  just-pinned CID can briefly 404 and would flash the fallback. */}
+              <div
+                className="bg-deep rounded-chip relative grid size-16 shrink-0 place-items-center overflow-hidden"
+                style={{ border: "1px solid #263A28" }}
+              >
+                {upload.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={upload.previewUrl}
+                    alt="coin art preview"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl" aria-hidden>
+                    {emoji}
+                  </span>
+                )}
+                {upload.status === "uploading" && (
+                  <span className="text-foam absolute inset-0 grid place-items-center bg-black/50 text-[11px] font-bold">
+                    pinning…
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col items-start gap-1.5">
+                <label className="btn-deck btn-quiet rounded-btn cursor-pointer px-3.5 py-2 text-xs">
+                  {upload.imageUri ? "Replace image" : "Upload image"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) upload.pick(f)
+                      e.target.value = "" // allow re-picking the same file
+                    }}
+                  />
+                </label>
+                {upload.status === "uploading" ? (
+                  <p className="text-mist text-[13px]">Pinning to IPFS…</p>
+                ) : upload.status === "done" ? (
+                  <p className="text-lime text-[13px]">Pinned ✓ — this is your coin&apos;s face.</p>
+                ) : upload.status === "error" && !upload.outage ? (
+                  <p className="text-[13px]" style={{ color: "#F87171" }}>
+                    {upload.error}
+                  </p>
+                ) : upload.status === "error" && upload.outage ? (
+                  <p className="text-gold text-[13px]">
+                    Art upload is unavailable right now — you can launch with a face instead.
+                  </p>
+                ) : (
+                  <p className="text-mist text-[13px]">PNG, JPEG, WebP or GIF. Becomes your coin&apos;s face.</p>
+                )}
+              </div>
+            </div>
+          </Field>
+
+          <Field label="Fallback face">
             <div className="grid grid-cols-8 gap-2">
               {FACE_OPTIONS.map((e) => (
                 <button
@@ -217,7 +285,19 @@ export function LaunchWizard() {
       {step === 1 && (
         <div className="flex flex-col gap-4">
           <div className="rounded-panel bg-hull flex flex-col items-center gap-2 border p-6 text-center" style={{ borderRadius: 20 }}>
-            <span className="text-5xl" aria-hidden>{emoji}</span>
+            {upload.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={upload.previewUrl}
+                alt={`${tickerUp} art`}
+                className="size-20 rounded-2xl object-cover"
+                style={{ border: "1px solid #263A28" }}
+              />
+            ) : upload.imageUri ? (
+              <CoinAvatar image={upload.imageUri} emoji={emoji} ticker={tickerUp} size={80} className="rounded-2xl" style={{ border: "1px solid #263A28" }} />
+            ) : (
+              <span className="text-5xl" aria-hidden>{emoji}</span>
+            )}
             <div className="font-display text-xl">{name}</div>
             <div className="text-mist tabular text-sm">${tickerUp}</div>
             {lore && <p className="text-mist max-w-sm text-[13px]">{lore}</p>}
@@ -338,7 +418,26 @@ export function LaunchWizard() {
       {/* step 3 — success */}
       {step === 2 && (
         <div className="rounded-panel bg-hull flex flex-col items-center gap-3 border p-12 text-center" style={{ borderRadius: 20 }}>
-          <span className="animate-bob text-6xl" aria-hidden>{emoji}</span>
+          {upload.previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={upload.previewUrl}
+              alt={`${tickerUp} art`}
+              className="animate-bob size-24 rounded-2xl object-cover"
+              style={{ border: "1px solid #263A28" }}
+            />
+          ) : upload.imageUri ? (
+            <CoinAvatar
+              image={upload.imageUri}
+              emoji={emoji}
+              ticker={tickerUp}
+              size={96}
+              className="animate-bob rounded-2xl"
+              style={{ border: "1px solid #263A28" }}
+            />
+          ) : (
+            <span className="animate-bob text-6xl" aria-hidden>{emoji}</span>
+          )}
           <h2 className="font-display text-2xl">${tickerUp} has left the shipyard</h2>
           <p className="text-mist text-sm">Block confirmed. Calm seas and green candles, captain.</p>
           <div className="mt-2 flex gap-3">
