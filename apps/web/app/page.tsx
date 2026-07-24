@@ -4,9 +4,10 @@ import Link from "next/link"
 import { ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
-import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
+import { fetchCoins, fetchIndexerStatus, fetchStats, fetchRecentTrades, formatLag } from "@/lib/indexer"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { Harbor } from "@/components/harbor"
+import { TradeFeed } from "@/components/trade-feed"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -25,7 +26,12 @@ export default async function HarborPage() {
   // different facts and the page says which; it never fills the gap with
   // invented coins. A "demo data" pill in the corner was no match for a full
   // grid of plausible fake coins with prices and graduation meters.
-  const [coins, status] = await Promise.all([fetchCoins(), fetchIndexerStatus()])
+  const [coins, status, stats, feed] = await Promise.all([
+    fetchCoins(),
+    fetchIndexerStatus(),
+    fetchStats(),
+    fetchRecentTrades(),
+  ])
 
   // Shown ONLY when the page is incomplete. "Live · chain 5042002" and a block
   // height are developer status: they told a visitor nothing they could act on,
@@ -66,6 +72,18 @@ export default async function HarborPage() {
           <ShipMascot />
         </div>
       </section>
+
+      {/* headline totals — the site reads busier the instant these are non-zero */}
+      {stats && (
+        <section
+          className="rounded-card mb-6 grid gap-px overflow-hidden text-center"
+          style={{ gridTemplateColumns: "repeat(3,1fr)", background: "#263A28", border: "1px solid #263A28" }}
+        >
+          <StatCell label="Ships launched" value={stats.coins.toLocaleString()} />
+          <StatCell label="Trades" value={stats.trades.toLocaleString()} />
+          <StatCell label="Captains" value={stats.captains.toLocaleString()} />
+        </section>
+      )}
 
       {/* flagship — king of the hill. Only exists once a coin does. */}
       {king && (
@@ -141,7 +159,8 @@ export default async function HarborPage() {
         ))}
       </section>
 
-      {/* the fleet */}
+      {/* fleet + live feed, side by side on wide screens */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <section>
         <div className="mb-3.5 flex flex-wrap items-baseline gap-3">
           <h2 className="font-display text-2xl">Fresh out of the shipyard</h2>
@@ -176,6 +195,19 @@ export default async function HarborPage() {
           <Harbor coins={coins} />
         )}
       </section>
+      <aside className="lg:sticky lg:top-4 lg:self-start">
+        <TradeFeed trades={feed} />
+      </aside>
+      </div>
+    </div>
+  )
+}
+
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-hull px-4 py-3">
+      <div className="font-display tabular text-2xl">{value}</div>
+      <div className="text-mist mt-0.5 text-[12px]">{label}</div>
     </div>
   )
 }

@@ -177,6 +177,63 @@ export type IndexerStatus = {
  * indexer answered at all — including when it was 18 minutes stale and missing
  * a coin that had already launched. Answering is not the same as being current.
  */
+export type HarborStats = {
+  coins: number
+  trades: number
+  captains: number
+}
+
+/** Headline totals for the stats strip. Counts only — cheap aggregate reads. */
+export async function fetchStats(): Promise<HarborStats | null> {
+  const data = await gql<{
+    coins: { totalCount: number }
+    swaps: { totalCount: number }
+    captains: { totalCount: number }
+  }>(`{ coins { totalCount } swaps { totalCount } captains { totalCount } }`)
+  if (!data) return null
+  return {
+    coins: data.coins.totalCount,
+    trades: data.swaps.totalCount,
+    captains: data.captains.totalCount,
+  }
+}
+
+export type FeedTrade = {
+  id: string
+  coin: string
+  symbol: string
+  isBuy: boolean
+  /** USD size, preformatted. */
+  usd: string
+  ago: string
+}
+
+/** The most recent trades across all coins, for a live buys/sells feed. */
+export async function fetchRecentTrades(limit = 15): Promise<FeedTrade[] | null> {
+  const data = await gql<{
+    swaps: { items: { id: string; coin: string; isBuy: boolean; amountNative: string; timestamp: string }[] }
+    coins: { items: { address: string; symbol: string }[] }
+  }>(`{
+    swaps(orderBy: "timestamp", orderDirection: "desc", limit: ${limit}) {
+      items { id coin isBuy amountNative timestamp }
+    }
+    coins(limit: 200) { items { address symbol } }
+  }`)
+  if (!data?.swaps?.items) return null
+  const sym = new Map(data.coins.items.map((c) => [c.address.toLowerCase(), c.symbol]))
+  return data.swaps.items.map((s) => {
+    const usd = nativeToUsdc(s.amountNative.startsWith("-") ? s.amountNative.slice(1) : s.amountNative)
+    return {
+      id: s.id,
+      coin: s.coin,
+      symbol: sym.get(s.coin.toLowerCase()) ?? "?",
+      isBuy: s.isBuy,
+      usd: usd > 0 ? `$${Math.round(usd).toLocaleString()}` : "$0",
+      ago: ago(Number(s.timestamp)),
+    }
+  })
+}
+
 export async function fetchIndexerStatus(): Promise<IndexerStatus | null> {
   try {
     const res = await fetch(`${INDEXER_URL}/status`, { cache: "no-store" })
