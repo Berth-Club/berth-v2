@@ -37,6 +37,12 @@ export type Coin = {
   lore: string
   /** 24h volume in USD, preformatted. null = ETH/USD unknown. */
   vol: string | null
+  /** Numeric USD volume, for sorting and dense card display. */
+  volumeUsd: number
+  /** Holders, from the indexer. 0 when unavailable. */
+  holderCount: number
+  /** Unix seconds the coin launched. For "newest" sorting and age. */
+  createdAt: number
 }
 
 /** Faces a creator can pick at launch. Rides in metadataURI, so it persists. */

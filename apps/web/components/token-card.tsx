@@ -93,6 +93,15 @@ export function TokenCard({ coin }: { coin: Coin }) {
         </span>
       </div>
 
+      {/* dense stats at a glance — the data was already fetched, just unshown */}
+      <div className="text-faint flex items-center gap-3 text-[11px]">
+        <span className="tabular">Vol {coin.vol ?? "—"}</span>
+        <span aria-hidden>·</span>
+        <span className="tabular">
+          {coin.holderCount} {coin.holderCount === 1 ? "holder" : "holders"}
+        </span>
+      </div>
+
       <GraduationMeter progress={coin.curve} graduated={coin.graduated} />
     </Link>
   )

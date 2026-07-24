@@ -374,6 +374,9 @@ function toCoin(c: IndexedCoin): Coin {
     graduated: c.graduated ?? false,
     lore: meta.description ?? "",
     vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
+    volumeUsd: volNative,
+    holderCount: c.holderCount ?? 0,
+    createdAt: Number(c.createdAt),
   }
 }
 

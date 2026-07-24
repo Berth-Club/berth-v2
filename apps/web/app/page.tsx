@@ -1,11 +1,12 @@
 import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
 
-import { TokenCard, ChangeChip } from "@/components/token-card"
+import { ChangeChip } from "@/components/token-card"
 import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, formatLag } from "@/lib/indexer"
 import { AutoRefresh } from "@/components/auto-refresh"
+import { Harbor } from "@/components/harbor"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -43,7 +44,6 @@ export default async function HarborPage() {
       : null
 
   const king = coins?.length ? [...coins].sort((a, b) => b.marketCapNative - a.marketCapNative)[0]! : null
-  const fleet = king && coins ? coins.filter((c) => c.address !== king.address) : []
 
   return (
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-7">
@@ -161,17 +161,8 @@ export default async function HarborPage() {
             </span>
           )}
         </div>
-        <div
-          className="grid gap-3.5"
-          style={{ gridTemplateColumns: "repeat(auto-fill,minmax(250px,1fr))" }}
-        >
-          {fleet.map((coin) => (
-            <TokenCard key={coin.address} coin={coin} />
-          ))}
-        </div>
-        {/* Three real states. "Can't reach" and "nothing here" are different
-            facts — neither is answered with invented coins. */}
         {coins === null ? (
+          // The indexer is unreachable — say so, never invent coins.
           <p className="text-mist py-10 text-center text-sm">
             Can&apos;t reach the harbor ledger, so we won&apos;t guess at what&apos;s in the water.
             Try again in a moment.
@@ -180,11 +171,10 @@ export default async function HarborPage() {
           <p className="text-mist py-10 text-center text-sm">
             No ships yet. The harbor&apos;s empty — go launch the first one.
           </p>
-        ) : fleet.length === 0 ? (
-          <p className="text-mist py-10 text-center text-sm">
-            Only the flagship so far. The harbor&apos;s quiet — go launch something.
-          </p>
-        ) : null}
+        ) : (
+          // Everything (including the flagship) is searchable/sortable here.
+          <Harbor coins={coins} />
+        )}
       </section>
     </div>
   )
