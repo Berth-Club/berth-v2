@@ -351,7 +351,7 @@ export function emojiFor(address: string): string {
   return FACE_OPTIONS[h % FACE_OPTIONS.length]!
 }
 
-type CoinMeta = { emoji?: string; description?: string; image?: string }
+type CoinMeta = { emoji?: string; description?: string; image?: string; twitter?: string; telegram?: string; website?: string }
 
 /**
  * Read back the metadata the creator chose.
@@ -362,6 +362,22 @@ type CoinMeta = { emoji?: string; description?: string; image?: string }
  * synchronously, so we return nothing and let the caller fall back rather than
  * render a URL as if it were prose. Untrusted input: never throw on it.
  */
+/**
+ * Coin-supplied social links are untrusted (creator input, permanent on-chain).
+ * Only http(s) URLs are returned, and only for the three known keys — a
+ * javascript:/data: scheme or an unknown field is dropped, never rendered.
+ */
+function sanitizeLinks(m: { twitter?: string; telegram?: string; website?: string }): CoinLinks {
+  const ok = (v?: string) => {
+    if (!v || typeof v !== "string") return undefined
+    const t = v.trim()
+    return /^https?:\/\//i.test(t) ? t : undefined
+  }
+  return { twitter: ok(m.twitter), telegram: ok(m.telegram), website: ok(m.website) }
+}
+
+export type CoinLinks = { twitter?: string; telegram?: string; website?: string }
+
 export function parseMetadata(uri: string | null | undefined): CoinMeta {
   if (!uri?.startsWith("data:application/json,")) return {}
   try {
@@ -430,6 +446,7 @@ function toCoin(c: IndexedCoin): Coin {
     curve: c.curve ?? 0,
     graduated: c.graduated ?? false,
     lore: meta.description ?? "",
+    links: sanitizeLinks(meta),
     vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
     volumeUsd: volNative,
     holderCount: c.holderCount ?? 0,

@@ -37,6 +37,9 @@ export function LaunchWizard() {
   const [name, setName] = React.useState("")
   const [ticker, setTicker] = React.useState("")
   const [lore, setLore] = React.useState("")
+  const [twitter, setTwitter] = React.useState("")
+  const [telegram, setTelegram] = React.useState("")
+  const [website, setWebsite] = React.useState("")
   const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
@@ -55,9 +58,13 @@ export function LaunchWizard() {
   const config = React.useMemo(
     () =>
       name.trim() && normalizeTicker(ticker)
-        ? buildConfig(name, ticker, lore, emoji, upload.imageUri ?? undefined)
+        ? buildConfig(name, ticker, lore, emoji, upload.imageUri ?? undefined, {
+            twitter: twitter.trim() || undefined,
+            telegram: telegram.trim() || undefined,
+            website: website.trim() || undefined,
+          })
         : undefined,
-    [name, ticker, lore, emoji, upload.imageUri]
+    [name, ticker, lore, emoji, upload.imageUri, twitter, telegram, website]
   )
 
   // The simulation is a full deploy eth_call — only run it on the review step,
@@ -134,6 +141,14 @@ export function LaunchWizard() {
           </Field>
           <Field label="Lore (optional)">
             <textarea value={lore} onChange={(e) => setLore(e.target.value)} rows={3} placeholder="First ship out of the yard. Never sank." className={inputCls} />
+          </Field>
+
+          <Field label="Links (optional)">
+            <div className="flex flex-col gap-2">
+              <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="https://x.com/yourcoin" className={inputCls} inputMode="url" />
+              <input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="https://t.me/yourcoin" className={inputCls} inputMode="url" />
+              <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://yourcoin.xyz" className={inputCls} inputMode="url" />
+            </div>
           </Field>
 
           <Field label="Dev-buy (optional) — your own first buy">

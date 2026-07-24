@@ -115,7 +115,8 @@ export function buildConfig(
   ticker: string,
   lore = "",
   emoji = "🚢",
-  imageUri?: string
+  imageUri?: string,
+  links?: { twitter?: string; telegram?: string; website?: string }
 ): LaunchConfig {
   return {
     name: name.trim(),
@@ -124,7 +125,7 @@ export function buildConfig(
     // CREATE2 initcode hash and therefore the salt: change the image and the
     // mined address changes with it. The wizard must finish the upload before
     // mining, which the mining effect's initCodeHash dependency already enforces.
-    metadataURI: buildMetadataURI(name, ticker, lore, emoji, imageUri),
+    metadataURI: buildMetadataURI(name, ticker, lore, emoji, imageUri, links),
     devBuyMinOut: DEV_BUY_MIN_OUT,
   }
 }

@@ -28,21 +28,34 @@ export function normalizeTicker(raw: string): string {
  * MUST be deterministic: key order is fixed, and the pinned CID is frozen before
  * it reaches here (never re-derived). Same inputs -> byte-identical output.
  */
+export type CoinLinksInput = { twitter?: string; telegram?: string; website?: string }
+
 export function buildMetadataURI(
   name: string,
   ticker: string,
   lore: string,
   emoji: string,
-  imageUri?: string
+  imageUri?: string,
+  links?: CoinLinksInput
 ): string {
   const symbol = normalizeTicker(ticker)
-  const meta = {
+  // Base object, then optional link keys appended in a FIXED order. Determinism
+  // is load-bearing: metadataURI feeds the CREATE2 initcode hash and the salt,
+  // so the same inputs must always serialize byte-identically. Empty links are
+  // omitted entirely rather than written as "".
+  const meta: Record<string, string> = {
     name: name.trim(),
     symbol,
     description: lore.trim(),
     emoji,
     image: imageUri ?? `https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(symbol || "berth")}`,
   }
+  const tw = links?.twitter?.trim()
+  const tg = links?.telegram?.trim()
+  const web = links?.website?.trim()
+  if (tw) meta.twitter = tw
+  if (tg) meta.telegram = tg
+  if (web) meta.website = web
   // Not base64: plain JSON keeps it readable on the explorer and in the event.
   return `data:application/json,${encodeURIComponent(JSON.stringify(meta))}`
 }

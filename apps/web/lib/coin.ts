@@ -35,6 +35,8 @@ export type Coin = {
   curve: number
   graduated: boolean
   lore: string
+  /** Creator social links (https-only, sanitized). Absent keys are omitted. */
+  links: { twitter?: string; telegram?: string; website?: string }
   /** 24h volume in USD, preformatted. null = ETH/USD unknown. */
   vol: string | null
   /** Numeric USD volume, for sorting and dense card display. */

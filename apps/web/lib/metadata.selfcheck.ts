@@ -46,4 +46,22 @@ assert.equal(
 const w = JSON.parse(decodeURIComponent(weird.replace("data:application/json,", "")))
 assert.equal(w.description, "50% off, \"quoted\" #1", "special chars survive the round-trip")
 
+
+// --- Links feed the salt too, so they must serialize deterministically and
+//     omit empties. Order is fixed (twitter, telegram, website).
+const withLinks = buildMetadataURI("N", "TK", "lore", "🚢", undefined, {
+  twitter: "https://x.com/a",
+  website: "https://a.xyz",
+})
+assert.equal(
+  withLinks,
+  buildMetadataURI("N", "TK", "lore", "🚢", undefined, { twitter: "https://x.com/a", website: "https://a.xyz" }),
+  "same links must produce byte-identical output"
+)
+assert.ok(withLinks.includes("twitter"), "twitter link present")
+assert.ok(withLinks.includes("website"), "website link present")
+assert.ok(!withLinks.includes("telegram"), "empty telegram must be omitted, not written as \"\"")
+// no links === no link keys at all
+assert.ok(!buildMetadataURI("N", "TK", "lore", "🚢").includes("twitter"), "no links => no link keys")
+
 console.log("metadata.ts: all checks passed")

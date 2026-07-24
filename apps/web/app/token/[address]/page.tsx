@@ -14,6 +14,21 @@ import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/i
 
 export const dynamic = "force-dynamic"
 
+function SocialLink({ href, label, icon }: { href: string; label: string; icon: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener nofollow"
+      className="rounded-chip bg-deep hover:border-lime inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors"
+      style={{ borderColor: "#263A28" }}
+    >
+      <span aria-hidden>{icon}</span>
+      {label}
+    </a>
+  )
+}
+
 /**
  * Per-coin social card. When the coin has uploaded ipfs:// art we resolve it to
  * a gateway URL and use a large summary card; otherwise a plain summary, no
@@ -105,6 +120,13 @@ export default async function TokenPage({
             </span>
           )}
           <p className="text-mist mt-2 max-w-lg text-sm">{coin.lore}</p>
+          {(coin.links.twitter || coin.links.telegram || coin.links.website) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {coin.links.twitter && <SocialLink href={coin.links.twitter} label="Twitter / X" icon="𝕏" />}
+              {coin.links.telegram && <SocialLink href={coin.links.telegram} label="Telegram" icon="✈" />}
+              {coin.links.website && <SocialLink href={coin.links.website} label="Website" icon="🌐" />}
+            </div>
+          )}
         </div>
         <div className="text-right">
           <div className="tabular text-[30px] leading-none">{fmtPrice(coin.priceUsd)}</div>
