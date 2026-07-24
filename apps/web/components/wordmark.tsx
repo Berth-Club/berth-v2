@@ -1,10 +1,11 @@
+import Image from "next/image"
 import Link from "next/link"
 
 import { cn } from "@workspace/ui/lib/utils"
 
 /**
- * ⚓ in a circular badge (#365B2B, lime ring) + "berth" + lime ".club".
- * Matches the berth.club design spec.
+ * The berth.club sailboat logo + "berth" + lime ".club".
+ * The logo carries its own navy background, so it just gets rounded corners.
  */
 export function Wordmark({ className }: { className?: string }) {
   return (
@@ -12,13 +13,14 @@ export function Wordmark({ className }: { className?: string }) {
       href="/"
       className={cn("flex items-center gap-2.5 transition-opacity hover:opacity-80", className)}
     >
-      <span
-        aria-hidden
-        className="border-primary grid size-9 shrink-0 place-items-center rounded-full border-2 text-[19px]"
-        style={{ background: "#365B2B" }}
-      >
-        ⚓
-      </span>
+      <Image
+        src="/berth-logo.png"
+        alt="berth.club"
+        width={36}
+        height={36}
+        priority
+        className="size-9 shrink-0 rounded-[10px]"
+      />
       <span className="font-display text-[22px] leading-none">
         berth<span className="text-primary">.club</span>
       </span>
