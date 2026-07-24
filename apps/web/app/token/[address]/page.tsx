@@ -7,6 +7,7 @@ import { GraduationMeter } from "@workspace/ui/components/graduation-meter"
 import { ChangeChip } from "@/components/token-card"
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
+import { CoinComments } from "@/components/coin-comments"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { explorerTx, ipfsToGateway } from "@/lib/chain"
 import { fmtPrice } from "@/lib/format"
@@ -227,6 +228,11 @@ export default async function TokenPage({
             ))
           )}
         </Panel>
+      </div>
+
+      {/* deck chatter — the engagement thread */}
+      <div className="mt-6">
+        <CoinComments coin={coin.address} />
       </div>
     </div>
   )
