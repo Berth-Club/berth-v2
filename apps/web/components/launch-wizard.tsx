@@ -9,6 +9,7 @@ import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { useImageUpload } from "@/lib/use-image-upload"
 import { explorerTx } from "@/lib/chain"
+import { CoinAvatar } from "@/components/coin-avatar"
 import {
   DEV_BUY_CAP_USDC,
   buildConfig,
@@ -405,7 +406,26 @@ export function LaunchWizard() {
       {/* step 3 — success */}
       {step === 2 && (
         <div className="rounded-panel bg-hull flex flex-col items-center gap-3 border p-12 text-center" style={{ borderRadius: 20 }}>
-          <span className="animate-bob text-6xl" aria-hidden>{emoji}</span>
+          {upload.previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={upload.previewUrl}
+              alt={`${tickerUp} art`}
+              className="animate-bob size-24 rounded-2xl object-cover"
+              style={{ border: "1px solid #263A28" }}
+            />
+          ) : upload.imageUri ? (
+            <CoinAvatar
+              image={upload.imageUri}
+              emoji={emoji}
+              ticker={tickerUp}
+              size={96}
+              className="animate-bob rounded-2xl"
+              style={{ border: "1px solid #263A28" }}
+            />
+          ) : (
+            <span className="animate-bob text-6xl" aria-hidden>{emoji}</span>
+          )}
           <h2 className="font-display text-2xl">${tickerUp} has left the shipyard</h2>
           <p className="text-mist text-sm">Block confirmed. Calm seas and green candles, captain.</p>
           <div className="mt-2 flex gap-3">
