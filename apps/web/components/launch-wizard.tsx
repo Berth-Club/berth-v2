@@ -285,7 +285,19 @@ export function LaunchWizard() {
       {step === 1 && (
         <div className="flex flex-col gap-4">
           <div className="rounded-panel bg-hull flex flex-col items-center gap-2 border p-6 text-center" style={{ borderRadius: 20 }}>
-            <span className="text-5xl" aria-hidden>{emoji}</span>
+            {upload.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={upload.previewUrl}
+                alt={`${tickerUp} art`}
+                className="size-20 rounded-2xl object-cover"
+                style={{ border: "1px solid #263A28" }}
+              />
+            ) : upload.imageUri ? (
+              <CoinAvatar image={upload.imageUri} emoji={emoji} ticker={tickerUp} size={80} className="rounded-2xl" style={{ border: "1px solid #263A28" }} />
+            ) : (
+              <span className="text-5xl" aria-hidden>{emoji}</span>
+            )}
             <div className="font-display text-xl">{name}</div>
             <div className="text-mist tabular text-sm">${tickerUp}</div>
             {lore && <p className="text-mist max-w-sm text-[13px]">{lore}</p>}
