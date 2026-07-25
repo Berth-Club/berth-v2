@@ -1,8 +1,8 @@
 import { CoinAvatar } from "@/components/coin-avatar"
+import Image from "next/image"
 import Link from "next/link"
 
 import { ChangeChip } from "@/components/token-card"
-import { ShipMascot } from "@/components/ship-mascot"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoins, fetchIndexerStatus, fetchStats, fetchRecentTrades, formatLag } from "@/lib/indexer"
 import { AutoRefresh } from "@/components/auto-refresh"
@@ -72,7 +72,38 @@ export default async function HarborPage() {
           </p>
         </div>
         <div className="hidden md:block">
-          <ShipMascot />
+          <div className="relative flex flex-col items-center">
+            {/* radial blue halo behind the sail */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-[1]"
+              style={{
+                background:
+                  "radial-gradient(closest-side, rgba(94,147,234,.28), transparent 72%)",
+              }}
+            />
+            <Image
+              src="/berth-sail.png"
+              alt=""
+              width={230}
+              height={230}
+              priority
+              className="animate-bob"
+              style={{ animationDuration: "7s", width: 230, height: "auto" }}
+            />
+            {/* ellipse ground shadow */}
+            <div
+              aria-hidden
+              className="mt-1 h-3 w-[150px] rounded-[50%]"
+              style={{ background: "radial-gradient(closest-side, rgba(0,0,0,.55), transparent)" }}
+            />
+            <div
+              className="text-faint mt-4 font-mono text-[10px] uppercase"
+              style={{ letterSpacing: ".2em" }}
+            >
+              EST. 2026 · HARBOR Nº 01
+            </div>
+          </div>
         </div>
       </section>
 
