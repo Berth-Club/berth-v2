@@ -144,7 +144,7 @@ export function LaunchWizard() {
             )}
             style={
               i === step
-                ? { background: "rgba(163,230,53,.12)", border: "1px solid rgba(163,230,53,.45)" }
+                ? { background: "rgba(198,255,61,.12)", border: "1px solid rgba(198,255,61,.45)" }
                 : { border: "1px solid transparent" }
             }
           >
@@ -182,7 +182,7 @@ export function LaunchWizard() {
           <Field label="Dev-buy (optional) — your own first buy">
             <div
               className="bg-deep flex items-center gap-2 rounded-btn border pl-3.5 pr-3"
-              style={{ borderColor: overCap || badDevBuy ? "#F87171" : "#263A28" }}
+              style={{ borderColor: overCap || badDevBuy ? "#ff8f6e" : "rgba(94,147,234,0.2)" }}
             >
               <input
                 value={devBuy}
@@ -217,11 +217,11 @@ export function LaunchWizard() {
             })}
           </div>
           {badDevBuy ? (
-            <p className="text-[13px]" style={{ color: "#F87171" }}>
+            <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
               That dev-buy isn&apos;t a number.
             </p>
           ) : overCap ? (
-            <p className="text-[13px]" style={{ color: "#F87171" }}>
+            <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
               Over the cap — max dev-buy is <span className="tabular">{launch.capUsdc} USDC</span> (~
               {launch.capPct}% of supply). The launch would revert on-chain; we won&apos;t let you pay
               gas to fail.
@@ -247,13 +247,13 @@ export function LaunchWizard() {
                 acceptFile(e.dataTransfer.files)
               }}
               className="rounded-btn flex items-center gap-3 border border-dashed p-2.5 transition-colors"
-              style={{ borderColor: dragging ? "#A3E635" : "#263A28", background: dragging ? "rgba(163,230,53,.06)" : "transparent" }}
+              style={{ borderColor: dragging ? "#c6ff3d" : "rgba(94,147,234,0.2)", background: dragging ? "rgba(198,255,61,.06)" : "transparent" }}
             >
               {/* Preview is the LOCAL file (object URL), not the gateway — a
                   just-pinned CID can briefly 404 and would flash the fallback. */}
               <div
                 className="bg-deep rounded-chip relative grid size-16 shrink-0 place-items-center overflow-hidden"
-                style={{ border: "1px solid #263A28" }}
+                style={{ border: "1px solid rgba(94,147,234,0.2)" }}
               >
                 {upload.previewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -301,7 +301,7 @@ export function LaunchWizard() {
                     {connected ? "Retry upload →" : "Connect your wallet to upload art →"}
                   </button>
                 ) : upload.status === "error" && !upload.outage ? (
-                  <p className="text-[13px]" style={{ color: "#F87171" }}>
+                  <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
                     {upload.error}
                   </p>
                 ) : upload.status === "error" && upload.outage ? (
@@ -327,7 +327,7 @@ export function LaunchWizard() {
                     "rounded-chip grid aspect-square place-items-center text-2xl transition-colors",
                     emoji === e ? "border-lime" : "hover:bg-bulwark"
                   )}
-                  style={{ border: `1px solid ${emoji === e ? "#A3E635" : "#263A28"}` }}
+                  style={{ border: `1px solid ${emoji === e ? "#c6ff3d" : "rgba(94,147,234,0.2)"}` }}
                 >
                   {e}
                 </button>
@@ -357,10 +357,10 @@ export function LaunchWizard() {
                 src={upload.previewUrl}
                 alt={`${tickerUp} art`}
                 className="size-20 rounded-2xl object-cover"
-                style={{ border: "1px solid #263A28" }}
+                style={{ border: "1px solid rgba(94,147,234,0.2)" }}
               />
             ) : upload.imageUri ? (
-              <CoinAvatar image={upload.imageUri} emoji={emoji} ticker={tickerUp} size={80} className="rounded-2xl" style={{ border: "1px solid #263A28" }} />
+              <CoinAvatar image={upload.imageUri} emoji={emoji} ticker={tickerUp} size={80} className="rounded-2xl" style={{ border: "1px solid rgba(94,147,234,0.2)" }} />
             ) : (
               <span className="text-5xl" aria-hidden>{emoji}</span>
             )}
@@ -380,7 +380,7 @@ export function LaunchWizard() {
                 <div className="tabular mt-1 break-all text-[13px]">{launch.predicted}</div>
               ) : launch.predictFailed ? (
                 <div className="mt-1 flex flex-col items-start gap-1.5">
-                  <p className="text-[13px]" style={{ color: "#F87171" }}>
+                  <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
                     The shipyard couldn&apos;t find a berth for this name. Nudge the name or ticker.
                   </p>
                   <button onClick={launch.retryPredict} className="btn-deck btn-quiet px-3 py-1.5 text-xs">
@@ -422,7 +422,7 @@ export function LaunchWizard() {
           </div>
 
           {launch.blocked && !gate && (
-            <p className="text-[13px]" style={{ color: "#F87171" }}>
+            <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
               {launch.blocked}
             </p>
           )}
@@ -434,7 +434,7 @@ export function LaunchWizard() {
             </p>
           )}
           {launch.error && (
-            <p className="text-[13px]" style={{ color: "#F87171" }}>
+            <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
               {launch.error}
             </p>
           )}
@@ -448,7 +448,7 @@ export function LaunchWizard() {
               ← Edit
             </button>
             {gate ? (
-              <button onClick={gate.act} className="btn-deck btn-gold px-6 py-3 text-[19px]">
+              <button onClick={gate.act} className="btn-deck btn-lime px-6 py-3 text-[19px]">
                 {gate.label}
               </button>
             ) : (
@@ -490,7 +490,7 @@ export function LaunchWizard() {
               src={upload.previewUrl}
               alt={`${tickerUp} art`}
               className="animate-bob size-24 rounded-2xl object-cover"
-              style={{ border: "1px solid #263A28" }}
+              style={{ border: "1px solid rgba(94,147,234,0.2)" }}
             />
           ) : upload.imageUri ? (
             <CoinAvatar
@@ -499,7 +499,7 @@ export function LaunchWizard() {
               ticker={tickerUp}
               size={96}
               className="animate-bob rounded-2xl"
-              style={{ border: "1px solid #263A28" }}
+              style={{ border: "1px solid rgba(94,147,234,0.2)" }}
             />
           ) : (
             <span className="animate-bob text-6xl" aria-hidden>{emoji}</span>
@@ -546,7 +546,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   return (
-    <div className="flex justify-between py-1.5 text-sm" style={{ borderBottom: "1px solid #1a281c" }}>
+    <div className="flex justify-between py-1.5 text-sm" style={{ borderBottom: "1px solid rgba(94,147,234,0.14)" }}>
       <span className="text-mist">{k}</span>
       <span className={cn(mono && "tabular")}>{v}</span>
     </div>

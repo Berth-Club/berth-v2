@@ -43,11 +43,11 @@ function StagePill({ active, title, sub }: { active?: boolean; title: string; su
       className="flex items-center gap-2 px-3.5 py-1.5 text-[13px]"
       style={{
         borderRadius: 20,
-        background: active ? "rgba(163,230,53,.08)" : "#0e1810",
-        border: `1px solid ${active ? "#4d7016" : "#263A28"}`,
+        background: active ? "rgba(198,255,61,.08)" : "#070c16",
+        border: `1px solid ${active ? "#9bd21f" : "rgba(94,147,234,0.2)"}`,
       }}
     >
-      <span className="font-bold" style={{ color: active ? "#A3E635" : "#b9ccb6" }}>
+      <span className="font-bold" style={{ color: active ? "#c6ff3d" : "#c6d2e8" }}>
         {title}
       </span>
       <span className="text-mist">{sub}</span>
@@ -57,7 +57,7 @@ function StagePill({ active, title, sub }: { active?: boolean; title: string; su
 
 function Arrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="font-bold" style={{ color: "#4d7016" }}>
+    <div className="font-bold" style={{ color: "#9bd21f" }}>
       {children}
     </div>
   )
@@ -93,7 +93,7 @@ function FeeAmount({
   if (empty) {
     return (
       <div className="text-right">
-        <div className="font-bold" style={{ color: "#5c6f5e" }}>
+        <div className="font-bold" style={{ color: "#7c8db0" }}>
           —
         </div>
       </div>
@@ -101,7 +101,7 @@ function FeeAmount({
   }
   return (
     <div className="text-right">
-      <div className="font-bold" style={{ color: tone === "lime" ? "#A3E635" : "#EFF5EC" }}>
+      <div className="font-bold" style={{ color: tone === "lime" ? "#c6ff3d" : "#eaf0fa" }}>
         {fmtFee(native)} USDC
       </div>
       {token !== null && token > 0n && (
@@ -234,8 +234,8 @@ export function PortfolioTabs() {
             className="flex-1 p-2.5 text-center text-sm font-bold transition-colors"
             style={{
               borderRadius: 11,
-              background: tab === id ? "#A3E635" : "transparent",
-              color: tab === id ? "#122005" : "#93A896",
+              background: tab === id ? "#c6ff3d" : "transparent",
+              color: tab === id ? "#05070c" : "#9aa9c6",
             }}
           >
             {lbl}
@@ -248,7 +248,7 @@ export function PortfolioTabs() {
         <div className="rounded-panel bg-hull mt-4 overflow-hidden border">
           <div
             className="text-mist grid gap-2.5 px-[18px] py-3 text-xs font-bold"
-            style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid #263A28" }}
+            style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid rgba(94,147,234,0.2)" }}
           >
             <Th>HOLDING</Th>
             <Th right>BALANCE</Th>
@@ -265,7 +265,7 @@ export function PortfolioTabs() {
                 key={h.token}
                 href={`/token/${h.token}`}
                 className="hover:bg-bulwark grid items-center gap-2.5 px-[18px] py-[13px] transition-colors"
-                style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid #1a281c" }}
+                style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid rgba(94,147,234,0.14)" }}
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   <CoinAvatar
@@ -275,7 +275,7 @@ export function PortfolioTabs() {
                     ticker={h.symbol}
                     size={34}
                     className="bg-deep"
-                    style={{ borderRadius: 10, border: "1px solid #263A28" }}
+                    style={{ borderRadius: 10, border: "1px solid rgba(94,147,234,0.2)" }}
                   />
                   <span className="min-w-0">
                     <span className="block truncate font-bold">{h.name}</span>
@@ -285,7 +285,7 @@ export function PortfolioTabs() {
                 <span className="text-right font-bold">{fmtBalance(h.balance)}</span>
                 {/* Priced off the pool tick, converted at the live rate. Either
                     missing (no pool price / no feed) means "—", never a $0. */}
-                <span className="text-right" style={{ color: "#b9ccb6" }}>
+                <span className="text-right" style={{ color: "#c6d2e8" }}>
                   {h.valueNative === null
                     ? "—"
                     : fmtPrice(h.valueNative)}
@@ -328,7 +328,7 @@ export function PortfolioTabs() {
                   gridTemplateColumns: REW_COLS,
                   gap: "8px 16px",
                   paddingBottom: 8,
-                  borderBottom: "1px solid #263A28",
+                  borderBottom: "1px solid rgba(94,147,234,0.2)",
                 }}
               >
                 <Th>SHIP</Th>
@@ -352,7 +352,7 @@ export function PortfolioTabs() {
                       gridTemplateColumns: REW_COLS,
                       gap: "8px 16px",
                       padding: "13px 0",
-                      borderBottom: "1px solid #1a281c",
+                      borderBottom: "1px solid rgba(94,147,234,0.14)",
                     }}
                   >
                     <div className="flex min-w-0 items-center gap-2.5">
@@ -363,7 +363,7 @@ export function PortfolioTabs() {
                         ticker={p.symbol}
                         size={38}
                         className="bg-deep"
-                        style={{ borderRadius: 10, border: "1px solid #263A28" }}
+                        style={{ borderRadius: 10, border: "1px solid rgba(94,147,234,0.2)" }}
                       />
                       <div className="min-w-0">
                         <div className="truncate font-bold">${p.symbol}</div>
@@ -391,8 +391,8 @@ export function PortfolioTabs() {
                       className="text-[13px] font-bold transition-colors"
                       style={{
                         background: "transparent",
-                        color: nothing ? "#5c6f5e" : "#A3E635",
-                        border: `1px solid ${nothing ? "#263A28" : "#4d7016"}`,
+                        color: nothing ? "#7c8db0" : "#c6ff3d",
+                        border: `1px solid ${nothing ? "rgba(94,147,234,0.2)" : "#9bd21f"}`,
                         borderRadius: 10,
                         padding: "8px 14px",
                         cursor: nothing ? "default" : "pointer",
@@ -406,11 +406,11 @@ export function PortfolioTabs() {
                         lives in the summary bar instead. */}
                     <div className="text-right">
                       {!escrow || escrow.claimable === 0n ? (
-                        <div className="font-bold" style={{ color: "#5c6f5e" }}>
+                        <div className="font-bold" style={{ color: "#7c8db0" }}>
                           —
                         </div>
                       ) : (
-                        <div className="font-bold" style={{ color: "#A3E635" }}>
+                        <div className="font-bold" style={{ color: "#c6ff3d" }}>
                           {escrow.claimable === null ? "—" : fmtBalance(escrow.claimable)}{" "}
                           <span className="text-mist text-xs font-normal">${escrow.symbol}</span>
                         </div>
@@ -429,13 +429,13 @@ export function PortfolioTabs() {
               {/* summary bar */}
               <div
                 className="mt-4 flex flex-wrap items-center gap-[22px] p-4"
-                style={{ background: "#0e1810", borderRadius: 14 }}
+                style={{ background: "#070c16", borderRadius: 14 }}
               >
                 <div>
                   <div className="text-mist text-xs">Claimable now</div>
                   <div
                     className="text-xl font-bold"
-                    style={{ color: claimableBalances.length ? "#A3E635" : "#5c6f5e" }}
+                    style={{ color: claimableBalances.length ? "#c6ff3d" : "#7c8db0" }}
                   >
                     {claimableBalances.length === 0
                       ? "Nothing yet"
@@ -475,9 +475,9 @@ export function PortfolioTabs() {
                   disabled={claimer.pending || claimableBalances.length === 0}
                   className="btn-deck ml-auto px-[22px] py-3 text-base"
                   style={{
-                    background: claimableBalances.length ? "#A3E635" : "#182418",
-                    color: claimableBalances.length ? "#122005" : "#5c6f5e",
-                    boxShadow: `0 4px 0 ${claimableBalances.length ? "#4d7016" : "#0e1810"}`,
+                    background: claimableBalances.length ? "#c6ff3d" : "#0d1526",
+                    color: claimableBalances.length ? "#05070c" : "#7c8db0",
+                    boxShadow: `0 4px 0 ${claimableBalances.length ? "#9bd21f" : "#070c16"}`,
                     cursor: claimableBalances.length ? "pointer" : "default",
                   }}
                 >

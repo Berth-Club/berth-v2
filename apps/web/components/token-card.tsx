@@ -30,8 +30,8 @@ export function ChangeChip({
     <span
       className={cn("tabular rounded-chip px-1.5 py-0.5 text-xs", className)}
       style={{
-        color: up ? "#4ADE80" : "#F87171",
-        background: up ? "rgba(74,222,128,.12)" : "rgba(248,113,113,.12)",
+        color: up ? "#4ADE80" : "#ff8f6e",
+        background: up ? "rgba(74,222,128,.12)" : "rgba(255,143,110,.12)",
       }}
     >
       {up ? "+" : ""}
@@ -51,14 +51,14 @@ export function TokenCard({ coin }: { coin: Coin }) {
         coin.graduated ? "hover:border-gold" : "hover:border-lime"
       )}
       style={{
-        borderColor: coin.graduated ? "rgba(251,191,36,.55)" : "#263A28",
+        borderColor: coin.graduated ? "rgba(242,201,76,.55)" : "rgba(94,147,234,0.2)",
       }}
     >
       {/* graduated tab sits ON the top border */}
       {coin.graduated && (
         <span
           className="text-gold absolute left-3.5 text-[11px] font-bold"
-          style={{ top: -11, background: "#0C130E", padding: "0 6px" }}
+          style={{ top: -11, background: "#05070c", padding: "0 6px" }}
         >
           🎓 GRADUATED
         </span>
@@ -72,7 +72,7 @@ export function TokenCard({ coin }: { coin: Coin }) {
           ticker={coin.ticker}
           size={48}
           className="rounded-chip bg-deep"
-          style={{ border: "1px solid #263A28" }}
+          style={{ border: "1px solid rgba(94,147,234,0.2)" }}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">

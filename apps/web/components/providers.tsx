@@ -39,8 +39,8 @@ const privyConfig: PrivyClientConfig = {
     // "unique key prop" warning from inside Privy's own list renderer.
     walletList: ["detected_ethereum_wallets", "wallet_connect", "coinbase_wallet"],
     // berth.club: abyss ground, lime signal
-    theme: "#0C130E",
-    accentColor: "#A3E635",
+    theme: "#05070c",
+    accentColor: "#c6ff3d",
     logo: undefined,
   },
 }

@@ -77,7 +77,7 @@ export function Harbor({ coins }: { coins: Coin[] }) {
             placeholder="Search name, ticker or address…"
             aria-label="Search coins"
             className="bg-deep rounded-btn w-full border py-2 pl-9 pr-3 text-sm outline-none focus:border-lime"
-            style={{ borderColor: "#263A28" }}
+            style={{ borderColor: "rgba(94,147,234,0.2)" }}
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -89,8 +89,8 @@ export function Harbor({ coins }: { coins: Coin[] }) {
               className="rounded-chip px-2.5 py-1.5 text-xs font-bold transition-colors"
               style={
                 sort === s.key
-                  ? { color: "#0C130E", background: "#A3E635" }
-                  : { color: "#9fb0c3", background: "#141d16", border: "1px solid #263A28" }
+                  ? { color: "#05070c", background: "#c6ff3d" }
+                  : { color: "#9fb0c3", background: "#0a1122", border: "1px solid rgba(94,147,234,0.2)" }
               }
             >
               {s.label}

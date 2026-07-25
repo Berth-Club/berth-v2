@@ -15,29 +15,31 @@
 --------------------------------------------------------------------------- */
 
 @theme {
-    /* --- brand palette (design vocabulary) --- */
-    --color-abyss: #0c130e;      /* ground */
-    --color-hull: #131c15;       /* surface */
-    --color-bulwark: #182418;    /* hover surface */
-    --color-deep: #0e1810;       /* inset / well */
-    --color-rigging: #263a28;    /* border */
-    --color-hairline: #22331f;
-    --color-rowline: #1a281c;
-    --color-foam: #eff5ec;       /* text */
-    --color-body2: #b9ccb6;      /* secondary text */
-    --color-mist: #93a896;       /* muted text */
-    --color-faint: #5c6f5e;
+    /* --- brand palette (v2 lime rebrand: lime on deep-blue abyss) --- */
+    --color-abyss: #05070c;      /* ground */
+    --color-hull: #0a1122;       /* surface (top of depth ramp) */
+    --color-bulwark: #0d1526;    /* hover surface / hover row */
+    --color-deep: #070c16;       /* inset / well */
+    --color-rigging: rgba(94, 147, 234, 0.2);   /* default border */
+    --color-hairline: rgba(94, 147, 234, 0.14); /* row rules */
+    --color-rowline: rgba(94, 147, 234, 0.14);
+    --color-foam: #eaf0fa;       /* text primary */
+    --color-body2: #c6d2e8;      /* secondary text */
+    --color-mist: #9aa9c6;       /* muted text */
+    --color-faint: #7c8db0;      /* dim / micro-labels */
 
-    --color-lime: #a3e635;       /* accent */
-    --color-lime-dark: #4d7016;
-    --color-lime-ink: #122005;
-    --color-gold: #fbbf24;       /* status */
-    --color-gold-dark: #8a6a10;
+    --color-lime: #c6ff3d;       /* accent */
+    --color-lime-hi: #dbff7c;    /* hover text */
+    --color-lime-dark: #9bd21f;
+    --color-lime-ink: #05070c;   /* text on lime fills */
+    --color-gold: #f2c94c;       /* status "!" / flagship */
+    --color-gold-dark: #a6862a;
     --color-gold-ink: #1a1405;
-    --color-candle: #4ade80;     /* gains */
-    --color-tide: #f87171;       /* losses */
-    --color-tide-dark: #7c2222;
-    --color-mascot: #365b2b;
+    --color-candle: #4ade80;     /* gains / buy */
+    --color-tide: #ff8f6e;       /* losses / sell (coral) */
+    --color-tide-dark: #a34a30;
+    --color-link: #8fb3f2;       /* blue link */
+    --color-mascot: #8fb3f2;
 
     /* --- radii --- */
     --radius-chip: 8px;
@@ -45,16 +47,16 @@
     --radius-card: 16px;
     --radius-panel: 18px;
 
-    /* --- shadows: hard "deck" offsets on actions, never soft --- */
-    --shadow-deck-lime: 0 4px 0 #4d7016;
-    --shadow-deck-lime-lg: 0 6px 0 #4d7016;
-    --shadow-deck-gold: 0 4px 0 #8a6a10;
-    --shadow-deck-gold-lg: 0 6px 0 #8a6a10;
-    --shadow-deck-red: 0 5px 0 #7c2222;
-    --shadow-deck-quiet: 0 4px 0 #0e1810;
-    --shadow-card-hover: 0 10px 30px rgb(0 0 0 / 0.35);
-    --shadow-gold-glow: 0 0 60px rgb(251 191 36 / 0.12);
-    --shadow-meter-glow: 0 0 12px rgb(163 230 53 / 0.35);
+    /* --- shadows: v2 soft glow-lift on actions (no more hard deck offsets) --- */
+    --shadow-deck-lime: 0 8px 22px rgba(198, 255, 61, 0.2);
+    --shadow-deck-lime-lg: 0 12px 30px rgba(198, 255, 61, 0.34);
+    --shadow-deck-gold: 0 8px 22px rgba(242, 201, 76, 0.2);
+    --shadow-deck-gold-lg: 0 12px 30px rgba(242, 201, 76, 0.32);
+    --shadow-deck-red: 0 8px 22px rgba(255, 143, 110, 0.22);
+    --shadow-deck-quiet: 0 6px 18px rgba(0, 0, 0, 0.35);
+    --shadow-card-hover: 0 12px 34px rgb(0 0 0 / 0.45);
+    --shadow-gold-glow: 0 0 60px rgb(242 201 76 / 0.14);
+    --shadow-meter-glow: 0 0 12px rgb(198 255 61 / 0.4);
 
     /* --- motion: buoyant, never busy --- */
     --animate-flow: flow 2.5s linear infinite;
@@ -131,35 +133,35 @@
     --radius: 16px;
 
     --font-sans: var(--font-space-grotesk), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-    --font-display: var(--font-lilita-one), "Lilita One", cursive;
-    --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+    --font-display: var(--font-archivo-black), "Archivo Black", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-ibm-plex-mono), "IBM Plex Mono", ui-monospace, monospace;
 
-    --background: #0c130e;
-    --foreground: #eff5ec;
-    --card: #131c15;
-    --card-foreground: #eff5ec;
-    --popover: #182418;
-    --popover-foreground: #eff5ec;
-    --primary: #a3e635;
-    --primary-foreground: #122005;
-    --secondary: #182418;
-    --secondary-foreground: #eff5ec;
-    --muted: #182418;
-    --muted-foreground: #93a896;
-    --accent: #182418;
-    --accent-foreground: #eff5ec;
-    --destructive: #f87171;
-    --border: #263a28;
-    --input: #263a28;
-    --ring: #a3e635;
-    --sidebar: #0e1810;
-    --sidebar-foreground: #eff5ec;
-    --sidebar-primary: #a3e635;
-    --sidebar-primary-foreground: #122005;
-    --sidebar-accent: #182418;
-    --sidebar-accent-foreground: #eff5ec;
-    --sidebar-border: #263a28;
-    --sidebar-ring: #a3e635;
+    --background: #05070c;
+    --foreground: #eaf0fa;
+    --card: #0a1122;
+    --card-foreground: #eaf0fa;
+    --popover: #0d1526;
+    --popover-foreground: #eaf0fa;
+    --primary: #c6ff3d;
+    --primary-foreground: #05070c;
+    --secondary: #0d1526;
+    --secondary-foreground: #eaf0fa;
+    --muted: #0d1526;
+    --muted-foreground: #9aa9c6;
+    --accent: #0d1526;
+    --accent-foreground: #eaf0fa;
+    --destructive: #ff8f6e;
+    --border: rgba(94, 147, 234, 0.2);
+    --input: rgba(94, 147, 234, 0.2);
+    --ring: #c6ff3d;
+    --sidebar: #070c16;
+    --sidebar-foreground: #eaf0fa;
+    --sidebar-primary: #c6ff3d;
+    --sidebar-primary-foreground: #05070c;
+    --sidebar-accent: #0d1526;
+    --sidebar-accent-foreground: #eaf0fa;
+    --sidebar-border: rgba(94, 147, 234, 0.2);
+    --sidebar-ring: #c6ff3d;
 }
 
 @layer base {
@@ -170,8 +172,8 @@
     @apply text-foreground;
     font-family: var(--font-sans);
     background:
-      radial-gradient(1200px 500px at 50% -180px, #16261a 0%, #0c130e 60%),
-      #0c130e;
+      radial-gradient(1200px 500px at 50% -180px, #0b1b3a 0%, transparent 60%),
+      linear-gradient(180deg, #0b1830 0%, #071022 30%, #05070c 62%, #020408 100%);
     background-repeat: no-repeat;
     background-attachment: fixed;
     min-height: 100svh;
@@ -189,12 +191,12 @@
 }
 
 @layer components {
-  /* Signature button: Lilita One + hard deck shadow. Hover lifts, active presses. */
+  /* Signature button (v2): solid lime + soft glow. Hover lifts, active presses. */
   .btn-deck {
     font-family: var(--font-display);
     border: none;
-    border-radius: var(--radius-btn);
-    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+    border-radius: 9px;
+    transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
     }
   .btn-deck:hover {
     transform: translateY(-2px);
@@ -208,7 +210,7 @@
     box-shadow: var(--shadow-deck-lime);
     }
   .btn-lime:hover { box-shadow: var(--shadow-deck-lime-lg); }
-  .btn-lime:active { box-shadow: 0 2px 0 var(--color-lime-dark); }
+  .btn-lime:active { box-shadow: var(--shadow-deck-lime); }
 
   .btn-gold {
     background: var(--color-gold);
@@ -216,22 +218,86 @@
     box-shadow: var(--shadow-deck-gold);
     }
   .btn-gold:hover { box-shadow: var(--shadow-deck-gold-lg); }
-  .btn-gold:active { box-shadow: 0 2px 0 var(--color-gold-dark); }
+  .btn-gold:active { box-shadow: var(--shadow-deck-gold); }
 
   .btn-red {
     background: var(--color-tide);
     color: #1a0505;
     box-shadow: var(--shadow-deck-red);
     }
-  .btn-red:hover { box-shadow: 0 7px 0 var(--color-tide-dark); }
-  .btn-red:active { box-shadow: 0 2px 0 var(--color-tide-dark); }
+  .btn-red:hover { box-shadow: var(--shadow-deck-red); }
+  .btn-red:active { box-shadow: var(--shadow-deck-red); }
 
+  /* Secondary: transparent, thin blue border, mono uppercase. */
   .btn-quiet {
-    background: var(--color-deep);
+    background: transparent;
     color: var(--color-body2);
-    border: 1px solid var(--color-rigging);
+    border: 1px solid rgba(94, 147, 234, 0.35);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     }
-  .btn-quiet:hover { background: var(--color-bulwark); }
+  .btn-quiet:hover { background: var(--color-bulwark); color: var(--color-foam); }
+}
+
+/* ---------------------------------------------------------------------------
+   Atmosphere: fixed layers behind all content. grain + grid + light shafts.
+   All pointer-events:none; page <main>s sit at z-index:1 above these.
+--------------------------------------------------------------------------- */
+.atmo {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.atmo-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(94, 147, 234, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 147, 234, 0.05) 1px, transparent 1px);
+  background-size: 72px 72px;
+  -webkit-mask-image: radial-gradient(1000px 900px at 50% 0, #000 0%, transparent 70%);
+  mask-image: radial-gradient(1000px 900px at 50% 0, #000 0%, transparent 70%);
+}
+.atmo-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.atmo-shaft {
+  position: absolute;
+  top: -20vh;
+  height: 120vh;
+  width: 220px;
+  filter: blur(8px);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 72vh);
+  mask-image: linear-gradient(180deg, #000 0%, transparent 72vh);
+  animation: shaftDrift 30s ease-in-out infinite;
+}
+.atmo-shaft-1 {
+  left: 14%;
+  transform: rotate(14deg);
+  background: linear-gradient(180deg, rgba(150, 190, 252, 0.55), transparent);
+  animation-duration: 26s;
+}
+.atmo-shaft-2 {
+  left: 48%;
+  transform: rotate(-16deg);
+  background: linear-gradient(180deg, rgba(198, 255, 61, 0.26), transparent);
+  animation-duration: 34s;
+}
+.atmo-shaft-3 {
+  left: 78%;
+  transform: rotate(18deg);
+  background: linear-gradient(180deg, rgba(150, 190, 252, 0.4), transparent);
+  animation-duration: 30s;
+}
+@keyframes shaftDrift {
+  0%, 100% { opacity: 0.55; translate: 0 0; }
+  50% { opacity: 1; translate: 34px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -239,7 +305,8 @@
   .animate-tape,
   .animate-crown,
   .animate-flow,
-  .animate-pulse-soft {
+  .animate-pulse-soft,
+  .atmo-shaft {
     animation: none !important;
   }
 }

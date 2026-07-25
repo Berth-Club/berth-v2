@@ -161,9 +161,9 @@ export function TradePanel({ coin }: { coin: Coin }) {
         <div
           className="rounded-btn p-2.5 text-[13px]"
           style={{
-            border: "1px solid rgba(251,191,36,.4)",
-            background: "rgba(251,191,36,.08)",
-            color: "#FBBF24",
+            border: "1px solid rgba(242,201,76,.4)",
+            background: "rgba(242,201,76,.08)",
+            color: "#f2c94c",
           }}
         >
           ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — the entire market
@@ -175,7 +175,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
       {overshoots && (
         <div
           className="rounded-btn text-lime p-2.5 text-[13px]"
-          style={{ border: "1px dashed rgba(163,230,53,.5)", background: "rgba(163,230,53,.06)" }}
+          style={{ border: "1px dashed rgba(198,255,61,.5)", background: "rgba(198,255,61,.06)" }}
         >
           This buy overshoots the range — the extra ETH auto-refunds.
         </div>
@@ -215,7 +215,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
       )}
 
       {trade.error && !trade.busy && (
-        <p className="text-center text-[12px]" style={{ color: "#F87171" }}>
+        <p className="text-center text-[12px]" style={{ color: "#ff8f6e" }}>
           {trade.error}
         </p>
       )}

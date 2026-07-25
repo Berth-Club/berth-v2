@@ -19,7 +19,7 @@ const TRUST = [
   { icon: "💸", title: "1% fee → the creator", body: "every trade pays the ship's builder, not a middleman" },
 ]
 
-const GOLD = { color: "#FBBF24", background: "rgba(251,191,36,.12)", border: "1px solid rgba(251,191,36,.35)" }
+const GOLD = { color: "#f2c94c", background: "rgba(242,201,76,.12)", border: "1px solid rgba(242,201,76,.35)" }
 
 export default async function HarborPage() {
   // null = indexer unreachable. [] = reachable, genuinely no coins. These are
@@ -58,8 +58,11 @@ export default async function HarborPage() {
       {/* hero */}
       <section className="mb-7 flex items-center gap-6">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display leading-[1.05]" style={{ fontSize: "clamp(34px,5vw,58px)" }}>
-            The sea doesn&apos;t care if you <span style={{ color: "#F87171" }}>drown</span>.
+          <h1
+            className="font-display uppercase leading-[1.05]"
+            style={{ fontSize: "clamp(34px,5vw,58px)", letterSpacing: "-0.035em" }}
+          >
+            The sea doesn&apos;t care if you <span style={{ color: "#ff8f6e" }}>drown</span>.
             <br />
             Build something that <span className="text-lime">floats</span>.
           </h1>
@@ -77,7 +80,7 @@ export default async function HarborPage() {
       {stats && (
         <section
           className="rounded-card mb-6 grid gap-px overflow-hidden text-center"
-          style={{ gridTemplateColumns: "repeat(3,1fr)", background: "#263A28", border: "1px solid #263A28" }}
+          style={{ gridTemplateColumns: "repeat(3,1fr)", background: "rgba(94,147,234,0.2)", border: "1px solid rgba(94,147,234,0.2)" }}
         >
           <StatCell label="Ships launched" value={stats.coins.toLocaleString()} />
           <StatCell label="Trades" value={stats.trades.toLocaleString()} />
@@ -92,8 +95,8 @@ export default async function HarborPage() {
           href={`/token/${king.address}`}
           className="rounded-panel shadow-gold-glow relative flex flex-wrap items-center gap-5 px-6 py-[22px] transition-transform hover:-translate-y-0.5"
           style={{
-            background: "linear-gradient(120deg,#1d2b14,#182418 55%)",
-            border: "2px solid #FBBF24",
+            background: "linear-gradient(120deg,#0d1526,#0d1526 55%)",
+            border: "2px solid #f2c94c",
             borderRadius: 20,
           }}
         >
@@ -108,7 +111,7 @@ export default async function HarborPage() {
             ticker={king.ticker}
             size={76}
             className="bg-deep"
-            style={{ border: "2px solid #FBBF24", borderRadius: 18 }}
+            style={{ border: "2px solid #f2c94c", borderRadius: 18 }}
           />
 
           <div className="min-w-0">
@@ -132,7 +135,7 @@ export default async function HarborPage() {
             </Metric>
           </div>
 
-          <span className="btn-deck btn-gold px-5 py-2.5 text-base">Climb aboard →</span>
+          <span className="btn-deck btn-lime px-5 py-2.5 text-base">Climb aboard →</span>
         </Link>
       </section>
       )}
@@ -142,8 +145,8 @@ export default async function HarborPage() {
         className="rounded-card mb-8 grid gap-px overflow-hidden"
         style={{
           gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          background: "#263A28",
-          border: "1px solid #263A28",
+          background: "rgba(94,147,234,0.2)",
+          border: "1px solid rgba(94,147,234,0.2)",
         }}
       >
         {TRUST.map((t) => (

@@ -17,9 +17,9 @@ export function TopBar() {
     <header
       className="sticky top-0 z-30"
       style={{
-        background: "rgba(12,19,14,.9)",
+        background: "rgba(5,7,12,.9)",
         backdropFilter: "blur(10px)",
-        borderBottom: "1px solid #22331f",
+        borderBottom: "1px solid rgba(94,147,234,0.14)",
       }}
     >
       <div className="mx-auto flex max-w-[1180px] items-center gap-5 px-5 py-3.5">
@@ -47,7 +47,7 @@ export function TopBar() {
         <div className="ml-auto flex items-center gap-2.5">
           <Link
             href={LAUNCH_HREF}
-            className="btn-deck btn-gold hidden px-4 py-2 text-[15px] sm:inline-block"
+            className="btn-deck btn-lime hidden px-4 py-2 text-[15px] sm:inline-block"
           >
             + Launch a coin
           </Link>
@@ -65,7 +65,7 @@ export function TopBar() {
                 wallet.connect()
               }}
               disabled={!wallet.ready}
-              className="btn-deck btn-lime tabular px-4 py-2 text-[15px] disabled:opacity-50"
+              className="btn-deck btn-quiet tabular px-4 py-2 text-[15px] disabled:opacity-50"
             >
               {wallet.label}
             </button>

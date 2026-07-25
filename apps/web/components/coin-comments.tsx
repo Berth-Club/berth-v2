@@ -81,7 +81,7 @@ export function CoinComments({ coin }: { coin: string }) {
   }, [body, posting, coin, getAccessToken])
 
   return (
-    <section className="rounded-card bg-hull border p-4" style={{ borderColor: "#263A28" }}>
+    <section className="rounded-card bg-hull border p-4" style={{ borderColor: "rgba(94,147,234,0.2)" }}>
       <h2 className="text-mist mb-3 text-[13px] font-bold" style={{ letterSpacing: 1 }}>
         DECK CHATTER {comments && comments.length > 0 && <span className="text-faint">· {comments.length}</span>}
       </h2>
@@ -95,7 +95,7 @@ export function CoinComments({ coin }: { coin: string }) {
             rows={2}
             placeholder="Say something to the deck…"
             className="bg-deep rounded-btn w-full border p-2.5 text-sm outline-none focus:border-lime"
-            style={{ borderColor: "#263A28" }}
+            style={{ borderColor: "rgba(94,147,234,0.2)" }}
           />
           <div className="flex items-center justify-between">
             <span className="text-faint text-[11px]">
@@ -110,7 +110,7 @@ export function CoinComments({ coin }: { coin: string }) {
             </button>
           </div>
           {error && (
-            <p className="text-[13px]" style={{ color: "#F87171" }}>
+            <p className="text-[13px]" style={{ color: "#ff8f6e" }}>
               {error}
             </p>
           )}

@@ -49,7 +49,7 @@ export default async function UserPage({
       <div className="rounded-panel bg-hull mt-5 flex flex-wrap items-center gap-5 border p-6">
         <span
           className="grid size-[84px] shrink-0 place-items-center rounded-full text-4xl"
-          style={{ background: "#182418", border: "2px solid #A3E635" }}
+          style={{ background: "#0d1526", border: "2px solid #c6ff3d" }}
           aria-hidden
         >
           ⚓
@@ -78,11 +78,11 @@ export default async function UserPage({
       >
         <Stat label="Coins created" value={String(captain.coinsCreated)} />
         <Stat label="Buys" value={String(captain.buys)} color="#4ADE80" />
-        <Stat label="Sells" value={String(captain.sells)} color="#F87171" />
+        <Stat label="Sells" value={String(captain.sells)} color="#ff8f6e" />
         <Stat
           label="Volume"
           value={captain.volumeNative > 0 ? fmtMc(captain.volumeUsd) : "—"}
-          color="#A3E635"
+          color="#c6ff3d"
         />
       </div>
 
