@@ -1,10 +1,12 @@
 // AUTO-GENERATED event ABIs. Source of truth: arc-launchpad/abi/.
 // Do not hand-edit — regenerate from that repo.
 //
-// TokenLaunched on THIS deployment is
-//   (address,address,uint256,address,uint256,int24,uint256,uint128,uint16,uint256,string,string,string)
-// Note graduationThreshold is uint128 and the dev-buy field is devBuyNativeIn --
-// both differ from earlier revisions, and either one alone changes topic0. Ponder
+// TokenLaunched on THIS deployment (factory 0x82A613…e317) is
+//   (address,address,uint256,address,int24,uint24,uint256,uint128,uint16,uint256,string,string,string)
+// v1.4 dropped the per-launch `supply` word (always TOTAL_SUPPLY) and added
+// `uint24 fee` after initialTick. graduationThreshold stays uint128, dev-buy is
+// devBuyNativeIn. Any one of these changes topic0 (now
+// 0xb999762fcf95cce821130d3e3ea8f1cf0ed56e5dd21c54e2b5379035a20689a4). Ponder
 // filters logs by that hash, so a stale ABI here indexes ZERO launches and raises
 // no error: indistinguishable from "nobody has launched yet".
 
@@ -285,16 +287,16 @@ export const LaunchFactoryAbi = [
         "internalType": "address"
       },
       {
-        "name": "supply",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
         "name": "initialTick",
         "type": "int24",
         "indexed": false,
         "internalType": "int24"
+      },
+      {
+        "name": "fee",
+        "type": "uint24",
+        "indexed": false,
+        "internalType": "uint24"
       },
       {
         "name": "curveConfigId",

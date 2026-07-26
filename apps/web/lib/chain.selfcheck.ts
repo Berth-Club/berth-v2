@@ -6,32 +6,33 @@
  * Worth a check because getting it wrong is not loud. A launch token has 18
  * decimals and USDC has 6, so a tick is USDC-units-per-token-WEI — 1e-12 of the
  * dollar price of a whole token. Drop the 1e12 and prices render as a plausible
- * tiny number instead of an obvious error, and a $4,923 market cap silently
- * becomes $0.0000000049.
+ * tiny number instead of an obvious error, and an $8,618 market cap silently
+ * becomes $0.0000000086.
  *
- * Ground truth is arc-launchpad's own README, which states the shipped curve as
- * a ~$4,923 opening market cap graduating at $20,000 with ~80.25% of supply
- * sold, and a 2% dev-buy cap costing ~$100.47.
+ * Ground truth is the deployed factory's curve preset 0 (getCurveConfig(0) =>
+ * initialTick -439000, graduationThreshold 8787e6): a ~$8,618 opening market cap
+ * graduating at $8,787 with ~50.48% of supply sold, and a 2% dev-buy cap costing
+ * ~$175.89.
  */
 import assert from "node:assert/strict"
 
 import { priceUsdFromTick, coinIsToken0, toCoinTick, USDC, NATIVE_PER_USDC } from "./chain.ts"
 
 const SUPPLY = 100_000_000_000 // 100B, a contract constant
-const INITIAL_TICK = -444_600 // preset 0, verified on the deployed factory
-const GRADUATION_USD = 20_000
+const INITIAL_TICK = -439_000 // preset 0, verified on the deployed factory
+const GRADUATION_USD = 8_787
 
 const close = (a: number, b: number, tol: number, msg: string) =>
   assert.ok(Math.abs(a - b) / b < tol, `${msg}: got ${a}, expected ~${b}`)
 
 // --- the shipped curve, reproduced from the tick alone
 const openingMcap = priceUsdFromTick(INITIAL_TICK) * SUPPLY
-close(openingMcap, 4923.03, 0.001, "opening market cap")
+close(openingMcap, 8618.38, 0.001, "opening market cap")
 
 const f = GRADUATION_USD / (GRADUATION_USD + openingMcap)
-close(f * 100, 80.25, 0.001, "fraction of supply sold at graduation")
+close(f * 100, 50.48, 0.001, "fraction of supply sold at graduation")
 
-close((openingMcap * 0.02) / 0.98, 100.47, 0.001, "cost of a 2% dev buy")
+close((openingMcap * 0.02) / 0.98, 175.89, 0.001, "cost of a 2% dev buy")
 
 // --- the 1e12 shift itself. An 18-decimal quote asset would put this same
 // dollar price 276,324 ticks higher; that gap IS the decimal difference.
@@ -58,11 +59,11 @@ assert.equal(coinIsToken0("0x3600000000000000000000000000000000000001"), false, 
 assert.equal(coinIsToken0(USDC.address), false, "equal is not below")
 
 // Coin-space normalisation is a sign flip, and its own inverse.
-assert.equal(toCoinTick(-444_600, true), -444_600)
-assert.equal(toCoinTick(444_600, false), -444_600)
+assert.equal(toCoinTick(-439_000, true), -439_000)
+assert.equal(toCoinTick(439_000, false), -439_000)
 for (const [t, is0] of [
-  [-444_600, true],
-  [444_600, false],
+  [-439_000, true],
+  [439_000, false],
 ] as const) {
   assert.equal(toCoinTick(toCoinTick(t, is0), is0), t, "toCoinTick is an involution")
 }
@@ -70,8 +71,8 @@ for (const [t, is0] of [
 // A token1 coin prices the reciprocal, so the SAME dollar price must come out
 // of the mirrored tick. This is the bug that shows as an upside-down chart.
 close(
-  priceUsdFromTick(toCoinTick(444_600, false)),
-  priceUsdFromTick(toCoinTick(-444_600, true)),
+  priceUsdFromTick(toCoinTick(439_000, false)),
+  priceUsdFromTick(toCoinTick(-439_000, true)),
   1e-9,
   "both orderings price identically"
 )

@@ -1,11 +1,10 @@
 // AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubLaunchFactory.json
 // (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// Verified against the DEPLOYED bytecode at 0xb7738F4e07845fAa09b7694E5E882e00e0eE768B
-// on Arc testnet: all 47 function selectors present. That check is the point —
-// this repo previously shipped an ABI hand-pinned to a stale deployment, and the
-// resulting TokenLaunched topic0 mismatch made the indexer match zero launches
-// with no error at all.
+// Regenerated for the deployment at 0x82A613C19787D88d648C04F8Ad7Bd6825193e317
+// on Arc testnet (48 function selectors). Keeping this ABI byte-current
+// with the deployed factory is load-bearing: a stale TokenLaunched shape
+// silently makes the indexer match zero launches.
 
 export const LaunchFactoryAbi = [
   {
@@ -91,19 +90,6 @@ export const LaunchFactoryAbi = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "MAX_USABLE_TICK",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "int24",
-        "internalType": "int24"
       }
     ],
     "stateMutability": "view"
@@ -213,6 +199,16 @@ export const LaunchFactoryAbi = [
             "internalType": "uint128"
           },
           {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
             "name": "enabled",
             "type": "bool",
             "internalType": "bool"
@@ -319,6 +315,25 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "feeTierOf",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "fee",
+        "type": "uint24",
+        "internalType": "uint24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getCurveConfig",
     "inputs": [
       {
@@ -342,6 +357,16 @@ export const LaunchFactoryAbi = [
             "name": "graduationThreshold",
             "type": "uint128",
             "internalType": "uint128"
+          },
+          {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
           },
           {
             "name": "enabled",
@@ -453,6 +478,25 @@ export const LaunchFactoryAbi = [
   },
   {
     "type": "function",
+    "name": "maxUsableTick",
+    "inputs": [
+      {
+        "name": "tickSpacing",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tick",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
     "name": "owner",
     "inputs": [],
     "outputs": [
@@ -537,6 +581,11 @@ export const LaunchFactoryAbi = [
         "name": "salt",
         "type": "bytes32",
         "internalType": "bytes32"
+      },
+      {
+        "name": "curveConfigId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "outputs": [
@@ -894,6 +943,16 @@ export const LaunchFactoryAbi = [
             "internalType": "uint128"
           },
           {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
             "name": "enabled",
             "type": "bool",
             "internalType": "bool"
@@ -938,6 +997,12 @@ export const LaunchFactoryAbi = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      },
+      {
+        "name": "fee",
+        "type": "uint24",
+        "indexed": false,
+        "internalType": "uint24"
       },
       {
         "name": "enabled",
@@ -988,6 +1053,12 @@ export const LaunchFactoryAbi = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      },
+      {
+        "name": "fee",
+        "type": "uint24",
+        "indexed": false,
+        "internalType": "uint24"
       },
       {
         "name": "enabled",
@@ -1193,16 +1264,16 @@ export const LaunchFactoryAbi = [
         "internalType": "address"
       },
       {
-        "name": "supply",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
         "name": "initialTick",
         "type": "int24",
         "indexed": false,
         "internalType": "int24"
+      },
+      {
+        "name": "fee",
+        "type": "uint24",
+        "indexed": false,
+        "internalType": "uint24"
       },
       {
         "name": "curveConfigId",
@@ -1364,6 +1435,11 @@ export const LaunchFactoryAbi = [
   {
     "type": "error",
     "name": "InvalidCurveConfigId",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidFeeTier",
     "inputs": []
   },
   {

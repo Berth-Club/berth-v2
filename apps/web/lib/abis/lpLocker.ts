@@ -1,11 +1,10 @@
 // AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubLpLocker.json
 // (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// Verified against the DEPLOYED bytecode at 0x402f35e11cC6E89E80EFF4205956716aCd94be04
-// on Arc testnet: all 14 function selectors present. That check is the point —
-// this repo previously shipped an ABI hand-pinned to a stale deployment, and the
-// resulting TokenLaunched topic0 mismatch made the indexer match zero launches
-// with no error at all.
+// Regenerated for the deployment at 0xA592aDF3Cb55741619d09E50E6502f40F3883cc9
+// on Arc testnet (15 function selectors). Keeping this ABI byte-current
+// with the deployed factory is load-bearing: a stale TokenLaunched shape
+// silently makes the indexer match zero launches.
 
 export const LpLockerAbi = [
   {
@@ -85,6 +84,19 @@ export const LpLockerAbi = [
         "internalType": "uint256"
       }
     ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "collectFeesMany",
+    "inputs": [
+      {
+        "name": "tokenIds",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "outputs": [],
     "stateMutability": "nonpayable"
   },
   {

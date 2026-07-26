@@ -117,7 +117,7 @@ export function ipfsToGateway(uri: string | null | undefined): string | null {
 /**
  * The launchpad on Arc testnet, deployed from github.com/Arcane-build/arc-launchpad.
  * Verified live: LpLocker ownership renounced to 0x0, factoryLocked, wired both
- * ways, preset 0 = (-444600, 20000e6, enabled).
+ * ways, preset 0 = (-439000, 8787e6, enabled).
  *
  * Env-overridable so a redeploy does not need a code change.
  */
@@ -127,9 +127,9 @@ function addr(v: string | undefined, fallback: string): `0x${string}` {
 }
 
 export const CONTRACTS = {
-  launchFactory: addr(process.env.NEXT_PUBLIC_LAUNCH_FACTORY, "0xb7738F4e07845fAa09b7694E5E882e00e0eE768B"),
-  lpLocker: addr(process.env.NEXT_PUBLIC_LP_LOCKER, "0x402f35e11cC6E89E80EFF4205956716aCd94be04"),
-  feeLocker: addr(process.env.NEXT_PUBLIC_FEE_LOCKER, "0x3bC8f037691Ce1d28c0bB224BD33563b49F99dE8"),
+  launchFactory: addr(process.env.NEXT_PUBLIC_LAUNCH_FACTORY, "0x82A613C19787D88d648C04F8Ad7Bd6825193e317"),
+  lpLocker: addr(process.env.NEXT_PUBLIC_LP_LOCKER, "0xA592aDF3Cb55741619d09E50E6502f40F3883cc9"),
+  feeLocker: addr(process.env.NEXT_PUBLIC_FEE_LOCKER, "0xC3a15f812901205Fc4406Cd0dC08Fe266bF45a1E"),
 } as const
 
 export const CONTRACTS_CONFIGURED = CONTRACTS.launchFactory !== UNDEPLOYED

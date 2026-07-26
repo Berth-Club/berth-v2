@@ -47,18 +47,18 @@ const START_BLOCK = Number(required("START_BLOCK"));
  *
  * ⚠️ MUST match the deployed event byte for byte. Ponder resolves the factory()
  * patterns below by topic0, which is keccak of the TYPE list — so a single wrong
- * type silently watches nothing. `graduationThreshold` is **uint128**, not
- * uint256; getting that one word wrong shifts topic0 from 35551eae to 07d05491
- * and the indexer discovers zero pools and zero tokens while still happily
+ * type silently watches nothing. This is the v1.4 shape: `supply` is gone (it is
+ * always TOTAL_SUPPLY) and `uint24 fee` sits after initialTick;
+ * `graduationThreshold` is **uint128**, not uint256. Any one of those wrong shifts
+ * topic0 and the indexer discovers zero pools and zero tokens while still happily
  * recording coins (those come off the full ABI, which is generated). The symptom
  * is a launchpad with coins but no trades and no holders, and no error anywhere.
  *
- * Verified against a real log on chain, not against the ABI file:
- *   eth_getLogs on the factory returns topic0
- *   0x35551eae3963d8bb4555e823210e27db7efed291f9307cb3cac27189c7c1601e
+ * Expected topic0 for the shape below (recompute against the first live log):
+ *   0xb999762fcf95cce821130d3e3ea8f1cf0ed56e5dd21c54e2b5379035a20689a4
  */
 const tokenLaunchedEvent = parseAbiItem(
-  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, uint256 supply, int24 initialTick, uint256 curveConfigId, uint128 graduationThreshold, uint16 protocolFeeBps, uint256 devBuyNativeIn, string name, string symbol, string metadataURI)",
+  "event TokenLaunched(address indexed token, address indexed creator, uint256 indexed tokenId, address pool, int24 initialTick, uint24 fee, uint256 curveConfigId, uint128 graduationThreshold, uint16 protocolFeeBps, uint256 devBuyNativeIn, string name, string symbol, string metadataURI)",
 );
 
 export default createConfig({

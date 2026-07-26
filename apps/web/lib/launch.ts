@@ -54,8 +54,8 @@ export const METADATA_URI_PLACEHOLDER = "ipfs://berth-placeholder"
 /**
  * The curve preset every launch uses. deploy() takes it as a second argument —
  * the factory now carries a MENU of owner-curated curves rather than one fixed
- * pair of ticks, and preset 0 is the shipped one (opens ~$4,923, graduates at
- * $20,000) -- read live from the deployed factory, not assumed.
+ * pair of ticks, and preset 0 is the shipped one (opens ~$8,618, graduates at
+ * $8,787) -- read live from the deployed factory, not assumed.
  *
  * This argument did not exist on the Robinhood v1.1 deployment, and the app's
  * hand-pinned ABI hid that: `deploy(config)` type-checked against the stale ABI
@@ -79,8 +79,8 @@ const DEV_BUY_MIN_OUT = 0n
  *
  * The cap is enforced on SUPPLY (2% of 100B), not on USDC, so there is no exact
  * figure in the contract to read. It follows from the curve:
- *   cost(f) = openingMcap * f/(1-f) = 4923.03 * 0.02/0.98 = 100.47 USDC
- * floored to 100 so the advertised number is always payable.
+ *   cost(f) = openingMcap * f/(1-f) = 8618.38 * 0.02/0.98 = 175.89 USDC
+ * so the displayed 100 sits comfortably under the on-chain 2% cap.
  *
  * ⚠️ These figures are outputs of curve preset 0, which the factory admin (the
  * contract developer, not us) can rewrite at any time via updateCurveConfig.
@@ -322,19 +322,35 @@ export function useLaunch(
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "predictTokenAddress",
-    args: address && config && salts[0] ? [address, config, salts[0]] : undefined,
+    // v1.4 added the curveConfigId arg (the pool-free check is per fee tier).
+    // The predicted ADDRESS is independent of it — but the arity must match or
+    // the call reverts to encode.
+    args: address && config && salts[0] ? [address, config, salts[0], CURVE_CONFIG_ID] : undefined,
     chainId: arc.id,
     query: { enabled: canRead && salts.length > 0 },
   })
+
+  // v1.4 charges a flat launch fee taken off msg.value; the remainder is the
+  // dev-buy (contract: `devBuyNative = msg.value - launchFee`). Read live so a
+  // fee change needs no code change; fall back to the deployed 1 USDC so a
+  // pending read never sends a value the factory would reject.
+  const { data: launchFeeData } = useReadContract({
+    address: CONTRACTS.launchFactory,
+    abi: LaunchFactoryAbi,
+    functionName: "launchFee",
+    chainId: arc.id,
+  })
+  const feeWei = launchFeeData ?? 1_000_000_000_000_000_000n
+  const totalValueWei = valueWei !== undefined ? valueWei + feeWei : undefined
 
   const sim = useSimulateContract({
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "deploy",
     args: config && salts.length > 0 ? [config, CURVE_CONFIG_ID, salts] : undefined,
-    value: valueWei,
+    value: totalValueWei,
     chainId: arc.id,
-    query: { enabled: canRead && valueWei !== undefined && salts.length > 0 },
+    query: { enabled: canRead && totalValueWei !== undefined && salts.length > 0 },
   })
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
@@ -359,7 +375,8 @@ export function useLaunch(
   // curve). Deliberately generous: telling someone they're short when they are
   // not is worse than letting the simulation catch the edge.
   const GAS_HEADROOM_WEI = 700_000_000_000_000n // 0.0007
-  const needWei = valueWei !== undefined ? valueWei + GAS_HEADROOM_WEI : undefined
+  // Balance must cover the launch fee + dev-buy + gas.
+  const needWei = totalValueWei !== undefined ? totalValueWei + GAS_HEADROOM_WEI : undefined
   const short =
     balance !== undefined && needWei !== undefined && balance.value < needWei
 
@@ -368,7 +385,7 @@ export function useLaunch(
   else if (short)
     blocked =
       `Not enough USDC in this wallet. You have ${Number(formatEther(balance!.value)).toFixed(5)} USDC; ` +
-      `this needs about ${Number(formatEther(needWei!)).toFixed(5)} USDC (dev-buy + gas). ` +
+      `this needs about ${Number(formatEther(needWei!)).toFixed(5)} USDC (launch fee + dev-buy + gas). ` +
       `Lower the dev-buy or top the wallet up.`
   // Mining failures are a config error, not bad luck: the miner only gives up
   // after 2M attempts, ~30 sigma past the 1-in-65,536 odds.

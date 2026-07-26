@@ -17,6 +17,14 @@ import {
 
 
 /**
+ * Every launch mints exactly this. The v1.4 TokenLaunched event dropped the
+ * per-launch `supply` word precisely because it is invariant — the factory's
+ * `TOTAL_SUPPLY` constant (100_000_000_000e18). Mirrored here rather than read
+ * per launch. Verified live: factory.TOTAL_SUPPLY() == 1e29.
+ */
+const TOTAL_SUPPLY = 100_000_000_000n * 10n ** 18n;
+
+/**
  * Graduation, straight from the factory.
  *
  * Graduation is an owner-set USDC threshold on the position's paired principal
@@ -160,7 +168,7 @@ ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
     creator: a.creator,
     tokenId: a.tokenId,
     pool: a.pool,
-    supply: a.supply,
+    supply: TOTAL_SUPPLY,
     tickLower,
     tickUpper,
     coinIsToken0,

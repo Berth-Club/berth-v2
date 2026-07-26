@@ -11,11 +11,11 @@ import { useTrade, type Side } from "@/lib/trade"
 import { explorerTx, USDC, COIN_DECIMALS } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
-// ~20,000 USDC buys through the whole range -- the graduation threshold read
-// from the deployed factory's curve preset 0 (getCurveConfig(0) => -444600,
-// 20000e6). Not a constant of the system: the factory admin can rewrite the
+// ~8,787 USDC buys through the whole range -- the graduation threshold read
+// from the deployed factory's curve preset 0 (getCurveConfig(0) => -439000,
+// 8787e6). Not a constant of the system: the factory admin can rewrite the
 // preset, so treat this as today's reading.
-const EXIT_NATIVE = 20000
+const EXIT_NATIVE = 8787
 const CHIPS = ["50", "100", "500", "1000"]
 const SELL_CHIPS: [string, bigint][] = [
   ["25%", 25n],
@@ -167,7 +167,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
           }}
         >
           ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — the entire market
-          has ~20,000 USDC of exit liquidity.
+          has ~8,787 USDC of exit liquidity.
         </div>
       )}
 
