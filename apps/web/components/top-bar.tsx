@@ -7,11 +7,10 @@ import { cn } from "@workspace/ui/lib/utils"
 import { NAV_ITEMS, LAUNCH_HREF, isActive } from "@/lib/nav"
 import { Wordmark } from "@/components/wordmark"
 import { ActivityTicker } from "@/components/activity-ticker"
-import { useWallet } from "@/components/wallet-provider"
+import { WalletMenu } from "@/components/wallet-menu"
 
 export function TopBar() {
   const pathname = usePathname()
-  const wallet = useWallet()
 
   return (
     <header
@@ -51,25 +50,7 @@ export function TopBar() {
           >
             + Launch a coin
           </Link>
-          {wallet.wrongNetwork ? (
-            <button
-              onClick={wallet.switchToArc}
-              className="btn-deck btn-gold px-4 py-2 text-[15px]"
-            >
-              Wrong network — switch
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                if (wallet.connected) return wallet.disconnect()
-                wallet.connect()
-              }}
-              disabled={!wallet.ready}
-              className="btn-deck btn-quiet tabular px-4 py-2 text-[15px] disabled:opacity-50"
-            >
-              {wallet.label}
-            </button>
-          )}
+          <WalletMenu />
         </div>
       </div>
 
