@@ -1,8 +1,8 @@
 // AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubLaunchFactory.json
 // (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// Regenerated for the deployment at 0x82A613C19787D88d648C04F8Ad7Bd6825193e317
-// on Arc testnet (48 function selectors). Keeping this ABI byte-current
+// Regenerated from the current arc-launchpad deployment (on-chain address lives
+// in @workspace/contracts). 48 function selectors; keep this ABI byte-current
 // with the deployed factory is load-bearing: a stale TokenLaunched shape
 // silently makes the indexer match zero launches.
 

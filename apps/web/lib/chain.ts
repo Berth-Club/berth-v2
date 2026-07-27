@@ -115,24 +115,17 @@ export function ipfsToGateway(uri: string | null | undefined): string | null {
 
 
 /**
- * The launchpad on Arc testnet, deployed from github.com/Arcane-build/arc-launchpad.
- * Verified live: LpLocker ownership renounced to 0x0, factoryLocked, wired both
- * ways, preset 0 = (-439000, 8787e6, enabled).
- *
- * Env-overridable so a redeploy does not need a code change.
+ * Launchpad addresses live in @workspace/contracts — the ONE place both the
+ * web app and the indexer read, so they can never point at different
+ * factories. A web-env override that drifted from the indexer was a real
+ * outage; a redeploy is now a bump in that package, not a per-app env change.
  */
-const UNDEPLOYED = "0x0000000000000000000000000000000000000000" as const
-function addr(v: string | undefined, fallback: string): `0x${string}` {
-  return (v && /^0x[0-9a-fA-F]{40}$/.test(v) ? v : fallback) as `0x${string}`
-}
+import { CONTRACTS } from "@workspace/contracts"
+export { CONTRACTS }
 
-export const CONTRACTS = {
-  launchFactory: addr(process.env.NEXT_PUBLIC_LAUNCH_FACTORY, "0x82A613C19787D88d648C04F8Ad7Bd6825193e317"),
-  lpLocker: addr(process.env.NEXT_PUBLIC_LP_LOCKER, "0xA592aDF3Cb55741619d09E50E6502f40F3883cc9"),
-  feeLocker: addr(process.env.NEXT_PUBLIC_FEE_LOCKER, "0xC3a15f812901205Fc4406Cd0dC08Fe266bF45a1E"),
-} as const
-
-export const CONTRACTS_CONFIGURED = CONTRACTS.launchFactory !== UNDEPLOYED
+// Addresses are code constants now, so the app is always "configured". Kept as
+// a stable export for any caller that still gates on it.
+export const CONTRACTS_CONFIGURED = true
 
 /**
  * Uniswap v3 on Arc testnet, from arc-launchpad/config/5042002.json and

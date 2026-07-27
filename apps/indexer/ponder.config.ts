@@ -9,38 +9,16 @@ import {
   UniswapV3PoolAbi,
 } from "./abis/berth";
 
-// Arc Testnet (5042002). The launchpad is deployed from
-// github.com/Arcane-build/arc-launchpad — that repo is the source of truth for
-// ABIs and addresses. These must match apps/web/lib/chain.ts CONTRACTS.
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) {
-    throw new Error(
-      `${name} is not set. Deploy the launchpad to Arc first, then set ` +
-        `LAUNCH_FACTORY, LP_LOCKER, FEE_LOCKER and START_BLOCK.`,
-    );
-  }
-  return v;
-}
+// Arc Testnet (5042002). Addresses + deploy block come from @workspace/contracts
+// — the SAME module apps/web reads — so the indexer and the frontend can never
+// watch different factories. They diverged once (a stale web env vs a newer
+// indexer env) and launches landed on a contract nothing indexed. A new
+// deployment is a one-line bump in that package, not a per-service env change.
+import { CONTRACTS, START_BLOCK } from "@workspace/contracts";
 
-/** Validates the shape too — a truncated paste would otherwise index nothing, silently. */
-function requiredAddress(name: string): `0x${string}` {
-  const v = required(name);
-  if (!/^0x[0-9a-fA-F]{40}$/.test(v)) {
-    throw new Error(`${name}="${v}" is not a 20-byte hex address.`);
-  }
-  return v as `0x${string}`;
-}
-
-const LAUNCH_FACTORY = requiredAddress("LAUNCH_FACTORY");
-const LP_LOCKER = requiredAddress("LP_LOCKER");
-const FEE_LOCKER = requiredAddress("FEE_LOCKER");
-
-/**
- * Block the LaunchFactory was deployed in. NOT optional on Arc: the chain is
- * past 52M blocks at ~0.5s each, so starting from 0 would backfill for days.
- */
-const START_BLOCK = Number(required("START_BLOCK"));
+const LAUNCH_FACTORY = CONTRACTS.launchFactory;
+const LP_LOCKER = CONTRACTS.lpLocker;
+const FEE_LOCKER = CONTRACTS.feeLocker;
 
 /**
  * Every launch emits this — carries everything a discovery row needs.

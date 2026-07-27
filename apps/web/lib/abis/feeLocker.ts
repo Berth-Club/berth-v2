@@ -1,8 +1,8 @@
 // AUTO-GENERATED. Source of truth: arc-launchpad/abi/BerthClubFeeLocker.json
 // (github.com/Arcane-build/arc-launchpad). Do not hand-edit — regenerate.
 //
-// Regenerated for the deployment at 0xC3a15f812901205Fc4406Cd0dC08Fe266bF45a1E
-// on Arc testnet (4 function selectors). Keeping this ABI byte-current
+// Regenerated from the current arc-launchpad deployment (on-chain address lives
+// in @workspace/contracts). 4 function selectors; keep this ABI byte-current
 // with the deployed factory is load-bearing: a stale TokenLaunched shape
 // silently makes the indexer match zero launches.
 

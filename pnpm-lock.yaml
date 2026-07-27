@@ -29,6 +29,9 @@ importers:
 
   apps/indexer:
     dependencies:
+      '@workspace/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       abitype:
         specifier: ^0.10.2
         version: 0.10.3(typescript@5.9.3)(zod@3.25.76)
@@ -72,6 +75,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.101.2
         version: 5.101.2(react@19.2.4)
+      '@workspace/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@workspace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -127,6 +133,15 @@ importers:
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.7.0)
+      typescript:
+        specifier: ^5
+        version: 5.9.3
+
+  packages/contracts:
+    devDependencies:
+      '@workspace/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
       typescript:
         specifier: ^5
         version: 5.9.3

@@ -1,7 +1,7 @@
 // AUTO-GENERATED event ABIs. Source of truth: arc-launchpad/abi/.
 // Do not hand-edit — regenerate from that repo.
 //
-// TokenLaunched on THIS deployment (factory 0x82A613…e317) is
+// TokenLaunched on THIS deployment (the current factory; address in @workspace/contracts) is
 //   (address,address,uint256,address,int24,uint24,uint256,uint128,uint16,uint256,string,string,string)
 // v1.4 dropped the per-launch `supply` word (always TOTAL_SUPPLY) and added
 // `uint24 fee` after initialTick. graduationThreshold stays uint128, dev-buy is

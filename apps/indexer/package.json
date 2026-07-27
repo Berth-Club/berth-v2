@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@workspace/contracts": "workspace:*",
     "abitype": "^0.10.2",
     "hono": "^4.5.0",
     "ponder": "^0.16.10",
