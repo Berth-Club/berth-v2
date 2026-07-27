@@ -24,7 +24,8 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 # --- build: produces apps/web/.next/standalone (self-contained server) ---
 FROM base AS build
-ENV NEXT_TELEMETRY_DISABLED=1
+# Turns on Next.js `output: standalone` (see next.config.ts) — Docker only.
+ENV NEXT_TELEMETRY_DISABLED=1 DOCKER_BUILD=1
 # NEXT_PUBLIC_* are inlined into the client bundle at BUILD time, so they must
 # be build args (contract addresses are NOT here — they come from the code in
 # @workspace/contracts).
