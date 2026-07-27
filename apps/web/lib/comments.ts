@@ -1,16 +1,23 @@
 import "server-only"
 
+import { and, count, desc, eq, gt, sql } from "drizzle-orm"
+import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 
+import { coinComments } from "@/lib/db/schema"
 import { serverEnv } from "@/lib/server-env"
 
 /**
  * Comment storage, on the same Railway Postgres the indexer uses.
  *
  * The indexer OWNS its own tables (Ponder manages them); we never touch those.
- * Comments live in one table of our own, created on first use, in the default
- * schema — nowhere near the indexer's namespaced schema. Read-your-writes only;
- * no joins against indexed data.
+ * Comments live in one table of our own, in the default schema — nowhere near
+ * the indexer's namespaced schema. Read-your-writes only; no joins against
+ * indexed data.
+ *
+ * The table is created by `pnpm --filter web db:migrate` (drizzle-kit), NOT at
+ * runtime — a web request must never issue DDL against a database another
+ * service is writing to. See drizzle.config.ts for the tablesFilter rail.
  *
  * DATABASE_URL is Railway-internal in prod (postgres.railway.internal) and the
  * public proxy locally (DATABASE_PUBLIC_URL). Missing => comments degrade to
@@ -19,38 +26,15 @@ import { serverEnv } from "@/lib/server-env"
 
 const URL = serverEnv.databaseUrl
 
-let sql: ReturnType<typeof postgres> | null = null
-let ready: Promise<void> | null = null
+let cached: ReturnType<typeof drizzle<{ coinComments: typeof coinComments }>> | null = null
 
 function db() {
   if (!URL) return null
-  if (!sql) {
-    sql = postgres(URL, { max: 3, idle_timeout: 20, connect_timeout: 10 })
+  if (!cached) {
+    const client = postgres(URL, { max: 3, idle_timeout: 20, connect_timeout: 10 })
+    cached = drizzle(client, { schema: { coinComments } })
   }
-  return sql
-}
-
-/** Create the table once per process. Idempotent. `balance` is added with
- *  ADD COLUMN IF NOT EXISTS so a pre-existing table gains it without a migration. */
-async function ensure(s: ReturnType<typeof postgres>) {
-  if (!ready) {
-    ready = (async () => {
-      await s`
-        CREATE TABLE IF NOT EXISTS coin_comments (
-          id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-          coin       text NOT NULL,
-          author     text NOT NULL,
-          body       text NOT NULL,
-          created_at timestamptz NOT NULL DEFAULT now()
-        )
-      `
-      // Snapshot of the poster's token balance at post time, pre-formatted
-      // (e.g. "22k"). Nullable: old rows and failed reads have none.
-      await s`ALTER TABLE coin_comments ADD COLUMN IF NOT EXISTS balance text`
-      await s`CREATE INDEX IF NOT EXISTS coin_comments_coin_idx ON coin_comments (coin, created_at DESC)`
-    })()
-  }
-  return ready
+  return cached
 }
 
 export type Comment = {
@@ -65,27 +49,36 @@ export type Comment = {
 /** true when a DB is configured — the API returns 503 otherwise. */
 export const COMMENTS_ENABLED = !!URL
 
+const toUnix = (d: Date) => Math.floor(d.getTime() / 1000)
+
 /** Newest-first comments for a coin. Empty array when the DB is unreachable. */
 export async function listComments(coin: string, limit = 100): Promise<Comment[]> {
-  const s = db()
-  if (!s) return []
+  const d = db()
+  if (!d) return []
   try {
-    await ensure(s)
-    const rows = await s<{ id: string; author: string; body: string; created_at: Date; balance: string | null }[]>`
-      SELECT id, author, body, created_at, balance
-      FROM coin_comments
-      WHERE coin = ${coin.toLowerCase()}
-      ORDER BY created_at DESC
-      LIMIT ${limit}
-    `
+    const rows = await d
+      .select({
+        id: coinComments.id,
+        author: coinComments.author,
+        body: coinComments.body,
+        createdAt: coinComments.createdAt,
+        balance: coinComments.balance,
+      })
+      .from(coinComments)
+      .where(eq(coinComments.coin, coin.toLowerCase()))
+      .orderBy(desc(coinComments.createdAt))
+      .limit(limit)
     return rows.map((r) => ({
       id: String(r.id),
       author: r.author,
       body: r.body,
-      createdAt: Math.floor(new Date(r.created_at).getTime() / 1000),
+      createdAt: toUnix(r.createdAt),
       balance: r.balance,
     }))
-  } catch {
+  } catch (err) {
+    // Degrade to an empty thread, but never silently — a missing table or a
+    // pending migration looks identical to "no comments yet" from the UI.
+    console.error("listComments failed", err)
     return []
   }
 }
@@ -98,37 +91,41 @@ export async function addComment(
   body: string,
   balance: string | null = null
 ): Promise<Comment | null> {
-  const s = db()
-  if (!s) return null
-  await ensure(s)
-  const [row] = await s<{ id: string; created_at: Date }[]>`
-    INSERT INTO coin_comments (coin, author, body, balance)
-    VALUES (${coin.toLowerCase()}, ${author}, ${body}, ${balance})
-    RETURNING id, created_at
-  `
+  const d = db()
+  if (!d) return null
+  const [row] = await d
+    .insert(coinComments)
+    .values({ coin: coin.toLowerCase(), author, body, balance })
+    .returning({ id: coinComments.id, createdAt: coinComments.createdAt })
   if (!row) return null
   return {
     id: String(row.id),
     author,
     body,
-    createdAt: Math.floor(new Date(row.created_at).getTime() / 1000),
+    createdAt: toUnix(row.createdAt),
     balance,
   }
 }
 
 /** How many comments this author posted in the last `windowSec`. For rate limiting. */
 export async function recentCommentCount(author: string, windowSec = 60): Promise<number> {
-  const s = db()
-  if (!s) return 0
+  const d = db()
+  if (!d) return 0
   try {
-    await ensure(s)
-    const [row] = await s<{ n: string }[]>`
-      SELECT count(*)::text AS n
-      FROM coin_comments
-      WHERE author = ${author} AND created_at > now() - ${`${windowSec} seconds`}::interval
-    `
-    return row ? Number(row.n) : 0
-  } catch {
+    const [row] = await d
+      .select({ n: count() })
+      .from(coinComments)
+      .where(
+        and(
+          eq(coinComments.author, author),
+          gt(coinComments.createdAt, sql`now() - make_interval(secs => ${windowSec})`)
+        )
+      )
+    return row?.n ?? 0
+  } catch (err) {
+    // Fail OPEN on the count, exactly as before: the rate limiter must not be
+    // the reason a healthy DB blip stops all commenting.
+    console.error("recentCommentCount failed", err)
     return 0
   }
 }

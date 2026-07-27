@@ -57,3 +57,35 @@ log topic0) before assuming it works.
 4. Push. `railway.json` `watchPatterns` include `packages/**`, so a package
    change redeploys **both** web and indexer.
 <!-- END:contracts-and-abis -->
+
+<!-- BEGIN:database -->
+# The database is shared with Ponder — drizzle-kit must never see its tables
+
+The web app's tables (`apps/web/lib/db/schema.ts`, currently just `coin_comments`)
+live on the **same Postgres the indexer uses**. Ponder owns its own tables and
+recreates them on every reindex; nothing in the web schema may reference them.
+
+`apps/web/drizzle.config.ts` pins `tablesFilter: ["coin_comments"]`. **This is a
+safety rail, not tidiness.** Without it, drizzle-kit diffs Ponder's tables
+against a schema that doesn't declare them and emits `DROP TABLE` for the lot —
+`push` would execute that against the live indexer. Add every new table to both
+the schema file and `tablesFilter`.
+
+## Workflow
+
+```
+pnpm --filter web db:generate   # schema.ts -> drizzle/NNNN_*.sql (review the SQL!)
+pnpm --filter web db:migrate    # apply; also runs from `pnpm start` on deploy
+pnpm --filter web db:check      # assertions against a THROWAWAY db (it truncates)
+```
+
+- Migrations run at **startup**, from the `start` script, guarded on
+  `DATABASE_URL` being set — an unset URL still degrades comments to
+  read-empty/503 rather than blocking boot. Never issue DDL from a request
+  handler; `coin_comments` used to be created that way and it left the table
+  with no migration history.
+- `drizzle/0000_coin_comments_baseline.sql` is hand-edited to `IF NOT EXISTS`
+  because production already had the table before Drizzle existed. That is a
+  one-off adoption fix — **do not** edit generated SQL in later migrations.
+- Never run `db:push` against a deployed database. `generate` + `migrate` only.
+<!-- END:database -->
