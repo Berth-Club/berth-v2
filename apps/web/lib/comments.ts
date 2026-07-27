@@ -2,6 +2,8 @@ import "server-only"
 
 import postgres from "postgres"
 
+import { serverEnv } from "@/lib/server-env"
+
 /**
  * Comment storage, on the same Railway Postgres the indexer uses.
  *
@@ -15,7 +17,7 @@ import postgres from "postgres"
  * read-empty / write-unavailable rather than crashing the coin page.
  */
 
-const URL = process.env.DATABASE_URL
+const URL = serverEnv.databaseUrl
 
 let sql: ReturnType<typeof postgres> | null = null
 let ready: Promise<void> | null = null

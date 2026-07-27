@@ -1,5 +1,7 @@
 import { defineChain } from "viem"
 
+import { env } from "@/lib/env"
+
 /**
  * Arc Testnet (Circle's L1, chain id 5042002) — verified live: reth/v1.11.3,
  * base fee pinned at the documented 20 Gwei floor, ~0.5s blocks.
@@ -29,7 +31,7 @@ import { defineChain } from "viem"
  * portfolio, and a keyed endpoint is what makes the app usable. Restrict the
  * key by domain at the provider if that exposure ever matters.
  */
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.network"
+const RPC_URL = env.rpcUrl
 const EXPLORER_URL = "https://testnet.arcscan.app"
 
 export const arc = defineChain({
@@ -98,7 +100,7 @@ export const explorerTx = (h: string) => `${EXPLORER_URL}/tx/${h}`
 
 /** Dedicated IPFS gateway that renders uploaded coin art. Falls back to the
  *  public one; strip any trailing slash so joins are clean. */
-const IPFS_GATEWAY = (process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud").replace(/\/+$/, "")
+const IPFS_GATEWAY = env.ipfsGateway
 
 /**
  * `ipfs://CID` -> a browser-loadable `https://<gateway>/ipfs/CID`. Returns null

@@ -9,6 +9,8 @@
 import { PrivyClient } from "@privy-io/server-auth"
 
 import { MAX_BYTES, PinImageError, pinImage, validateAndReencode } from "@/lib/pin-image"
+import { env } from "@/lib/env"
+import { serverEnv } from "@/lib/server-env"
 
 export const runtime = "nodejs"
 
@@ -37,8 +39,8 @@ function withinRateLimit(userId: string): boolean {
 
 let privyClient: PrivyClient | null = null
 function privy(): PrivyClient | null {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID
-  const appSecret = process.env.PRIVY_APP_SECRET
+  const appId = env.privyAppId
+  const appSecret = serverEnv.privyAppSecret
   if (!appId || !appSecret) return null
   if (!privyClient) privyClient = new PrivyClient(appId, appSecret)
   return privyClient

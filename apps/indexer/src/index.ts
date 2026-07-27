@@ -14,6 +14,7 @@ import {
   curveProgress,
   pctChange,
 } from "../lib/ticks";
+import { CONTRACTS } from "@workspace/contracts";
 
 
 /**
@@ -76,7 +77,7 @@ async function readGraduation(
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /** The launch factory. Swap handlers fire on pools, so they cannot read it off the log. */
-const FACTORY_ADDRESS = process.env.LAUNCH_FACTORY as `0x${string}`;
+const FACTORY_ADDRESS = CONTRACTS.launchFactory;
 
 const DAY = 86_400n;
 

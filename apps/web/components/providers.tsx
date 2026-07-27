@@ -6,8 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { arc } from "@/lib/chain"
 import { wagmiConfig } from "@/lib/wagmi"
+import { env } from "@/lib/env"
 
-const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? ""
+const appId = env.privyAppId
 
 // Privy hard-throws on an invalid app id, so only mount it once a real id is
 // set. Until then the app still renders and the wallet button is a no-op

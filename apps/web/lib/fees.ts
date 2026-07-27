@@ -10,6 +10,7 @@ import { LpLockerAbi } from "@/lib/abis/lpLocker"
 import { CONTRACTS, USDC } from "@/lib/chain"
 import { coinIsToken0, coinSpaceTick, parseMetadata, tickToPriceNative } from "@/lib/indexer"
 import { FACE_OPTIONS } from "@/lib/coin"
+import { env } from "@/lib/env"
 
 /**
  * The fee flow, for real.
@@ -37,7 +38,7 @@ import { FACE_OPTIONS } from "@/lib/coin"
 
 // Client-side, so it needs a NEXT_PUBLIC_ var. lib/indexer.ts reads the
 // server-only INDEXER_URL for its server components; same default on purpose.
-const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:42069"
+const INDEXER_URL = env.indexerUrl
 
 const LP_LOCKER = CONTRACTS.lpLocker as Address
 const FEE_LOCKER = CONTRACTS.feeLocker as Address

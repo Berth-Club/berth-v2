@@ -15,6 +15,9 @@ function nativeToUsdc(base: bigint | string): number {
 }
 import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 
+// Server-side indexer URL. Read directly (NOT via lib/server-env, which is
+// `server-only`) because this module also exports pure helpers imported by
+// client code (lib/fees.ts); the const is unused in that client path.
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
 
 // A down or slow indexer must never hang a page render. force-dynamic pages

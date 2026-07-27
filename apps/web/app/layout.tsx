@@ -10,15 +10,14 @@ import { MobileTabBar } from "@/components/mobile-tab-bar"
 import { FxProvider } from "@/components/fx-provider"
 import { Providers } from "@/components/providers"
 import { Sea } from "@/components/sea"
+import { env } from "@/lib/env"
 
 // v3: Inter everywhere (600 headings/buttons, 400/500 body), IBM Plex Mono for data.
 const fontSans = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-inter" })
 const fontMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-ibm-plex-mono" })
 
 export const metadata: Metadata = {
-  // `||` not `??`: an empty NEXT_PUBLIC_SITE_URL (e.g. an unset Docker build
-  // arg) is a defined "", which `??` would pass straight into new URL() → throw.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  metadataBase: new URL(env.siteUrl),
   title: "berth.club — Build something that floats",
   description:
     "Launch a coin on Arc in one transaction: mint, pool, and lock the liquidity forever. Fixed 100B supply, no admin over your coin, 1% of every trade to the creator.",

@@ -2,6 +2,8 @@
 
 import * as React from "react"
 
+import { env } from "@/lib/env"
+
 /**
  * Ticker tape under the header — real launches and trades from the indexer.
  *
@@ -10,7 +12,7 @@ import * as React from "react"
  * sat on every page of a public site, which made it the most-seen untruth we
  * shipped. If there is nothing to report, the tape renders nothing.
  */
-const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:42069"
+const INDEXER_URL = env.indexerUrl
 
 /**
  * The SwapRouter appears as `sender` on every swap, and as `recipient` on sells

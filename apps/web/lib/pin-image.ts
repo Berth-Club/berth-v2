@@ -12,6 +12,8 @@
 
 import sharp from "sharp"
 
+import { serverEnv } from "@/lib/server-env"
+
 /** Raster only. SVG is excluded on purpose — served from a gateway it is a
  *  stored-XSS vector. We gate on the DECODED format, not the client mime. */
 const ALLOWED_FORMATS = new Set(["png", "jpeg", "webp", "gif"])
@@ -79,12 +81,15 @@ export async function validateAndReencode(input: Buffer): Promise<ReencodedImage
  * maps that to the degraded launch path, distinct from a rejected file.
  */
 export async function pinImage(bytes: Buffer, filename: string): Promise<string> {
-  const jwt = process.env.PINATA_JWT
+  const jwt = serverEnv.pinataJwt
   if (!jwt) throw new Error("PINATA_JWT is not set")
 
   const { PinataSDK } = await import("pinata")
   const pinata = new PinataSDK({
     pinataJwt: jwt,
+    // Raw value on purpose: the SDK wants a bare gateway host, not lib/env's
+    // processed URL (which defaults + prefixes https://). Only used for reads,
+    // not this upload.
     pinataGateway: process.env.NEXT_PUBLIC_IPFS_GATEWAY,
   })
   const file = new File([new Uint8Array(bytes)], filename, { type: "image/webp" })

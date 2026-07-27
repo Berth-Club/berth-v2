@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { PrivyClient } from "@privy-io/server-auth"
 
 import { COMMENTS_ENABLED, addComment, listComments, recentCommentCount } from "@/lib/comments"
+import { env } from "@/lib/env"
+import { serverEnv } from "@/lib/server-env"
 
 export const runtime = "nodejs"
 
@@ -11,8 +13,8 @@ const RATE_MAX = 5 // comments per author per window
 
 let privyClient: PrivyClient | null = null
 function privy(): PrivyClient | null {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID
-  const appSecret = process.env.PRIVY_APP_SECRET
+  const appId = env.privyAppId
+  const appSecret = serverEnv.privyAppSecret
   if (!appId || !appSecret) return null
   if (!privyClient) privyClient = new PrivyClient(appId, appSecret)
   return privyClient
