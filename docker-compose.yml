@@ -1,0 +1,94 @@
+# The whole berth.club stack, locally, in one command (OrbStack / Docker):
+#
+#   docker compose up --build
+#
+# Then: web → http://localhost:3000, indexer → http://localhost:42069.
+#
+# Secrets/keys are read from a `.env` file next to this one (optional — the app
+# runs without them, just with wallet-connect and image-upload disabled). Copy
+# the values you want from apps/web/.env.local, e.g.:
+#   NEXT_PUBLIC_PRIVY_APP_ID=...
+#   PRIVY_APP_SECRET=...
+#   PINATA_JWT=...
+#   RPC_URL=https://arc-testnet.g.alchemy.com/v2/...   # a real RPC = faster indexing
+name: berthclub
+
+services:
+  # --- databases (official image; the "Postgres" services on Railway) ---
+  indexer-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: berth
+      POSTGRES_PASSWORD: berth
+      POSTGRES_DB: berth
+    volumes:
+      - indexer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U berth"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  app-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: berth
+      POSTGRES_PASSWORD: berth
+      POSTGRES_DB: berth
+    volumes:
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U berth"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # --- Ponder indexer ---
+  indexer:
+    build:
+      context: .
+      dockerfile: apps/indexer/Dockerfile
+    environment:
+      DATABASE_URL: postgres://berth:berth@indexer-db:5432/berth
+      DATABASE_SCHEMA: arc_local
+      RPC_URL: ${RPC_URL:-https://rpc.testnet.arc.network}
+      PORT: "42069"
+    ports:
+      - "42069:42069"
+    depends_on:
+      indexer-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Next.js web app ---
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # baked into the client bundle at build time
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:-}
+        NEXT_PUBLIC_INDEXER_URL: http://localhost:42069
+        NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-https://rpc.testnet.arc.network}
+        NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-}
+        NEXT_PUBLIC_SITE_URL: http://localhost:3000
+    environment:
+      # server-side (read at runtime)
+      INDEXER_URL: http://indexer:42069
+      DATABASE_URL: postgres://berth:berth@app-db:5432/berth
+      PRIVY_APP_SECRET: ${PRIVY_APP_SECRET:-}
+      PINATA_JWT: ${PINATA_JWT:-}
+      RPC_URL: ${RPC_URL:-https://rpc.testnet.arc.network}
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - indexer
+      - app-db
+    restart: unless-stopped
+
+volumes:
+  indexer-db-data:
+  app-db-data:

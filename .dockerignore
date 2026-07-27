@@ -1,0 +1,24 @@
+# deps + build output — reinstalled/rebuilt inside the image
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/out
+
+# secrets — env comes at runtime (compose / Railway), never baked into an image
+**/.env
+**/.env.*
+!**/.env.example
+
+# vcs + local noise
+.git
+.gitignore
+**/*.log
+**/.DS_Store
+.vscode
+.idea
+
+# docker itself
+**/Dockerfile
+.dockerignore
+docker-compose.yml
