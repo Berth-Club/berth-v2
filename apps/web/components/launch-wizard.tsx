@@ -22,6 +22,10 @@ import { buildConfig, normalizeTicker, parseUsdcInput, useLaunch } from "@/lib/l
  */
 export function LaunchWizard() {
   const [launched, setLaunched] = React.useState(false)
+  // Armed = the creator hit "Launch token" and opened the confirm modal. ALL the
+  // heavy work (salt mining, predict, deploy simulation) is gated on this, so
+  // nothing computes while they're still typing — it starts on the click.
+  const [armed, setArmed] = React.useState(false)
   const [name, setName] = React.useState("")
   const [ticker, setTicker] = React.useState("")
   const [lore, setLore] = React.useState("")
@@ -100,16 +104,20 @@ export function LaunchWizard() {
   const badDevBuy = valueWei === undefined
 
   // The image is part of metadataURI, so a pin in flight means the config (and
-  // thus the mined address) is not final yet. An upload OUTAGE or unconfigured
-  // pinning unlocks the degraded emoji-only launch rather than trapping the user.
+  // thus the mined address) is not final yet. But an image is OPTIONAL — "drag an
+  // image, or pick a face" — so we only block while a file the creator actually
+  // dropped is still pinning. Emoji-only (nothing held) launches freely. An
+  // upload OUTAGE also unlocks the launch rather than trapping the creator.
   const degradedAllowed = upload.outage || !upload.available
-  const imageBlocking = upload.status === "uploading" || (!upload.imageUri && !degradedAllowed)
+  const imageBlocking =
+    upload.status === "uploading" || (upload.held && !upload.imageUri && !degradedAllowed)
 
   // The simulation is a full deploy eth_call. Without a review step to hang it
   // on it runs whenever the form is genuinely launchable — which is the same
   // set of moments the old step-2 gate covered, minus the extra click.
   const formReady = !!config && !badDevBuy && !imageBlocking
-  const launch = useLaunch(config, valueWei, formReady && connected && !wrongNetwork)
+  // Gated on `armed`: no salt grind or simulation until they click Launch.
+  const launch = useLaunch(config, valueWei, armed && formReady && connected && !wrongNetwork)
 
   // Advisory only — instant, works before connecting. The authority is the
   // on-chain simulation (launch.blocked).
@@ -329,12 +337,7 @@ export function LaunchWizard() {
               className="bg-hull flex shrink-0 items-center gap-[7px] rounded-full px-3 py-1.5 text-[12.5px] font-semibold"
               style={{ border: "1px solid rgba(148,168,196,.25)" }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" className="block shrink-0" aria-hidden>
-                <circle cx="12" cy="12" r="12" fill="#2775CA" />
-                <text x="12" y="16.4" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff" fontFamily="Inter,sans-serif">
-                  $
-                </text>
-              </svg>
+              <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
               USDC
             </span>
           </div>
@@ -363,9 +366,6 @@ export function LaunchWizard() {
           )}
         </div>
 
-        {/* address mining + simulation status */}
-        <PredictStatus launch={launch} gate={!!gate} show={canLaunch} />
-
         <div
           className="text-faint mt-[18px] flex flex-wrap items-center justify-between gap-2.5 pt-4 text-[12.5px]"
           style={{ borderTop: "1px solid rgba(148,168,196,.14)" }}
@@ -379,33 +379,15 @@ export function LaunchWizard() {
             {gate.label}
           </button>
         ) : (
+          // Opens the confirm modal — the address grind + simulation start there,
+          // not on every keystroke.
           <button
-            onClick={launch.launch}
-            disabled={!canLaunch || !launch.ready || launch.status === "signing" || launch.status === "mining"}
+            onClick={() => setArmed(true)}
+            disabled={!canLaunch}
             className="btn-glossy mt-3 w-full py-[15px] text-base"
           >
-            {launch.status === "signing"
-              ? "Check your wallet…"
-              : launch.status === "mining"
-                ? "Leaving the yard…"
-                : "Launch token"}
+            Launch token
           </button>
-        )}
-
-        {launch.error && (
-          <p className="mt-2 text-center text-[13px]" style={{ color: "#de8092" }}>
-            {launch.error}
-          </p>
-        )}
-        {launch.hash && (
-          <a
-            href={explorerTx(launch.hash)}
-            target="_blank"
-            rel="noreferrer"
-            className="text-mist mt-2 block text-center text-xs underline"
-          >
-            Track the transaction ↗
-          </a>
         )}
       </div>
 
@@ -432,6 +414,100 @@ export function LaunchWizard() {
           Supply is fixed at 100B for every ship. Team allocation 0%. Keys burned at launch.
         </p>
       </div>
+
+      {/* ---- confirm modal: computes on open, launches on confirm ---- */}
+      {armed && (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          style={{ background: "rgba(3,8,16,.72)", backdropFilter: "blur(4px)" }}
+          onClick={() => {
+            if (launch.status !== "signing" && launch.status !== "mining") {
+              launch.reset()
+              setArmed(false)
+            }
+          }}
+        >
+          <div className="glass w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-[22px]">Launch ${tickerUp}</h2>
+            <p className="text-mist mt-1 text-[13px]">
+              One transaction mints the supply, opens the token/USDC pool, and locks the LP forever.
+            </p>
+
+            {/* identity */}
+            <div className="well mt-4 flex items-center gap-3 p-3">
+              <div
+                className="bg-deep grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl text-2xl"
+                style={{ border: "1px solid rgba(148,168,196,.2)" }}
+              >
+                {face ?? <span aria-hidden>{emoji}</span>}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate font-semibold">{name || "Your token"}</div>
+                <div className="text-faint tabular text-[12.5px]">${tickerUp}</div>
+              </div>
+            </div>
+
+            {/* terms */}
+            <div className="mt-4 flex flex-col gap-2 text-[13px]">
+              <div className="flex items-center justify-between">
+                <span className="text-faint">Launch fee</span>
+                <span className="tabular">1 USDC</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-faint">Developer buy</span>
+                <span className="tabular">{devUsdc || 0} USDC</span>
+              </div>
+            </div>
+
+            {/* address grind + on-chain simulation, started by opening this modal */}
+            <PredictStatus launch={launch} gate={false} show />
+
+            <div className="mt-5 flex gap-2.5">
+              <button
+                onClick={() => {
+                  launch.reset()
+                  setArmed(false)
+                }}
+                disabled={launch.status === "signing" || launch.status === "mining"}
+                className="btn-ghost bg-deep flex-1 py-3 text-[15px] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={launch.launch}
+                disabled={!launch.ready || launch.status === "signing" || launch.status === "mining"}
+                className="btn-glossy flex-[1.5] py-3 text-[15px]"
+              >
+                {launch.status === "signing"
+                  ? "Check your wallet…"
+                  : launch.status === "mining"
+                    ? "Leaving the yard…"
+                    : launch.ready
+                      ? "Confirm & launch"
+                      : launch.blocked
+                        ? "Can't launch"
+                        : "Preparing…"}
+              </button>
+            </div>
+
+            {launch.error && (
+              <p className="mt-2.5 text-center text-[13px]" style={{ color: "#de8092" }}>
+                {launch.error}
+              </p>
+            )}
+            {launch.hash && (
+              <a
+                href={explorerTx(launch.hash)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-mist mt-2 block text-center text-xs underline"
+              >
+                Track the transaction ↗
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

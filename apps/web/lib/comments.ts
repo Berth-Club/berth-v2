@@ -30,20 +30,25 @@ function db() {
   return sql
 }
 
-/** Create the table once per process. Idempotent. */
+/** Create the table once per process. Idempotent. `balance` is added with
+ *  ADD COLUMN IF NOT EXISTS so a pre-existing table gains it without a migration. */
 async function ensure(s: ReturnType<typeof postgres>) {
   if (!ready) {
-    ready = s`
-      CREATE TABLE IF NOT EXISTS coin_comments (
-        id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        coin       text NOT NULL,
-        author     text NOT NULL,
-        body       text NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )
-    `.then(
-      () => s`CREATE INDEX IF NOT EXISTS coin_comments_coin_idx ON coin_comments (coin, created_at DESC)`.then(() => {})
-    )
+    ready = (async () => {
+      await s`
+        CREATE TABLE IF NOT EXISTS coin_comments (
+          id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+          coin       text NOT NULL,
+          author     text NOT NULL,
+          body       text NOT NULL,
+          created_at timestamptz NOT NULL DEFAULT now()
+        )
+      `
+      // Snapshot of the poster's token balance at post time, pre-formatted
+      // (e.g. "22k"). Nullable: old rows and failed reads have none.
+      await s`ALTER TABLE coin_comments ADD COLUMN IF NOT EXISTS balance text`
+      await s`CREATE INDEX IF NOT EXISTS coin_comments_coin_idx ON coin_comments (coin, created_at DESC)`
+    })()
   }
   return ready
 }
@@ -53,6 +58,8 @@ export type Comment = {
   author: string
   body: string
   createdAt: number
+  /** The poster's holding of this coin when they posted, e.g. "22k". */
+  balance: string | null
 }
 
 /** true when a DB is configured — the API returns 503 otherwise. */
@@ -64,8 +71,8 @@ export async function listComments(coin: string, limit = 100): Promise<Comment[]
   if (!s) return []
   try {
     await ensure(s)
-    const rows = await s<{ id: string; author: string; body: string; created_at: Date }[]>`
-      SELECT id, author, body, created_at
+    const rows = await s<{ id: string; author: string; body: string; created_at: Date; balance: string | null }[]>`
+      SELECT id, author, body, created_at, balance
       FROM coin_comments
       WHERE coin = ${coin.toLowerCase()}
       ORDER BY created_at DESC
@@ -76,20 +83,27 @@ export async function listComments(coin: string, limit = 100): Promise<Comment[]
       author: r.author,
       body: r.body,
       createdAt: Math.floor(new Date(r.created_at).getTime() / 1000),
+      balance: r.balance,
     }))
   } catch {
     return []
   }
 }
 
-/** Insert a comment. Caller has already authenticated + validated `body`. */
-export async function addComment(coin: string, author: string, body: string): Promise<Comment | null> {
+/** Insert a comment. Caller has already authenticated + validated `body`.
+ *  `balance` is the poster's holding snapshot (null when unknown). */
+export async function addComment(
+  coin: string,
+  author: string,
+  body: string,
+  balance: string | null = null
+): Promise<Comment | null> {
   const s = db()
   if (!s) return null
   await ensure(s)
   const [row] = await s<{ id: string; created_at: Date }[]>`
-    INSERT INTO coin_comments (coin, author, body)
-    VALUES (${coin.toLowerCase()}, ${author}, ${body})
+    INSERT INTO coin_comments (coin, author, body, balance)
+    VALUES (${coin.toLowerCase()}, ${author}, ${body}, ${balance})
     RETURNING id, created_at
   `
   if (!row) return null
@@ -98,6 +112,7 @@ export async function addComment(coin: string, author: string, body: string): Pr
     author,
     body,
     createdAt: Math.floor(new Date(row.created_at).getTime() / 1000),
+    balance,
   }
 }
 

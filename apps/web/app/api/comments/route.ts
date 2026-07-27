@@ -1,11 +1,34 @@
 import { NextResponse } from "next/server"
 import { PrivyClient } from "@privy-io/server-auth"
+import { createPublicClient, erc20Abi, formatUnits, http, isAddress as isAddr } from "viem"
 
+import { arc, COIN_DECIMALS } from "@/lib/chain"
 import { COMMENTS_ENABLED, addComment, listComments, recentCommentCount } from "@/lib/comments"
 import { env } from "@/lib/env"
+import { fmtAmount } from "@/lib/format"
 import { serverEnv } from "@/lib/server-env"
 
 export const runtime = "nodejs"
+
+/** The poster's holding of this coin, pre-formatted ("22k"), for the design's
+ *  holdings pill. A snapshot at post time — best-effort, never blocks the post. */
+async function balanceLabel(coin: string, author: string): Promise<string | null> {
+  if (!isAddr(author)) return null // did:privy fallback isn't an address
+  try {
+    const client = createPublicClient({ chain: arc, transport: http(env.rpcUrl) })
+    const raw = await client.readContract({
+      address: coin as `0x${string}`,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [author as `0x${string}`],
+    })
+    const n = Number(formatUnits(raw, COIN_DECIMALS))
+    if (!isFinite(n) || n <= 0) return null
+    return fmtAmount(n).toLowerCase() // "22K" -> "22k", matching the design
+  } catch {
+    return null
+  }
+}
 
 const MAX_LEN = 280
 const RATE_WINDOW_SEC = 60
@@ -50,17 +73,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ code: "not_configured", message: "Auth isn't configured." }, { status: 503 })
   }
 
-  let author: string
+  // Verifying the token is the auth check — a failure here IS a stale/invalid
+  // session, so "reconnect" is the honest message.
+  let userId: string
   try {
-    // The verified user id is opaque; we want the wallet they signed in with.
-    const { userId } = await client.verifyAuthToken(token)
-    const user = await client.getUser(userId)
-    const wallet = user.linkedAccounts.find((a) => a.type === "wallet")
-    author = (wallet && "address" in wallet ? (wallet.address as string) : userId).toLowerCase()
+    ;({ userId } = await client.verifyAuthToken(token))
   } catch {
     return NextResponse.json(
       { code: "unauthorized", message: "Your session expired — reconnect your wallet." },
       { status: 401 }
+    )
+  }
+
+  // The token is good; now resolve the wallet they signed in with. This call
+  // authenticates with the app SECRET, so a failure here is OUR misconfig
+  // (wrong/rotated PRIVY_APP_SECRET), not the user's session — don't tell them
+  // to reconnect, and log the real reason so it's not invisible.
+  let author: string
+  try {
+    const user = await client.getUser(userId)
+    const wallet = user.linkedAccounts.find((a) => a.type === "wallet")
+    author = (wallet && "address" in wallet ? (wallet.address as string) : userId).toLowerCase()
+  } catch (e) {
+    console.error("[comments] getUser failed — check PRIVY_APP_SECRET:", e)
+    return NextResponse.json(
+      { code: "server_error", message: "Chat is temporarily unavailable — try again shortly." },
+      { status: 503 }
     )
   }
 
@@ -87,7 +125,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const comment = await addComment(coin, author, body)
+  const balance = await balanceLabel(coin, author)
+  const comment = await addComment(coin, author, body, balance)
   if (!comment) return NextResponse.json({ code: "failed", message: "Couldn't post." }, { status: 500 })
   return NextResponse.json({ comment })
 }

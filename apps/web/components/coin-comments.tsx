@@ -4,7 +4,7 @@ import * as React from "react"
 
 import { useWallet } from "@/components/wallet-provider"
 
-type Comment = { id: string; author: string; body: string; createdAt: number }
+type Comment = { id: string; author: string; body: string; createdAt: number; balance: string | null }
 
 function short(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -19,14 +19,26 @@ function ago(ts: number) {
 
 const MAX = 280
 
-/** A deterministic periwinkle-family avatar from an address — gives the thread
- *  visual rhythm without needing real profile images. */
-function avatarStyle(seed: string): React.CSSProperties {
+// Deterministic nautical glyph per author — the design's avatar is a dark disc
+// with an emoji, not a colored blob. Same author always gets the same glyph.
+const GLYPHS = ["⚓", "🌊", "⛵", "🐚", "🦑", "🐙", "🦀", "🧭", "🪝", "🐠", "🐳", "🫧"]
+function glyph(seed: string): string {
   let h = 0
   for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  const a = 200 + (h % 40) // 200–240° — stays in the blue/periwinkle band
-  const b = (h >> 8) % 30
-  return { background: `linear-gradient(135deg, hsl(${a} 60% 70%), hsl(${a - 30 - b} 55% 48%))` }
+  return GLYPHS[h % GLYPHS.length]!
+}
+
+/** The design's avatar: 28px dark disc, faint border, centered glyph. */
+function Avatar({ seed }: { seed: string }) {
+  return (
+    <div
+      aria-hidden
+      className="grid size-7 shrink-0 place-items-center rounded-full text-[13px]"
+      style={{ background: "#0b1929", border: "1px solid rgba(148,168,196,.2)" }}
+    >
+      {glyph(seed)}
+    </div>
+  )
 }
 
 /**
@@ -34,7 +46,7 @@ function avatarStyle(seed: string): React.CSSProperties {
  * wallet (the API verifies a Privy token). Bodies are rendered as text, never
  * HTML — the store keeps them raw and React escapes on render.
  */
-export function CoinComments({ coin }: { coin: string }) {
+export function CoinComments({ coin, symbol }: { coin: string; symbol: string }) {
   const { connected, connect, getAccessToken, address } = useWallet()
   const [comments, setComments] = React.useState<Comment[] | null>(null)
   const [body, setBody] = React.useState("")
@@ -130,23 +142,32 @@ export function CoinComments({ coin }: { coin: string }) {
         Holders can post. Links are not allowed.
       </p>
 
-      {/* thread */}
-      {comments === null ? (
-        <p className="text-faint py-6 text-center text-[13px]">Loading…</p>
-      ) : comments.length === 0 ? (
-        <p className="text-mist py-6 text-center text-[13px]">Quiet on deck. Break the silence.</p>
-      ) : (
-        <ul className="flex flex-col">
-          {comments.map((c) => (
+      {/* thread — grows to fill the card so the composer sits at the bottom */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {comments === null ? (
+          <p className="text-faint m-auto text-center text-[13px]">Loading…</p>
+        ) : comments.length === 0 ? (
+          <p className="text-mist m-auto text-center text-[13px]">Quiet on deck. Break the silence.</p>
+        ) : (
+          <ul className="flex flex-col overflow-y-auto">
+            {comments.map((c) => (
             <li
               key={c.id}
               className="flex gap-2.5 py-[11px] text-sm"
               style={{ borderBottom: "1px solid rgba(148,168,196,0.14)" }}
             >
-              <div className="mt-0.5 size-7 shrink-0 rounded-full" style={avatarStyle(c.author)} />
+              <Avatar seed={c.author} />
               <div className="min-w-0 flex-1">
                 <div className="text-faint flex flex-wrap items-center gap-[7px] text-xs">
                   <span className="tabular text-body2 font-semibold">{short(c.author)}</span>
+                  {c.balance && (
+                    <span
+                      className="rounded-full px-[7px] py-[2px] font-mono text-[10px]"
+                      style={{ color: "#93a8c4", background: "#0b1929" }}
+                    >
+                      {c.balance} ${symbol}
+                    </span>
+                  )}
                   <span className="ml-auto">{ago(c.createdAt)}</span>
                 </div>
                 <p className="text-body2 mt-[3px] whitespace-pre-wrap break-words text-[13.5px]">
@@ -154,16 +175,17 @@ export function CoinComments({ coin }: { coin: string }) {
                 </p>
               </div>
             </li>
-          ))}
-        </ul>
-      )}
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* composer — always shown. The wallet gate is deferred to the Post click:
           if you're not connected yet, Post opens the wallet, then you post. */}
       {connected ? (
         <div className="mt-3.5 flex flex-col gap-2">
           <div className="flex gap-2">
-            <div className="mt-0.5 size-7 shrink-0 rounded-full" style={avatarStyle(address ?? "you")} />
+            <Avatar seed={address ?? "you"} />
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value.slice(0, MAX))}

@@ -2,14 +2,30 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { createPublicClient, http } from "viem"
+
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
 import { CoinComments } from "@/components/coin-comments"
 import { CopyPill } from "@/components/copy-pill"
 import { AutoRefresh } from "@/components/auto-refresh"
-import { explorerTx, ipfsToGateway } from "@/lib/chain"
+import { PendingCoin } from "@/components/pending-coin"
+import { arc, explorerTx, ipfsToGateway } from "@/lib/chain"
+import { env } from "@/lib/env"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
+
+/** Is there a deployed contract at this address? A just-launched coin exists
+ *  on-chain before the indexer logs it — that's a poll-and-wait, not a 404. */
+async function hasContract(address: string): Promise<boolean> {
+  try {
+    const client = createPublicClient({ chain: arc, transport: http(env.rpcUrl) })
+    const code = await client.getCode({ address: address as `0x${string}` })
+    return !!code && code !== "0x"
+  } catch {
+    return false
+  }
+}
 
 export const dynamic = "force-dynamic"
 
@@ -66,11 +82,15 @@ export default async function TokenPage({
   params: Promise<{ address: string }>
 }) {
   const { address } = await params
-  // No fixture fallback: an address the indexer doesn't know is a 404, not an
-  // invented coin page. (If the indexer is down this 404s too — wrong, but far
-  // better than rendering a coin that does not exist.)
+  // No fixture fallback: an address the indexer doesn't know is NOT invented.
+  // But a coin that just launched is on-chain seconds before the indexer logs
+  // it — so if a contract exists there, poll until it appears instead of 404ing
+  // the creator straight off their own launch. Only a codeless address is a 404.
   const coin = await fetchCoin(address)
-  if (!coin) notFound()
+  if (!coin) {
+    if (await hasContract(address)) return <PendingCoin address={address} />
+    notFound()
+  }
 
   // All three are null when the indexer can't answer. Nothing here is invented:
   // an un-traded coin shows no trades, and holders stay empty until indexed.
@@ -139,7 +159,8 @@ export default async function TokenPage({
       </div>
 
       {/* ---- swap · market · chat ---- */}
-      <div className="flex flex-wrap items-start gap-4">
+      {/* items-stretch so the chat card matches the tallest sibling's height */}
+      <div className="flex flex-wrap items-stretch gap-4">
         <TradePanel coin={coin} />
 
         {/* market card */}
@@ -209,9 +230,10 @@ export default async function TokenPage({
           </div>
         </div>
 
-        {/* chat card */}
-        <div className="glass w-full min-w-0 p-5 lg:max-w-[360px] lg:flex-[1_1_270px]">
-          <CoinComments coin={coin.address} />
+        {/* chat card — flex-col so CoinComments can grow the thread and pin the
+            composer to the bottom, matching the sibling cards' height */}
+        <div className="glass flex w-full min-w-0 flex-col p-5 lg:max-w-[360px] lg:flex-[1_1_270px]">
+          <CoinComments coin={coin.address} symbol={coin.ticker} />
         </div>
       </div>
 

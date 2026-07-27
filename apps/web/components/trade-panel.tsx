@@ -28,24 +28,25 @@ function fmtUsdc(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 6 })
 }
 
-/** The blue USDC mark: #2775CA disc, white $. */
-function UsdcMark() {
+/** Three pulsing dots — the "quoting" placeholder while a swap quote loads. */
+function Dots() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" className="block shrink-0" aria-hidden>
-      <circle cx="12" cy="12" r="12" fill="#2775CA" />
-      <text
-        x="12"
-        y="16.4"
-        textAnchor="middle"
-        fontSize="13"
-        fontWeight="700"
-        fill="#ffffff"
-        fontFamily="Inter,sans-serif"
-      >
-        $
-      </text>
-    </svg>
+    <span className="inline-flex items-center gap-1.5 align-middle" role="status" aria-label="quoting">
+      {[0, 160, 320].map((d) => (
+        <span
+          key={d}
+          className="size-2 animate-pulse rounded-full bg-current opacity-40"
+          style={{ animationDelay: `${d}ms` }}
+        />
+      ))}
+    </span>
   )
+}
+
+/** The official USDC mark (public/usdc.png, from CoinGecko). Plain <img>: it's a
+ *  small static brand asset, already a transparent circle. */
+function UsdcMark() {
+  return <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
 }
 
 function AssetChip({ coin, usdc }: { coin: Coin; usdc: boolean }) {
@@ -109,13 +110,15 @@ export function TradePanel({ coin }: { coin: Coin }) {
     setAmount("")
   }
 
-  const receive = trade.quoting
-    ? "quoting…"
-    : trade.amountOut === undefined || spend === 0
-      ? "0"
-      : buying
-        ? fmtAmount(trade.amountOutFloat)
-        : fmtUsdc(trade.amountOutFloat)
+  const receive = trade.quoting ? (
+    <Dots />
+  ) : trade.amountOut === undefined || spend === 0 ? (
+    "0"
+  ) : buying ? (
+    fmtAmount(trade.amountOutFloat)
+  ) : (
+    fmtUsdc(trade.amountOutFloat)
+  )
 
   return (
     <div className="glass w-full min-w-0 p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
