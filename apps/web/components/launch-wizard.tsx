@@ -53,10 +53,13 @@ export function LaunchWizard() {
     }
   }, [connected, upload.status, upload.needsAuth, retryUpload])
 
+  // HOLD the art on drop (local preview only, no upload). It pins later — see
+  // the deferred-pin effect below — so we never upload art the creator replaces
+  // or abandons.
   const acceptFile = React.useCallback(
     (files: FileList | null) => {
       const f = files?.[0]
-      if (f && /^image\/(png|jpeg|webp|gif)$/.test(f.type)) upload.pick(f)
+      if (f && /^image\/(png|jpeg|webp|gif)$/.test(f.type)) upload.hold(f)
     },
     [upload]
   )
@@ -81,6 +84,17 @@ export function LaunchWizard() {
         : undefined,
     [name, ticker, lore, emoji, upload.imageUri, twitter, telegram, website]
   )
+
+  // Deferred IPFS pin. The drop only HELD the file; pin it once the coin is a
+  // real work-in-progress — valid papers + a connected wallet (the pin route is
+  // authed) — i.e. right before its CID is needed for metadata + the address.
+  // A bare drop, or one on an unfinished/disconnected form, never uploads.
+  const pinNow = upload.pin
+  React.useEffect(() => {
+    if (upload.held && !upload.imageUri && upload.status === "idle" && connected && !!config) {
+      pinNow()
+    }
+  }, [upload.held, upload.imageUri, upload.status, connected, config, pinNow])
 
   const devUsdc = valueWei !== undefined ? Number(devBuy) || 0 : 0
   const badDevBuy = valueWei === undefined

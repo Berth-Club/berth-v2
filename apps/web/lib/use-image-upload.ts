@@ -20,12 +20,19 @@ export type ImageUpload = {
   error: string | null
   /** Whether uploads can be authenticated at all (false without Privy). */
   available: boolean
-  /** Start an upload for a picked file (shows the preview immediately). */
+  /** True once a file is held (previewed) — whether or not it's pinned yet. */
+  held: boolean
+  /** Hold a file for preview WITHOUT pinning it. The pin is deferred to pin()
+   *  so we don't upload art the user may replace or abandon, and only pin right
+   *  before the CID is needed to build the coin's metadata/address. */
+  hold: (file: File) => void
+  /** Pin the currently-held file to IPFS. No-op if nothing is held. */
+  pin: () => void
+  /** Start an upload for a picked file immediately (preview + pin at once). */
   pick: (file: File) => void
   /** Clear the current image (used by "replace"). Invalidates any in-flight upload. */
   reset: () => void
-  /** Re-attempt the pin for the already-picked file — e.g. after the wallet
-   *  connects. No-op if nothing is picked. */
+  /** Re-attempt the pin for the already-held file — e.g. after the wallet connects. */
   retry: () => void
 }
 
@@ -126,6 +133,33 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
     [getAccessToken]
   )
 
+  // Preview a file but DON'T pin it yet — pin() does that later, right before
+  // the CID is needed. Invalidates any in-flight upload from a prior file.
+  const hold = React.useCallback(
+    (file: File) => {
+      clearPreview()
+      const url = URL.createObjectURL(file)
+      objectUrl.current = url
+      lastFile.current = file
+      reqId.current++
+      setPreviewUrl(url)
+      setImageUri(null)
+      setStatus("idle")
+      setOutage(false)
+      setNeedsAuth(false)
+      setError(null)
+    },
+    [clearPreview]
+  )
+
+  // Pin the currently-held file. Shared impl for pin() and retry().
+  const pin = React.useCallback(() => {
+    const file = lastFile.current
+    if (!file) return
+    const id = ++reqId.current
+    runUpload(file, id)
+  }, [runUpload])
+
   const pick = React.useCallback(
     (file: File) => {
       clearPreview()
@@ -139,14 +173,6 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
     [clearPreview, runUpload]
   )
 
-  // Re-pin the same file, e.g. once the wallet connects after a needsAuth fail.
-  const retry = React.useCallback(() => {
-    const file = lastFile.current
-    if (!file) return
-    const id = ++reqId.current
-    runUpload(file, id)
-  }, [runUpload])
-
   React.useEffect(() => () => clearPreview(), [clearPreview])
 
   return {
@@ -157,8 +183,11 @@ export function useImageUpload(getAccessToken?: () => Promise<string | null>): I
     error,
     available: !!getAccessToken,
     needsAuth,
+    held: !!previewUrl,
+    hold,
+    pin,
     pick,
     reset,
-    retry,
+    retry: pin,
   }
 }
