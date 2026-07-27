@@ -3,10 +3,9 @@ import Link from "next/link"
 
 import { ChangeChip } from "@/components/token-card"
 import { fmtMc, fmtPrice } from "@/lib/format"
-import { fetchCoins, fetchIndexerStatus, fetchStats, fetchRecentTrades, formatLag } from "@/lib/indexer"
+import { fetchCoins, fetchIndexerStatus, fetchStats, formatLag } from "@/lib/indexer"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { Harbor } from "@/components/harbor"
-import { TradeFeed } from "@/components/trade-feed"
 
 // Always read fresh from the indexer.
 export const dynamic = "force-dynamic"
@@ -25,11 +24,10 @@ export default async function HarborPage() {
   // different facts and the page says which; it never fills the gap with
   // invented coins. A "demo data" pill in the corner was no match for a full
   // grid of plausible fake coins with prices and graduation meters.
-  const [coins, status, stats, feed] = await Promise.all([
+  const [coins, status, stats] = await Promise.all([
     fetchCoins(),
     fetchIndexerStatus(),
     fetchStats(),
-    fetchRecentTrades(),
   ])
 
   // Shown ONLY when the page is incomplete. "Live · chain 5042002" and a block
@@ -143,8 +141,6 @@ export default async function HarborPage() {
         ))}
       </section>
 
-      {/* fleet + live feed, side by side on wide screens */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
       <section>
         <div className="mb-3.5 flex flex-wrap items-baseline gap-3">
           <h2 className="font-display text-2xl">Fresh out of the shipyard</h2>
@@ -179,10 +175,6 @@ export default async function HarborPage() {
           <Harbor coins={coins} />
         )}
       </section>
-      <aside className="lg:sticky lg:top-4 lg:self-start">
-        <TradeFeed trades={feed} />
-      </aside>
-      </div>
     </div>
   )
 }
