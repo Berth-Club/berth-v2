@@ -1,5 +1,4 @@
 import { CoinAvatar } from "@/components/coin-avatar"
-import Image from "next/image"
 import Link from "next/link"
 
 import { ChangeChip } from "@/components/token-card"
@@ -19,7 +18,7 @@ const TRUST = [
   { icon: "💸", title: "1% fee → the creator", body: "every trade pays the ship's builder, not a middleman" },
 ]
 
-const GOLD = { color: "#f2c94c", background: "rgba(242,201,76,.12)", border: "1px solid rgba(242,201,76,.35)" }
+const GOLD = { color: "#89a7db", background: "rgba(137,167,219,.12)", border: "1px solid rgba(137,167,219,.35)" }
 
 export default async function HarborPage() {
   // null = indexer unreachable. [] = reachable, genuinely no coins. These are
@@ -55,63 +54,14 @@ export default async function HarborPage() {
     <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-7">
       {/* Keeps the harbor grid and the syncing badge current without a reload. */}
       <AutoRefresh seconds={20} />
-      {/* hero */}
-      <section className="mb-7 flex items-center gap-6">
-        <div className="min-w-0 flex-1">
-          <h1
-            className="font-display uppercase leading-[1.05]"
-            style={{ fontSize: "clamp(34px,5vw,58px)", letterSpacing: "-0.035em" }}
-          >
-            The sea doesn&apos;t care if you <span style={{ color: "#ff8f6e" }}>drown</span>.
-            <br />
-            Build something that <span className="text-lime">floats</span>.
-          </h1>
-          <p className="text-mist mt-4 max-w-[520px] text-[17px]">
-            Deep water outside. Still water in here. One transaction mints your coin, pools it, and
-            locks the liquidity forever — no bonding curve, no admin, no way to pull it.
-          </p>
-        </div>
-        <div className="hidden md:block">
-          <div className="relative flex flex-col items-center">
-            {/* radial blue halo behind the sail */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 -z-[1]"
-              style={{
-                background:
-                  "radial-gradient(closest-side, rgba(94,147,234,.28), transparent 72%)",
-              }}
-            />
-            <Image
-              src="/berth-sail.png"
-              alt=""
-              width={230}
-              height={230}
-              priority
-              className="animate-bob"
-              style={{ animationDuration: "7s", width: 230, height: "auto" }}
-            />
-            {/* ellipse ground shadow */}
-            <div
-              aria-hidden
-              className="mt-1 h-3 w-[150px] rounded-[50%]"
-              style={{ background: "radial-gradient(closest-side, rgba(0,0,0,.55), transparent)" }}
-            />
-            <div
-              className="text-faint mt-4 font-mono text-[10px] uppercase"
-              style={{ letterSpacing: ".2em" }}
-            >
-              EST. 2026 · HARBOR Nº 01
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* v3: no hero text — the harbor opens on the metrics strip; the brand
+          sail lives in the background scene, not the foreground. */}
 
       {/* headline totals — the site reads busier the instant these are non-zero */}
       {stats && (
         <section
           className="rounded-card mb-6 grid gap-px overflow-hidden text-center"
-          style={{ gridTemplateColumns: "repeat(3,1fr)", background: "rgba(94,147,234,0.2)", border: "1px solid rgba(94,147,234,0.2)" }}
+          style={{ gridTemplateColumns: "repeat(3,1fr)", background: "rgba(148,168,196,0.2)", border: "1px solid rgba(148,168,196,0.2)" }}
         >
           <StatCell label="Ships launched" value={stats.coins.toLocaleString()} />
           <StatCell label="Trades" value={stats.trades.toLocaleString()} />
@@ -126,8 +76,8 @@ export default async function HarborPage() {
           href={`/token/${king.address}`}
           className="rounded-panel shadow-gold-glow relative flex flex-wrap items-center gap-5 px-6 py-[22px] transition-transform hover:-translate-y-0.5"
           style={{
-            background: "linear-gradient(120deg,#0d1526,#0d1526 55%)",
-            border: "2px solid #f2c94c",
+            background: "linear-gradient(120deg,#1b3450,#1b3450 55%)",
+            border: "2px solid #89a7db",
             borderRadius: 20,
           }}
         >
@@ -142,7 +92,7 @@ export default async function HarborPage() {
             ticker={king.ticker}
             size={76}
             className="bg-deep"
-            style={{ border: "2px solid #f2c94c", borderRadius: 18 }}
+            style={{ border: "2px solid #89a7db", borderRadius: 18 }}
           />
 
           <div className="min-w-0">
@@ -176,8 +126,8 @@ export default async function HarborPage() {
         className="rounded-card mb-8 grid gap-px overflow-hidden"
         style={{
           gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-          background: "rgba(94,147,234,0.2)",
-          border: "1px solid rgba(94,147,234,0.2)",
+          background: "rgba(148,168,196,0.2)",
+          border: "1px solid rgba(148,168,196,0.2)",
         }}
       >
         {TRUST.map((t) => (

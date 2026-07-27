@@ -45,7 +45,7 @@ export function PriceChart({ points, volume }: { points: PricePoint[]; volume: s
   const first = shown[0]
   const last = shown[shown.length - 1]
   const up = first && last ? last.native >= first.native : true
-  const stroke = up ? "#c6ff3d" : "#ff8f6e"
+  const stroke = up ? "#8fb0e8" : "#de8092"
   const gid = `grad-${up ? "up" : "down"}`
 
   // Geometry lives in lib/chart.ts, where it has a self-check — the flat-series
@@ -64,7 +64,7 @@ export function PriceChart({ points, volume }: { points: PricePoint[]; volume: s
               "rounded-chip px-2.5 py-1 text-xs font-bold transition-colors",
               tf === label ? "text-lime" : "text-mist hover:text-foam"
             )}
-            style={tf === label ? { background: "rgba(198,255,61,.12)" } : undefined}
+            style={tf === label ? { background: "rgba(143,176,232,.12)" } : undefined}
           >
             {label}
           </button>
@@ -95,7 +95,7 @@ export function PriceChart({ points, volume }: { points: PricePoint[]; volume: s
       ) : (
         <div
           className="text-mist grid place-items-center rounded-card px-4 text-center text-[13px]"
-          style={{ height: H, border: "1px dashed rgba(94,147,234,0.2)" }}
+          style={{ height: H, border: "1px dashed rgba(148,168,196,0.2)" }}
         >
           {points.length === 0
             ? "No trades yet — nothing to chart."

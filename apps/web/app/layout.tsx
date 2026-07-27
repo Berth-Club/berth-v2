@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Archivo_Black, Space_Grotesk, IBM_Plex_Mono } from "next/font/google"
+import { Inter, IBM_Plex_Mono } from "next/font/google"
 
 import "@workspace/ui/globals.css"
 import { cn } from "@workspace/ui/lib/utils"
@@ -9,10 +9,11 @@ import { AppFooter } from "@/components/app-footer"
 import { MobileTabBar } from "@/components/mobile-tab-bar"
 import { FxProvider } from "@/components/fx-provider"
 import { Providers } from "@/components/providers"
+import { Sea } from "@/components/sea"
 
-const fontSans = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" })
-const fontDisplay = Archivo_Black({ subsets: ["latin"], weight: "400", variable: "--font-archivo-black" })
-const fontMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-ibm-plex-mono" })
+// v3: Inter everywhere (600 headings/buttons, 400/500 body), IBM Plex Mono for data.
+const fontSans = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-inter" })
+const fontMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-ibm-plex-mono" })
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
@@ -30,23 +31,26 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontSans.variable,
-        fontDisplay.variable,
-        fontMono.variable,
-        "font-sans"
-      )}
+      className={cn("antialiased", fontSans.variable, fontMono.variable, "font-sans")}
     >
       <body>
-        {/* Atmosphere: fixed, behind all content (pointer-events:none). */}
-        <div aria-hidden className="atmo">
-          <div className="atmo-grid" />
-          <div className="atmo-shaft atmo-shaft-1" />
-          <div className="atmo-shaft atmo-shaft-2" />
-          <div className="atmo-shaft atmo-shaft-3" />
-          <div className="atmo-grain" />
+        {/* v3 background engine: canvas night-sea + CSS glow layers + floating
+            sail, all fixed behind content (pointer-events:none, z-0). */}
+        <div aria-hidden className="scene">
+          <Sea />
+          <div className="scene-neb scene-neb-1" />
+          <div className="scene-neb scene-neb-2" />
+          <div className="scene-aurora" />
+          <div className="scene-arc scene-arc-1" />
+          <div className="scene-arc scene-arc-2" />
+          <div className="scene-sphere" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/berth-sail.png" alt="" className="scene-sail" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/berth-sail.png" alt="" className="scene-sail-reflection" />
         </div>
+        {/* grain sits above everything, per spec */}
+        <div aria-hidden className="scene-grain" />
         <ThemeProvider forcedTheme="dark">
           <FxProvider>
           <Providers>

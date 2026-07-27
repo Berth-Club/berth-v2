@@ -9,7 +9,7 @@ import type { FeedTrade } from "@/lib/indexer"
  */
 export function TradeFeed({ trades }: { trades: FeedTrade[] | null }) {
   return (
-    <section className="rounded-card bg-hull border p-4" style={{ borderColor: "rgba(94,147,234,0.2)" }}>
+    <section className="rounded-card bg-hull border p-4" style={{ borderColor: "rgba(148,168,196,0.2)" }}>
       <div className="mb-3 flex items-center gap-2">
         <span className="relative flex size-2">
           <span className="bg-lime absolute inline-flex size-full animate-ping rounded-full opacity-60" />
@@ -36,8 +36,8 @@ export function TradeFeed({ trades }: { trades: FeedTrade[] | null }) {
                   className="rounded-chip px-1.5 py-0.5 text-[10px] font-bold"
                   style={
                     t.isBuy
-                      ? { color: "#4ADE80", background: "rgba(74,222,128,.12)" }
-                      : { color: "#ff8f6e", background: "rgba(255,143,110,.12)" }
+                      ? { color: "#7cc9a3", background: "rgba(124,201,163,.12)" }
+                      : { color: "#de8092", background: "rgba(222,128,146,.12)" }
                   }
                 >
                   {t.isBuy ? "BUY" : "SELL"}

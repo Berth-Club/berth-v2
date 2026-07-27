@@ -22,7 +22,7 @@ function SocialLink({ href, label, icon }: { href: string; label: string; icon: 
       target="_blank"
       rel="noreferrer noopener nofollow"
       className="rounded-chip bg-deep hover:border-lime inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors"
-      style={{ borderColor: "rgba(94,147,234,0.2)" }}
+      style={{ borderColor: "rgba(148,168,196,0.2)" }}
     >
       <span aria-hidden>{icon}</span>
       {label}
@@ -99,7 +99,7 @@ export default async function TokenPage({
           ticker={coin.ticker}
           size={64}
           className="bg-hull"
-          style={{ border: "2px solid rgba(94,147,234,0.2)", borderRadius: 16 }}
+          style={{ border: "2px solid rgba(148,168,196,0.2)", borderRadius: 16 }}
         />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[30px] leading-tight">
@@ -115,7 +115,7 @@ export default async function TokenPage({
           {coin.graduated && (
             <span
               className="text-gold mt-2 inline-block text-[11px] font-bold"
-              style={{ border: "1px solid rgba(242,201,76,.55)", borderRadius: 8, padding: "2px 8px" }}
+              style={{ border: "1px solid rgba(137,167,219,.55)", borderRadius: 8, padding: "2px 8px" }}
             >
               🎓 GRADUATED
             </span>
@@ -206,9 +206,9 @@ export default async function TokenPage({
                   <span
                     className="rounded-chip px-1.5 py-0.5 text-[11px] font-bold uppercase"
                     style={{
-                      color: t.kind === "buy" ? "#4ADE80" : "#ff8f6e",
+                      color: t.kind === "buy" ? "#7cc9a3" : "#de8092",
                       background:
-                        t.kind === "buy" ? "rgba(74,222,128,.12)" : "rgba(255,143,110,.12)",
+                        t.kind === "buy" ? "rgba(124,201,163,.12)" : "rgba(222,128,146,.12)",
                     }}
                   >
                     {t.kind}
@@ -278,7 +278,7 @@ function Row({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="flex items-center justify-between py-2.5"
-      style={{ borderBottom: "1px solid rgba(94,147,234,0.14)" }}
+      style={{ borderBottom: "1px solid rgba(148,168,196,0.14)" }}
     >
       {children}
     </div>

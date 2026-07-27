@@ -17,9 +17,9 @@ export function TopBar() {
     <header
       className="sticky top-0 z-30"
       style={{
-        background: "rgba(5,7,12,.9)",
+        background: "rgba(13,26,43,.9)",
         backdropFilter: "blur(10px)",
-        borderBottom: "1px solid rgba(94,147,234,0.14)",
+        borderBottom: "1px solid rgba(148,168,196,0.14)",
       }}
     >
       <div className="mx-auto flex max-w-[1180px] items-center gap-5 px-5 py-3.5">

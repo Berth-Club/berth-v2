@@ -131,7 +131,7 @@ export function ActivityTicker() {
           <span
             key={`${item.key}-${i}`}
             className="text-body2 whitespace-nowrap px-[26px] py-[7px] text-[13px] font-medium"
-            style={{ borderRight: "1px dashed rgba(94,147,234,0.14)" }}
+            style={{ borderRight: "1px dashed rgba(148,168,196,0.14)" }}
           >
             {item.text} <span className="text-faint">· {ago(item.ts)}</span>
           </span>

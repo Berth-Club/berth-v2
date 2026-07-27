@@ -4,7 +4,7 @@ import * as React from "react"
 
 // Spec: ~80 pieces, these 5 colours, squares + circles 6–14px,
 // fall translateY(115vh) + rotate 900deg over 2–3.6s.
-const CONFETTI_COLORS = ["#c6ff3d", "#f2c94c", "#4ADE80", "#F472B6", "#22D3EE"]
+const CONFETTI_COLORS = ["#8fb0e8", "#89a7db", "#7cc9a3", "#F472B6", "#22D3EE"]
 const PIECES = 80
 
 type Piece = {
@@ -99,8 +99,8 @@ export function FxProvider({ children }: { children: React.ReactNode }) {
           role="status"
           className="font-display fixed bottom-6 left-1/2 z-50 -translate-x-1/2 px-5 py-3 text-[15px]"
           style={{
-            background: "#0d1526",
-            border: "2px solid #c6ff3d",
+            background: "#1b3450",
+            border: "2px solid #8fb0e8",
             borderRadius: 14,
             animation: "toastUp .25s ease-out",
           }}

@@ -13,7 +13,7 @@ const COLS = "56px 1fr 110px 90px 110px"
 
 /** Rank numerals: gold / silver / bronze for the top 3. */
 function rankColor(rank: number): string | undefined {
-  return rank === 1 ? "#f2c94c" : rank === 2 ? "#c6d2e8" : rank === 3 ? "#d19a66" : undefined
+  return rank === 1 ? "#89a7db" : rank === 2 ? "#c6d5ea" : rank === 3 ? "#d19a66" : undefined
 }
 
 function short(a: string): string {
@@ -41,9 +41,9 @@ export default async function LeaderboardPage() {
           <span
             className="rounded-[20px] px-2.5 py-1 text-[11px] font-bold"
             style={{
-              color: "#f2c94c",
-              background: "rgba(242,201,76,.12)",
-              border: "1px solid rgba(242,201,76,.35)",
+              color: "#89a7db",
+              background: "rgba(137,167,219,.12)",
+              border: "1px solid rgba(137,167,219,.35)",
             }}
             title={`Trades in the last ${formatLag(status.lagSeconds)} are not counted yet.`}
           >
@@ -68,7 +68,7 @@ export default async function LeaderboardPage() {
         <div className="rounded-panel bg-hull overflow-hidden border">
           <div
             className="text-mist grid gap-3 px-4 py-3 text-xs font-bold"
-            style={{ gridTemplateColumns: COLS, letterSpacing: 1, borderBottom: "1px solid rgba(94,147,234,0.2)" }}
+            style={{ gridTemplateColumns: COLS, letterSpacing: 1, borderBottom: "1px solid rgba(148,168,196,0.2)" }}
           >
             <span>#</span>
             <span>CAPTAIN</span>
@@ -89,17 +89,17 @@ export default async function LeaderboardPage() {
                 key={c.address}
                 href={`/u/${c.address}`}
                 className="hover:bg-bulwark grid items-center gap-3 px-4 py-3 transition-colors"
-                style={{ gridTemplateColumns: COLS, borderBottom: "1px solid rgba(94,147,234,0.14)" }}
+                style={{ gridTemplateColumns: COLS, borderBottom: "1px solid rgba(148,168,196,0.14)" }}
               >
-                <span className="font-display text-lg" style={{ color: color ?? "#9aa9c6" }}>
+                <span className="font-display text-lg" style={{ color: color ?? "#93a8c4" }}>
                   {rank}
                 </span>
                 <span className="flex min-w-0 items-center gap-2.5">
                   <span
                     className="grid size-[30px] shrink-0 place-items-center rounded-full text-sm"
                     style={{
-                      background: color ? "rgba(242,201,76,.12)" : "#0d1526",
-                      border: `1px solid ${color ?? "rgba(94,147,234,0.2)"}`,
+                      background: color ? "rgba(137,167,219,.12)" : "#1b3450",
+                      border: `1px solid ${color ?? "rgba(148,168,196,0.2)"}`,
                     }}
                     aria-hidden
                   >
