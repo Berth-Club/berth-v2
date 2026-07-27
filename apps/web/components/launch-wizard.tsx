@@ -316,24 +316,28 @@ export function LaunchWizard() {
             <p className="text-faint mt-1.5 text-[11px]">Drag an image here, or use the button.</p>
           </Field>
 
-          <Field label="Fallback face">
-            <div className="grid grid-cols-8 gap-2">
-              {FACE_OPTIONS.map((e) => (
-                <button
-                  key={e}
-                  onClick={() => setEmoji(e)}
-                  aria-pressed={emoji === e}
-                  className={cn(
-                    "rounded-chip grid aspect-square place-items-center text-2xl transition-colors",
-                    emoji === e ? "border-lime" : "hover:bg-bulwark"
-                  )}
-                  style={{ border: `1px solid ${emoji === e ? "#8fb0e8" : "rgba(148,168,196,0.2)"}` }}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-          </Field>
+          {/* Only offer the emoji face when there's no pinned art (or the pin
+              failed). Once an image is the coin's face, the picker is noise. */}
+          {(!upload.previewUrl || upload.status === "error") && (
+            <Field label="Fallback face">
+              <div className="grid grid-cols-8 gap-2">
+                {FACE_OPTIONS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => setEmoji(e)}
+                    aria-pressed={emoji === e}
+                    className={cn(
+                      "rounded-chip grid aspect-square place-items-center text-2xl transition-colors",
+                      emoji === e ? "border-lime" : "hover:bg-bulwark"
+                    )}
+                    style={{ border: `1px solid ${emoji === e ? "#8fb0e8" : "rgba(148,168,196,0.2)"}` }}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
 
           <div className="flex justify-end">
             <button
