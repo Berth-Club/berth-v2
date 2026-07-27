@@ -17,6 +17,12 @@ import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 
 const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
 
+// A down or slow indexer must never hang a page render. force-dynamic pages
+// await these fetches, so without a deadline a 502-ing indexer blocks the whole
+// response (~15s of Railway edge timeout) — which reads to the user as "can't
+// reach the server". Fail fast to the empty state instead.
+const INDEXER_TIMEOUT_MS = 6000
+
 /** Every launched coin has 18 decimals and 100B supply. */
 const SUPPLY_TOKENS = 100_000_000_000
 
@@ -236,7 +242,10 @@ export async function fetchRecentTrades(limit = 15): Promise<FeedTrade[] | null>
 
 export async function fetchIndexerStatus(): Promise<IndexerStatus | null> {
   try {
-    const res = await fetch(`${INDEXER_URL}/status`, { cache: "no-store" })
+    const res = await fetch(`${INDEXER_URL}/status`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(INDEXER_TIMEOUT_MS),
+    })
     if (!res.ok) return null
     const json = await res.json()
     const block = json?.arc?.block
@@ -270,6 +279,7 @@ async function gql<T>(query: string, variables?: Record<string, unknown>): Promi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, variables }),
       cache: "no-store",
+      signal: AbortSignal.timeout(INDEXER_TIMEOUT_MS),
     })
     if (!res.ok) return null
     const json = await res.json()
