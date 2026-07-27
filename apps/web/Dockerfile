@@ -25,7 +25,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # --- build: produces apps/web/.next/standalone (self-contained server) ---
 FROM base AS build
 # Turns on Next.js `output: standalone` (see next.config.ts) — Docker only.
-ENV NEXT_TELEMETRY_DISABLED=1 DOCKER_BUILD=1
+ENV NEXT_TELEMETRY_DISABLED=1
 # NEXT_PUBLIC_* are inlined into the client bundle at BUILD time, so they must
 # be build args (contract addresses are NOT here — they come from the code in
 # @workspace/contracts).
@@ -43,14 +43,11 @@ COPY --from=deps /app ./
 COPY . .
 RUN pnpm --filter web build
 
-# --- runtime: only the standalone output + static assets ---
-FROM node:22-slim AS runner
-WORKDIR /app
+# --- runtime: full build + `next start` (same as Railway). Reliable in a pnpm
+#     monorepo — no standalone tracing, which drops symlinked @workspace/* deps. ---
+FROM base AS runner
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
-RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
-USER nextjs
+COPY --from=build /app ./
+WORKDIR /app/apps/web
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["pnpm", "start"]
