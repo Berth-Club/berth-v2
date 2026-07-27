@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "ponder dev",
-    "start": "ponder start",
+    "start": "sh start.sh",
     "db": "ponder db",
     "codegen": "ponder codegen",
     "lint": "eslint .",
