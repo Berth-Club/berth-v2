@@ -9,8 +9,6 @@ function short(a?: string) {
   return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""
 }
 
-const LINE = "rgba(148,168,196,0.2)"
-
 /**
  * The header wallet control. Disconnected → connect. Wrong network → switch.
  * Connected → a pill that OPENS A MENU (address+copy, balance, portfolio,
@@ -49,7 +47,7 @@ export function WalletMenu() {
 
   if (wallet.wrongNetwork) {
     return (
-      <button onClick={wallet.switchToArc} className="btn-deck btn-gold px-4 py-2 text-[15px]">
+      <button onClick={wallet.switchToArc} className="btn-glossy px-4 py-2.5 text-[15px]">
         Wrong network — switch
       </button>
     )
@@ -60,7 +58,8 @@ export function WalletMenu() {
       <button
         onClick={wallet.connect}
         disabled={!wallet.ready}
-        className="btn-deck btn-quiet px-4 py-2 text-[15px] disabled:opacity-50"
+        className="btn-quiet rounded-chip px-4 py-2.5 text-[11.5px] disabled:opacity-50"
+        style={{ letterSpacing: ".14em" }}
       >
         Connect wallet
       </button>
@@ -73,7 +72,8 @@ export function WalletMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="btn-deck btn-quiet tabular px-4 py-2 text-[15px]"
+        className="btn-quiet rounded-chip tabular px-4 py-2.5 text-[11.5px]"
+        style={{ letterSpacing: ".14em" }}
       >
         {wallet.label}
       </button>
@@ -81,8 +81,8 @@ export function WalletMenu() {
       {open && (
         <div
           role="menu"
-          className="rounded-card bg-hull absolute right-0 z-40 mt-2 w-[264px] border p-3"
-          style={{ borderColor: LINE, boxShadow: "0 12px 34px rgba(0,0,0,.45)" }}
+          className="glass absolute right-0 z-40 mt-2 w-[264px] p-4"
+          style={{ animation: "popIn .2s ease" }}
         >
           {/* address + copy */}
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -102,14 +102,15 @@ export function WalletMenu() {
           </div>
 
           {/* balance */}
-          <div
-            className="bg-deep rounded-btn mb-3 flex items-center justify-between px-3 py-2"
-            style={{ border: `1px solid ${LINE}` }}
-          >
+          <div className="well mb-3 flex items-center justify-between px-3 py-2">
             <span className="text-faint font-mono text-[10px] uppercase" style={{ letterSpacing: ".12em" }}>
               Balance
             </span>
-            <span className="tabular text-foam text-sm">{wallet.balance ?? "0.00"} USDC</span>
+            {/* "—" not "0.00": an unread balance and an empty wallet are
+                different answers, and only one of them is a fact. */}
+            <span className="tabular text-foam text-sm">
+              {wallet.balance ? `${wallet.balance} USDC` : "—"}
+            </span>
           </div>
 
           {/* actions */}

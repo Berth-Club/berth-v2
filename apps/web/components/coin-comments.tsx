@@ -111,44 +111,24 @@ export function CoinComments({ coin }: { coin: string }) {
     }
   }, [connected, pending, post])
 
+  // The card chrome belongs to the page (a .glass panel) — this renders its
+  // contents only, so the chat sits in the same surface as swap and market.
   return (
-    <section className="rounded-card bg-hull border p-4" style={{ borderColor: "rgba(148,168,196,0.2)" }}>
-      <h2 className="text-mist mb-3 text-[13px] font-bold" style={{ letterSpacing: 1 }}>
-        DECK CHATTER {comments && comments.length > 0 && <span className="text-faint">· {comments.length}</span>}
-      </h2>
-
-      {/* composer — always shown. The wallet gate is deferred to the Post click:
-          if you're not connected yet, Post opens the wallet, then you post. */}
-      <div className="mb-5 flex flex-col gap-2.5">
-        <div className="flex items-start gap-2.5">
-          <div className="mt-0.5 size-8 shrink-0 rounded-full" style={avatarStyle(address ?? "you")} />
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value.slice(0, MAX))}
-            rows={2}
-            placeholder="Say something to the deck…"
-            className="bg-deep rounded-btn focus:border-lime min-w-0 flex-1 resize-none border p-2.5 text-sm outline-none"
-            style={{ borderColor: "rgba(148,168,196,0.2)" }}
-          />
-        </div>
-        <div className="flex items-center justify-end gap-3 pl-[42px]">
-          {error && (
-            <span className="mr-auto text-[13px]" style={{ color: "#de8092" }}>
-              {error}
-            </span>
-          )}
-          <span className="text-faint tabular text-[11px]">
-            {body.length}/{MAX}
-          </span>
-          <button
-            onClick={submit}
-            disabled={!body.trim() || posting}
-            className="btn-deck btn-lime rounded-btn px-4 py-1.5 text-sm disabled:opacity-40"
+    <>
+      <div className="flex items-center gap-2.5">
+        <h2 className="font-display text-[17px]">Chat</h2>
+        {comments && comments.length > 0 && (
+          <span
+            className="tabular bg-deep text-body2 rounded-full px-2.5 py-[3px] text-[11.5px] font-semibold"
+            style={{ border: "1px solid rgba(148,168,196,.2)" }}
           >
-            {posting ? "Posting…" : connected ? "Post" : "Connect & post"}
-          </button>
-        </div>
+            {comments.length}
+          </span>
+        )}
       </div>
+      <p className="text-faint my-[7px] mb-3 text-[12.5px]">
+        Holders can post. Links are not allowed.
+      </p>
 
       {/* thread */}
       {comments === null ? (
@@ -156,21 +136,65 @@ export function CoinComments({ coin }: { coin: string }) {
       ) : comments.length === 0 ? (
         <p className="text-mist py-6 text-center text-[13px]">Quiet on deck. Break the silence.</p>
       ) : (
-        <ul className="flex flex-col gap-4 border-t pt-4" style={{ borderColor: "rgba(148,168,196,0.14)" }}>
+        <ul className="flex flex-col">
           {comments.map((c) => (
-            <li key={c.id} className="flex gap-2.5 text-sm">
-              <div className="mt-0.5 size-8 shrink-0 rounded-full" style={avatarStyle(c.author)} />
+            <li
+              key={c.id}
+              className="flex gap-2.5 py-[11px] text-sm"
+              style={{ borderBottom: "1px solid rgba(148,168,196,0.14)" }}
+            >
+              <div className="mt-0.5 size-7 shrink-0 rounded-full" style={avatarStyle(c.author)} />
               <div className="min-w-0 flex-1">
-                <div className="mb-0.5 flex items-center gap-2">
-                  <span className="tabular text-lime text-xs">{short(c.author)}</span>
-                  <span className="text-faint text-[11px]">{ago(c.createdAt)}</span>
+                <div className="text-faint flex flex-wrap items-center gap-[7px] text-xs">
+                  <span className="tabular text-body2 font-semibold">{short(c.author)}</span>
+                  <span className="ml-auto">{ago(c.createdAt)}</span>
                 </div>
-                <p className="text-body2 whitespace-pre-wrap break-words">{c.body}</p>
+                <p className="text-body2 mt-[3px] whitespace-pre-wrap break-words text-[13.5px]">
+                  {c.body}
+                </p>
               </div>
             </li>
           ))}
         </ul>
       )}
-    </section>
+
+      {/* composer — always shown. The wallet gate is deferred to the Post click:
+          if you're not connected yet, Post opens the wallet, then you post. */}
+      {connected ? (
+        <div className="mt-3.5 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <div className="mt-0.5 size-7 shrink-0 rounded-full" style={avatarStyle(address ?? "you")} />
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value.slice(0, MAX))}
+              rows={2}
+              placeholder="Signal the fleet…"
+              className="well min-w-0 flex-1 resize-none rounded-xl p-3 text-[13.5px] outline-none"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            {error && (
+              <span className="mr-auto text-[13px]" style={{ color: "#de8092" }}>
+                {error}
+              </span>
+            )}
+            <span className="text-faint tabular text-[11px]">
+              {body.length}/{MAX}
+            </span>
+            <button
+              onClick={submit}
+              disabled={!body.trim() || posting}
+              className="btn-glossy px-[18px] py-2.5 text-[13.5px]"
+            >
+              {posting ? "Posting…" : "Post"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={submit} className="btn-glossy mt-3.5 w-full py-3 text-[15px]">
+          Connect to chat
+        </button>
+      )}
+    </>
   )
 }

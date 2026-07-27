@@ -1,13 +1,16 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { formatUnits } from "viem"
 
 import { cn } from "@workspace/ui/lib/utils"
+import { CoinAvatar } from "@/components/coin-avatar"
 import { fmtAmount } from "@/lib/format"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
-import { useTrade, type Side } from "@/lib/trade"
+import { useTrade, SLIPPAGE_CHOICES, DEFAULT_SLIPPAGE_BPS, type Side } from "@/lib/trade"
 import { explorerTx, USDC, COIN_DECIMALS } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
@@ -16,34 +19,81 @@ import type { Coin } from "@/lib/coin"
 // 8787e6). Not a constant of the system: the factory admin can rewrite the
 // preset, so treat this as today's reading.
 const EXIT_NATIVE = 8787
-const CHIPS = ["50", "100", "500", "1000"]
-const SELL_CHIPS: [string, bigint][] = [
-  ["25%", 25n],
-  ["50%", 50n],
-  ["MAX", 100n],
-]
+const PERCENTS = [25, 50, 75, 100] as const
 
-/** ETH amounts are small and precision matters — no compact notation. */
+/** USDC amounts are small and precision matters — no compact notation. */
 function fmtUsdc(n: number): string {
   if (n === 0) return "0"
   if (n < 0.000001) return "<0.000001"
   return n.toLocaleString("en-US", { maximumFractionDigits: 6 })
 }
 
+/** The blue USDC mark: #2775CA disc, white $. */
+function UsdcMark() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" className="block shrink-0" aria-hidden>
+      <circle cx="12" cy="12" r="12" fill="#2775CA" />
+      <text
+        x="12"
+        y="16.4"
+        textAnchor="middle"
+        fontSize="13"
+        fontWeight="700"
+        fill="#ffffff"
+        fontFamily="Inter,sans-serif"
+      >
+        $
+      </text>
+    </svg>
+  )
+}
+
+function AssetChip({ coin, usdc }: { coin: Coin; usdc: boolean }) {
+  return (
+    <span
+      className="bg-hull flex shrink-0 items-center gap-[7px] rounded-full px-3 py-[7px] text-[13.5px] font-semibold"
+      style={{ border: "1px solid rgba(148,168,196,.25)" }}
+    >
+      {usdc ? <UsdcMark /> : <span aria-hidden>{coin.emoji}</span>}
+      {usdc ? "USDC" : `$${coin.ticker}`}
+    </span>
+  )
+}
+
+/**
+ * The swap card. Two stacked wells (spend on top, receive below) with a ⇅ that
+ * flips the side, per the v3 design — no buy/sell segmented tabs.
+ *
+ * When disconnected the CTA reads "Connect wallet" and connects. It never
+ * scolds: the button is always the next step, never an error message.
+ */
 export function TradePanel({ coin }: { coin: Coin }) {
+  const params = useSearchParams()
+  // ⚡ Snap buy lands here with ?buy=100. It pre-fills, never auto-submits.
+  const seeded = params.get("buy")
   const [side, setSide] = React.useState<Side>("buy")
-  const [amount, setAmount] = React.useState("")
+  const [amount, setAmount] = React.useState(seeded && /^\d+(\.\d+)?$/.test(seeded) ? seeded : "")
+  const [slippage, setSlippage] = React.useState<bigint>(DEFAULT_SLIPPAGE_BPS)
   const [lastTx, setLastTx] = React.useState<`0x${string}`>()
   const { celebrate } = useFx()
   const { connected, wrongNetwork, connect, switchToArc } = useWallet()
-  const trade = useTrade(coin, side, amount)
+  const trade = useTrade(coin, side, amount, slippage)
 
-  const eth = parseFloat(amount) || 0
-  // remaining range = (100 − grad%)/100 × 5000 USDC
+  const buying = side === "buy"
+  const spend = parseFloat(amount) || 0
   const remaining = (1 - coin.curve) * EXIT_NATIVE
-  const impact = eth ? Math.min(95, (eth / EXIT_NATIVE) * 100) : 0
-  const showImpact = side === "buy" && eth >= EXIT_NATIVE * 0.03
-  const overshoots = side === "buy" && eth > remaining && !coin.graduated
+  const impact = spend ? Math.min(95, (spend / EXIT_NATIVE) * 100) : 0
+  const showImpact = buying && spend >= EXIT_NATIVE * 0.03
+  const overshoots = buying && spend > remaining && !coin.graduated
+
+  const spendDecimals = buying ? USDC.decimals : COIN_DECIMALS
+  const balance =
+    trade.balance !== undefined ? Number(formatUnits(trade.balance, spendDecimals)) : undefined
+  // A held bag is worth saying out loud — it's the context for a sell.
+  const holding =
+    !buying && balance !== undefined && balance > 0
+      ? `You're holding ${fmtAmount(balance)} $${coin.ticker}.`
+      : null
 
   const { success, hash, reset } = trade
   React.useEffect(() => {
@@ -54,168 +104,173 @@ export function TradePanel({ coin }: { coin: Coin }) {
     reset()
   }, [success, hash, side, celebrate, reset])
 
-  function setSideAndClear(s: Side) {
-    setSide(s)
+  function flip() {
+    setSide(buying ? "sell" : "buy")
     setAmount("")
   }
 
+  const receive = trade.quoting
+    ? "quoting…"
+    : trade.amountOut === undefined || spend === 0
+      ? "0"
+      : buying
+        ? fmtAmount(trade.amountOutFloat)
+        : fmtUsdc(trade.amountOutFloat)
+
   return (
-    <div className="rounded-panel bg-hull flex flex-col gap-4 border p-[18px]">
-      {/* buy / sell segmented toggle */}
-      <div className="bg-deep flex gap-1 rounded-btn p-1">
-        {(["buy", "sell"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setSideAndClear(s)}
-            aria-pressed={side === s}
-            className={cn(
-              "font-display flex-1 rounded-[9px] py-2 text-[15px] capitalize transition-colors",
-              side === s
-                ? s === "buy"
-                  ? "bg-lime text-lime-ink"
-                  : "bg-tide text-[#2a0a12]"
-                : "text-mist hover:text-foam"
-            )}
-          >
-            {s}
-          </button>
-        ))}
+    <div className="glass w-full min-w-0 p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
+      {/* identity */}
+      <div className="mb-4 flex items-center gap-3">
+        <CoinAvatar
+          image={coin.image}
+          emoji={coin.emoji}
+          name={coin.name}
+          ticker={coin.ticker}
+          size={44}
+          className="bg-deep rounded-[10px]"
+          style={{ border: "1px solid rgba(148,168,196,.2)" }}
+        />
+        <div className="min-w-0">
+          <div className="font-display truncate text-[18px]">{coin.name}</div>
+          <div className="text-faint text-[12.5px]">
+            ${coin.ticker} · by{" "}
+            <Link href={`/u/${coin.creator}`} className="text-gold tabular hover:underline">
+              {coin.creator}
+            </Link>
+          </div>
+        </div>
       </div>
 
-      {/* amount */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-baseline justify-between">
-          <label className="text-mist text-xs">
-            {side === "buy" ? "Amount (USDC)" : `Amount ($${coin.ticker})`}
-          </label>
-          {trade.balance !== undefined && (
-            <span className="text-faint tabular text-[11px]">
-              {fmtUsdc(Number(formatUnits(trade.balance, side === "buy" ? USDC.decimals : COIN_DECIMALS)))}{" "}
-              {side === "buy" ? "USDC" : `$${coin.ticker}`}
-            </span>
-          )}
+      {/* spend well */}
+      <div className="well p-4">
+        <div className="text-faint mb-2 flex justify-between text-[12.5px]">
+          <span>Sell</span>
+          <span className="tabular">
+            {balance === undefined
+              ? "—"
+              : `${buying ? fmtUsdc(balance) : fmtAmount(balance)} ${buying ? "USDC" : `$${coin.ticker}`}`}
+          </span>
         </div>
-        <div className="bg-deep flex items-center gap-2 rounded-btn border py-1 pl-3.5 pr-1">
+        <div className="flex items-center gap-2.5">
           <input
             inputMode="decimal"
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-            placeholder="0.0"
-            className="tabular w-full bg-transparent py-2 text-[20px] outline-none"
+            placeholder="0"
+            aria-label={buying ? "Amount in USDC" : `Amount in $${coin.ticker}`}
+            className="tabular min-w-0 flex-1 bg-transparent text-[26px] font-semibold outline-none"
           />
-          <span className="text-mist pr-2 text-[15px]" aria-hidden>
-            {side === "buy" ? "USDC" : `$${coin.ticker}`}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          {side === "buy"
-            ? CHIPS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setAmount(c)}
-                  className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs"
-                >
-                  {c} USDC
-                </button>
-              ))
-            : SELL_CHIPS.map(([label, pct]) => (
-                <button
-                  key={label}
-                  disabled={!trade.balance}
-                  onClick={() =>
-                    trade.balance && setAmount(formatUnits((trade.balance * pct) / 100n, COIN_DECIMALS))
-                  }
-                  className="btn-quiet rounded-chip tabular px-2.5 py-1 text-xs disabled:opacity-40"
-                >
-                  {label}
-                </button>
-              ))}
+          <AssetChip coin={coin} usdc={buying} />
         </div>
       </div>
 
-      {eth > 0 && (
-        <div className="flex flex-col gap-1.5 text-[13px]">
-          <div className="flex justify-between">
-            <span className="text-mist">You receive</span>
-            <span className="tabular">
-              {trade.quoting ? (
-                <span className="text-mist">quoting…</span>
-              ) : trade.amountOut === undefined ? (
-                <span className="text-mist">—</span>
-              ) : side === "buy" ? (
-                `${fmtAmount(trade.amountOutFloat)} $${coin.ticker}`
-              ) : (
-                `${fmtUsdc(trade.amountOutFloat)} USDC`
-              )}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-mist">Fee</span>
-            <span className="text-mist">1% — split with the creator</span>
-          </div>
-        </div>
-      )}
+      {/* flip */}
+      <button
+        type="button"
+        onClick={flip}
+        title="Flip"
+        aria-label={buying ? "Switch to selling" : "Switch to buying"}
+        className="bg-hull text-gold hover:border-lime relative z-[2] mx-auto -my-3.5 grid size-9 place-items-center rounded-full text-[15px] transition-colors"
+        style={{ border: "1px solid rgba(148,168,196,.3)" }}
+      >
+        ⇅
+      </button>
 
-      {/* price-impact warning — amber */}
+      {/* receive well */}
+      <div className="well p-4">
+        <div className="text-faint mb-2 flex justify-between text-[12.5px]">
+          <span>Buy</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="tabular min-w-0 flex-1 truncate text-[26px] font-semibold">{receive}</div>
+          <AssetChip coin={coin} usdc={!buying} />
+        </div>
+        <div className="text-faint mt-1.5 text-[12.5px]">fee 1% — split with the creator</div>
+      </div>
+
+      {/* % of available balance */}
+      <div className="mt-3.5 flex gap-2">
+        {PERCENTS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={!trade.balance}
+            onClick={() =>
+              trade.balance &&
+              setAmount(formatUnits((trade.balance * BigInt(p)) / 100n, spendDecimals))
+            }
+            className="well text-body2 hover:border-lime hover:text-lime flex-1 rounded-xl py-2 text-center text-[12.5px] font-semibold transition-colors disabled:opacity-40"
+          >
+            {p}%
+          </button>
+        ))}
+      </div>
+
+      {/* slippage */}
+      <div className="text-mist my-3.5 flex flex-wrap items-center gap-2 text-[13px]">
+        <span>Slippage</span>
+        <div className="ml-auto flex gap-1.5">
+          {SLIPPAGE_CHOICES.map((s) => {
+            const on = slippage === s.bps
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => setSlippage(s.bps)}
+                aria-pressed={on}
+                className="rounded-full px-3 py-[5px] text-xs font-semibold transition-colors"
+                style={{
+                  background: on ? "rgba(137,167,219,.12)" : "transparent",
+                  color: on ? "#89a7db" : "#93a8c4",
+                  border: `1px solid ${on ? "#89a7db" : "rgba(148,168,196,.2)"}`,
+                }}
+              >
+                {s.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {showImpact && (
-        <div
-          className="rounded-btn p-2.5 text-[13px]"
-          style={{
-            border: "1px solid rgba(137,167,219,.4)",
-            background: "rgba(137,167,219,.08)",
-            color: "#89a7db",
-          }}
-        >
-          ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — the entire market
-          has ~8,787 USDC of exit liquidity.
-        </div>
+        <Notice tone="warn">
+          ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — this size moves the
+          whole market.
+        </Notice>
       )}
-
-      {/* auto-refund note — dashed lime */}
       {overshoots && (
-        <div
-          className="rounded-btn text-lime p-2.5 text-[13px]"
-          style={{ border: "1px dashed rgba(143,176,232,.5)", background: "rgba(143,176,232,.06)" }}
-        >
-          This buy overshoots the range — the extra ETH auto-refunds.
-        </div>
+        <Notice tone="dashed">This buy overshoots the range — the extra USDC auto-refunds.</Notice>
       )}
-
-      {/* why the button is dead */}
-      {trade.disabledReason && (
-        <div className="text-mist rounded-btn bg-deep p-2.5 text-[13px]">{trade.disabledReason}</div>
-      )}
+      {holding && <Notice tone="quiet">⚓ {holding}</Notice>}
+      {trade.disabledReason && <Notice tone="quiet">{trade.disabledReason}</Notice>}
 
       {/* NOTE: SwapRouter02 has no deadline field — do not add one. See lib/trade.ts. */}
       {!connected ? (
-        <button onClick={connect} className="btn-deck btn-quiet w-full py-3 text-[19px]">
-          CONNECT WALLET
+        <button onClick={connect} className="btn-glossy w-full py-[15px] text-base">
+          Connect wallet
         </button>
       ) : wrongNetwork ? (
-        <button onClick={switchToArc} className="btn-deck btn-quiet w-full py-3 text-[19px]">
-          SWITCH TO ROBINHOOD CHAIN
+        <button onClick={switchToArc} className="btn-glossy w-full py-[15px] text-base">
+          Switch to Arc
         </button>
       ) : (
         <button
           onClick={trade.submit}
           disabled={!trade.canSubmit}
-          className={cn(
-            "btn-deck w-full py-3 text-[19px] disabled:cursor-not-allowed disabled:opacity-40",
-            side === "buy" ? "btn-lime" : "btn-red"
-          )}
+          className={cn("w-full py-[15px] text-base", buying ? "btn-glossy" : "btn-sell")}
         >
-          {side === "buy" ? "FULL SAIL ⚓" : "ABANDON SHIP 😭"}
+          {buying ? `Buy $${coin.ticker}` : `Sell $${coin.ticker}`}
         </button>
       )}
 
       {trade.busy && (
-        <p className="text-mist text-center text-[12px]">
+        <p className="text-mist mt-2 text-center text-[12px]">
           {trade.approving ? `Approving $${coin.ticker}…` : "Signing and sailing… hold fast."}
         </p>
       )}
 
       {trade.error && !trade.busy && (
-        <p className="text-center text-[12px]" style={{ color: "#de8092" }}>
+        <p className="mt-2 text-center text-[12px]" style={{ color: "#de8092" }}>
           {trade.error}
         </p>
       )}
@@ -225,11 +280,26 @@ export function TradePanel({ coin }: { coin: Coin }) {
           href={explorerTx(lastTx)}
           target="_blank"
           rel="noreferrer"
-          className="text-lime text-center text-[12px] underline underline-offset-2"
+          className="text-gold mt-2 block text-center text-[12px] underline underline-offset-2"
         >
           View last trade on the explorer ↗
         </a>
       )}
+    </div>
+  )
+}
+
+function Notice({ tone, children }: { tone: "warn" | "dashed" | "quiet"; children: React.ReactNode }) {
+  const style =
+    tone === "warn"
+      ? { background: "rgba(137,167,219,.08)", border: "1px solid rgba(137,167,219,.4)", color: "#89a7db" }
+      : tone === "dashed"
+        ? { background: "rgba(137,167,219,.06)", border: "1px dashed rgba(137,167,219,.45)", color: "#c6d5ea" }
+        : { background: "rgba(137,167,219,.06)", border: "1px solid rgba(137,167,219,.28)", color: "#89a7db" }
+
+  return (
+    <div className="mb-3 rounded-[9px] px-3 py-2.5 text-[13px]" style={style}>
+      {children}
     </div>
   )
 }

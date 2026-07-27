@@ -1,4 +1,4 @@
-import { Anchor, Trophy, Wallet, type LucideIcon } from "lucide-react"
+import { Anchor, BarChart3, Wallet, type LucideIcon } from "lucide-react"
 
 export type NavItem = {
   href: string
@@ -9,12 +9,15 @@ export type NavItem = {
 // berth.club nav — harbor is home; "launch a coin" is a separate CTA, not a nav item.
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Harbor", icon: Anchor },
-  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+  { href: "/stats", label: "Analytics", icon: BarChart3 },
   // No Whitelist entry: the page was a design mockup with no contract behind it
   // ("Claim my berth" flipped a boolean and handed everyone berth #4,271 of an
   // invented 10,000), so it was deleted rather than just unlinked — an unlinked
   // URL still resolves. The factory does have setWhitelisted/whitelistEnabled,
   // currently off; build the page against those if it ever comes back.
+  //
+  // No Leaderboard either — v3 removes it by design. The captains rollup it read
+  // is still indexed and now feeds Analytics and /u/[address].
   { href: "/portfolio", label: "Portfolio", icon: Wallet },
 ]
 

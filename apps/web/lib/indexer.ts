@@ -207,40 +207,75 @@ export async function fetchStats(): Promise<HarborStats | null> {
   }
 }
 
-export type FeedTrade = {
-  id: string
-  coin: string
-  symbol: string
-  isBuy: boolean
-  /** USD size, preformatted. */
-  usd: string
-  ago: string
+/** One UTC day of protocol activity. Both numbers are indexed facts. */
+export type DayPoint = {
+  /** Unix seconds at 00:00 UTC of the day. */
+  day: number
+  volumeUsd: number
+  launches: number
 }
 
-/** The most recent trades across all coins, for a live buys/sells feed. */
-export async function fetchRecentTrades(limit = 15): Promise<FeedTrade[] | null> {
+/** Ponder's per-query row cap. Asking for more is a hard error, not a truncation. */
+const PONDER_MAX_LIMIT = 1000
+
+/**
+ * Daily volume + launches over the last `days`, for the Analytics charts.
+ *
+ * Bucketed here rather than by the indexer, which has no daily rollup table.
+ * The swap window is the most recent `PONDER_MAX_LIMIT` swaps: past that the
+ * series under-reports, and `truncated` says so instead of the chart quietly
+ * flattening. (When that starts happening for real, the fix is a rollup table
+ * in the indexer, not a bigger limit.)
+ */
+export async function fetchDailySeries(
+  days = 30
+): Promise<{ points: DayPoint[]; truncated: boolean } | null> {
   const data = await gql<{
-    swaps: { items: { id: string; coin: string; isBuy: boolean; amountNative: string; timestamp: string }[] }
-    coins: { items: { address: string; symbol: string }[] }
+    swaps: { items: { amountNative: string; timestamp: string }[] }
+    coins: { items: { createdAt: string }[] }
   }>(`{
-    swaps(orderBy: "timestamp", orderDirection: "desc", limit: ${limit}) {
-      items { id coin isBuy amountNative timestamp }
+    swaps(orderBy: "timestamp", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
+      items { amountNative timestamp }
     }
-    coins(limit: 200) { items { address symbol } }
+    coins(orderBy: "createdAt", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
+      items { createdAt }
+    }
   }`)
-  if (!data?.swaps?.items) return null
-  const sym = new Map(data.coins.items.map((c) => [c.address.toLowerCase(), c.symbol]))
-  return data.swaps.items.map((s) => {
-    const usd = nativeToUsdc(s.amountNative.startsWith("-") ? s.amountNative.slice(1) : s.amountNative)
-    return {
-      id: s.id,
-      coin: s.coin,
-      symbol: sym.get(s.coin.toLowerCase()) ?? "?",
-      isBuy: s.isBuy,
-      usd: usd > 0 ? `$${Math.round(usd).toLocaleString()}` : "$0",
-      ago: ago(Number(s.timestamp)),
-    }
-  })
+  if (!data?.swaps?.items || !data?.coins?.items) return null
+
+  const DAY = 86_400
+  const today = Math.floor(Date.now() / 1000 / DAY) * DAY
+  const start = today - (days - 1) * DAY
+
+  const points: DayPoint[] = Array.from({ length: days }, (_, i) => ({
+    day: start + i * DAY,
+    volumeUsd: 0,
+    launches: 0,
+  }))
+  const at = (ts: number) => {
+    const i = Math.floor((ts - start) / DAY)
+    return i >= 0 && i < days ? points[i] : undefined
+  }
+
+  for (const s of data.swaps.items) {
+    const bucket = at(Number(s.timestamp))
+    if (!bucket) continue
+    const raw = s.amountNative.startsWith("-") ? s.amountNative.slice(1) : s.amountNative
+    bucket.volumeUsd += nativeToUsdc(raw)
+  }
+  for (const c of data.coins.items) {
+    const bucket = at(Number(c.createdAt))
+    if (bucket) bucket.launches += 1
+  }
+
+  const oldestSwap = data.swaps.items.at(-1)
+  return {
+    points,
+    truncated:
+      data.swaps.items.length >= PONDER_MAX_LIMIT &&
+      oldestSwap !== undefined &&
+      Number(oldestSwap.timestamp) > start,
+  }
 }
 
 export async function fetchIndexerStatus(): Promise<IndexerStatus | null> {

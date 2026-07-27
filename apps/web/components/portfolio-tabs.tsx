@@ -16,9 +16,7 @@ const REW_COLS = "1fr auto 110px auto 110px"
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-panel bg-hull mt-5 flex flex-col items-center gap-4 border px-5 py-11 text-center">
-      {children}
-    </div>
+    <div className="glass mt-5 flex flex-col items-center gap-4 px-5 py-11 text-center">{children}</div>
   )
 }
 
@@ -59,6 +57,18 @@ function Arrow({ children }: { children: React.ReactNode }) {
   return (
     <div className="font-bold" style={{ color: "#4f74a8" }}>
       {children}
+    </div>
+  )
+}
+
+/** One cell of the holdings summary strip. */
+function SummaryCell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="cell px-[18px] py-[15px]">
+      <div className="text-faint text-[10.5px]" style={{ letterSpacing: ".12em" }}>
+        {label}
+      </div>
+      <div className={`tabular mt-1.5 text-[19px] ${accent ? "text-gold" : ""}`}>{value}</div>
     </div>
   )
 }
@@ -153,7 +163,7 @@ export function PortfolioTabs() {
           👜
         </span>
         <p className="text-lg font-bold">Connect your wallet to see what&apos;s in your hold</p>
-        <button onClick={wallet.connect} className="btn-deck btn-lime px-6 py-3 text-base">
+        <button onClick={wallet.connect} className="btn-glossy px-6 py-3 text-base">
           Connect wallet
         </button>
       </Panel>
@@ -170,7 +180,7 @@ export function PortfolioTabs() {
         </span>
         <p className="text-lg font-bold">Wrong waters, captain</p>
         <p className="text-mist -mt-2 text-[15px]">Your hold is on Arc Testnet (5042002).</p>
-        <button onClick={wallet.switchToArc} className="btn-deck btn-lime px-6 py-3 text-base">
+        <button onClick={wallet.switchToArc} className="btn-glossy px-6 py-3 text-base">
           Switch to Arc Testnet
         </button>
       </Panel>
@@ -193,7 +203,7 @@ export function PortfolioTabs() {
         </span>
         <p className="text-lg font-bold">Can&apos;t reach the harbor ledger</p>
         <p className="text-mist -mt-2 text-[15px]">So we won&apos;t guess at your numbers.</p>
-        <button onClick={refetch} className="btn-deck btn-quiet px-6 py-3 text-base">
+        <button onClick={refetch} className="btn-ghost px-6 py-3 text-base">
           Try again
         </button>
       </Panel>
@@ -217,10 +227,7 @@ export function PortfolioTabs() {
   return (
     <>
       {/* tabs */}
-      <div
-        className="bg-hull mt-5 flex gap-1 border p-1"
-        style={{ borderRadius: 14, maxWidth: 380 }}
-      >
+      <div className="glass mt-5 flex gap-1 p-1" style={{ maxWidth: 380 }}>
         {(
           [
             ["hold", "Holdings"],
@@ -245,9 +252,51 @@ export function PortfolioTabs() {
 
       {/* holdings */}
       {tab === "hold" && (
-        <div className="rounded-panel bg-hull mt-4 overflow-hidden border">
+        <>
+        {/* summary strip. Coins value sums only the holdings we could actually
+            price — an unpriceable coin is left out rather than counted as $0. */}
+        <div
+          className="cell-grid mt-4"
+          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}
+        >
+          <SummaryCell
+            label="COINS VALUE"
+            value={
+              holdings.some((h) => h.valueNative !== null)
+                ? fmtPrice(holdings.reduce((sum, h) => sum + (h.valueNative ?? 0), 0))
+                : "—"
+            }
+            accent
+          />
+          <SummaryCell label="USDC BALANCE" value={wallet.balance ? `${wallet.balance}` : "—"} />
+          <SummaryCell label="SHIPS HELD" value={String(holdings.length)} />
+        </div>
+
+        {holdings.length === 0 ? (
           <div
-            className="text-mist grid gap-2.5 px-[18px] py-3 text-xs font-bold"
+            className="mt-4 px-5 py-10 text-center"
+            style={{
+              background: "linear-gradient(168deg, rgba(46,74,110,.35), rgba(15,32,51,.9))",
+              border: "1px dashed rgba(148,168,196,.3)",
+              borderRadius: 14,
+              boxShadow: "inset 0 1px 0 rgba(234,241,250,.08)",
+            }}
+          >
+            <p className="text-mist text-[15px]">
+              Nothing here yet. Load up on something in the harbor and it shows here.
+            </p>
+            <Link
+              href="/"
+              className="text-gold hover:bg-lime/10 mt-3.5 inline-block rounded-lg px-[18px] py-2.5 text-[11px] transition-colors"
+              style={{ letterSpacing: ".14em", border: "1px solid #89a7db" }}
+            >
+              BROWSE THE DOCKS
+            </Link>
+          </div>
+        ) : (
+        <div className="glass mt-4 overflow-hidden">
+          <div
+            className="text-faint grid gap-2.5 px-[18px] py-3 text-[10.5px] font-medium"
             style={{ gridTemplateColumns: HOLD_COLS, borderBottom: "1px solid rgba(148,168,196,0.2)" }}
           >
             <Th>HOLDING</Th>
@@ -255,11 +304,7 @@ export function PortfolioTabs() {
             <Th right>VALUE</Th>
           </div>
 
-          {holdings.length === 0 ? (
-            <p className="text-mist px-4 py-8 text-center text-sm">
-              Nothing in the hold yet — coins you buy here show up on this line.
-            </p>
-          ) : (
+          {(
             holdings.map((h) => (
               <Link
                 key={h.token}
@@ -294,11 +339,13 @@ export function PortfolioTabs() {
             ))
           )}
         </div>
+        )}
+        </>
       )}
 
       {/* creator rewards */}
       {tab === "rew" && (
-        <div className="rounded-panel bg-hull mt-4 border p-[18px]">
+        <div className="glass mt-4 p-[18px]">
           <div className="flex flex-wrap items-baseline gap-3">
             <div className="font-display text-[21px]">Creator rewards</div>
             <div className="text-mist text-[13px]">1% of every trade, paid in the coin + NATIVE</div>

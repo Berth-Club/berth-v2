@@ -1,31 +1,30 @@
-import { CoinAvatar } from "@/components/coin-avatar"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { GraduationMeter } from "@workspace/ui/components/graduation-meter"
-import { ChangeChip } from "@/components/token-card"
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
 import { CoinComments } from "@/components/coin-comments"
+import { CopyPill } from "@/components/copy-pill"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { explorerTx, ipfsToGateway } from "@/lib/chain"
-import { fmtPrice } from "@/lib/format"
+import { fmtMc, fmtPrice } from "@/lib/format"
 import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
 
 export const dynamic = "force-dynamic"
 
-function SocialLink({ href, label, icon }: { href: string; label: string; icon: string }) {
+/** The graduation threshold, in USDC. See lib/trade.ts for where it comes from. */
+const GRADUATION_USDC = 8787
+
+function SocialLink({ href, label }: { href: string; label: string }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer noopener nofollow"
-      className="rounded-chip bg-deep hover:border-lime inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors"
-      style={{ borderColor: "rgba(148,168,196,0.2)" }}
+      className="well text-gold hover:border-lime inline-flex items-center rounded-full px-3.5 py-2 text-[12.5px] transition-colors"
     >
-      <span aria-hidden>{icon}</span>
-      {label}
+      {label} ↗
     </a>
   )
 }
@@ -73,128 +72,161 @@ export default async function TokenPage({
   const coin = await fetchCoin(address)
   if (!coin) notFound()
 
-  // Both are null when the indexer can't answer. Nothing here is invented: an
-  // un-traded coin shows no trades, and holders stay empty until it indexes them.
+  // All three are null when the indexer can't answer. Nothing here is invented:
+  // an un-traded coin shows no trades, and holders stay empty until indexed.
   const [trades, holders, history] = await Promise.all([
     fetchTrades(address),
     fetchHolders(address),
     fetchPriceHistory(address),
   ])
 
+  const pct = Math.round(Math.min(1, Math.max(0, coin.graduated ? 1 : coin.curve)) * 100)
+  const hasSocials = coin.links.twitter || coin.links.telegram || coin.links.website
+
   return (
-    <div className="mx-auto max-w-[1180px] px-5 pb-20 pt-6">
+    <div className="mx-auto max-w-[1280px] px-5 pb-20 pt-6">
       {/* Re-runs this server component every 15s so trades, chart, volume and
           holders track the chain without a manual refresh. */}
       <AutoRefresh />
-      <Link href="/" className="text-mist hover:text-foam inline-block text-sm font-bold transition-colors">
-        ← Back to harbor
+
+      <Link href="/" className="btn-ghost mb-4 inline-flex items-center gap-2 px-4 py-2.5 text-[13.5px]">
+        ‹ Back
       </Link>
 
-      {/* header */}
-      <div className="mt-5 flex flex-wrap items-start gap-4">
-        <CoinAvatar
-          image={coin.image}
-          emoji={coin.emoji}
-          name={coin.name}
-          ticker={coin.ticker}
-          size={64}
-          className="bg-hull"
-          style={{ border: "2px solid rgba(148,168,196,0.2)", borderRadius: 16 }}
-        />
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[30px] leading-tight">
-            {coin.name} <span className="text-mist tabular text-xl">${coin.ticker}</span>
-          </h1>
-          <div className="text-mist mt-1 text-[13px]">
-            created by{" "}
-            <Link href={`/u/${coin.creator}`} className="text-lime tabular hover:underline">
-              {coin.creator}
-            </Link>{" "}
-            · <span className="tabular">{coin.age}</span> ago
-          </div>
-          {coin.graduated && (
-            <span
-              className="text-gold mt-2 inline-block text-[11px] font-bold"
-              style={{ border: "1px solid rgba(137,167,219,.55)", borderRadius: 8, padding: "2px 8px" }}
-            >
-              🎓 GRADUATED
-            </span>
-          )}
-          <p className="text-mist mt-2 max-w-lg text-sm">{coin.lore}</p>
-          {(coin.links.twitter || coin.links.telegram || coin.links.website) && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {coin.links.twitter && <SocialLink href={coin.links.twitter} label="Twitter / X" icon="𝕏" />}
-              {coin.links.telegram && <SocialLink href={coin.links.telegram} label="Telegram" icon="✈" />}
-              {coin.links.website && <SocialLink href={coin.links.website} label="Website" icon="🌐" />}
-            </div>
-          )}
-        </div>
-        <div className="text-right">
-          <div className="tabular text-[30px] leading-none">{fmtPrice(coin.priceUsd)}</div>
-          <div className="mt-1 text-[13px]">
-            <ChangeChip change={coin.change24h} /> <span className="text-mist">today</span>
-          </div>
-        </div>
-      </div>
-
-      {/* two columns: chart card + trade panel */}
-      <div
-        className="mt-5 grid items-start gap-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}
-      >
-        <div className="rounded-panel bg-hull border p-[18px]">
-          <PriceChart points={history ?? []} volume={coin.vol} />
-
-          <div className="mt-5">
-            <GraduationMeter progress={coin.curve} graduated={coin.graduated} size="page" />
-            <p className="text-mist mt-3 text-[13px]">
-              Graduation — how far price has climbed the v3 range (~8,787 USDC buys it through). No
-              migration, it just keeps trading.
+      {/* ---- About: what the coin is, and what is locked ---- */}
+      <div className="glass mb-4 px-6 py-[22px]">
+        <div className="flex flex-wrap items-start gap-6">
+          <div className="min-w-0 flex-[1_1_320px]">
+            <h1 className="font-display text-[17px]">About</h1>
+            <p className="text-mist mt-2 max-w-[62ch] text-sm leading-[1.65] text-pretty">
+              {coin.lore ||
+                "Minted, pooled and locked in one transaction — keys burned at launch. 1% fee on every trade, split with the creator. No exit but through the curve."}
             </p>
+            {coin.graduated && (
+              <span
+                className="text-gold mt-2.5 inline-block rounded-full px-3 py-1 text-xs font-semibold"
+                style={{ border: "1px solid rgba(137,167,219,.4)" }}
+              >
+                🎓 graduated — trades like a normal market
+              </span>
+            )}
+          </div>
+
+          <div className="ml-auto text-right">
+            <div className="text-faint text-[11px] font-medium" style={{ letterSpacing: ".12em" }}>
+              LOCKED
+            </div>
+            <div className="tabular mt-1 text-[26px]">
+              100% <span className="text-mist text-[15px]">LP</span>
+            </div>
+            <div className="text-faint mt-[3px] text-[12.5px]">
+              keys burned · graduates at{" "}
+              <span className="tabular">{GRADUATION_USDC.toLocaleString()}</span> USDC ·{" "}
+              <span className="tabular">{pct}%</span> there
+            </div>
           </div>
         </div>
 
-        <TradePanel coin={coin} />
+        <div className="mt-[18px] flex flex-wrap items-center gap-2">
+          <CopyPill address={coin.address} />
+          {coin.links.twitter && <SocialLink href={coin.links.twitter} label="𝕏" />}
+          {coin.links.telegram && <SocialLink href={coin.links.telegram} label="Telegram" />}
+          {coin.links.website && <SocialLink href={coin.links.website} label="Website" />}
+          {!hasSocials && (
+            <span className="text-faint text-[12.5px]">No socials on this one.</span>
+          )}
+        </div>
       </div>
 
-      {/* top holders + activity */}
-      <div
-        className="mt-4 grid gap-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))" }}
-      >
-        <Panel
-          title="TOP HOLDERS"
-          note={holders?.count != null ? `${holders.count.toLocaleString()} aboard` : undefined}
-        >
-          {holders === null || holders.rows.length === 0 ? (
-            <Empty>
-              {/* TODO: the indexer has no `holder` table yet. No invented rows until it does. */}
-              Holder manifest isn&rsquo;t indexed yet.
-            </Empty>
-          ) : (
-            holders.rows.map((h) =>
-              // the locked LP position is always the largest holder — by construction
-              h.locked ? (
-                <Row key={h.address}>
-                  <span className="text-sm">🏦 locked position</span>
-                  <span className="tabular text-mist text-sm">{fmtPct(h.pct)}</span>
-                </Row>
-              ) : (
-                <Row key={h.address}>
-                  <Link
-                    href={`/u/${h.address}`}
-                    className="tabular text-body2 hover:text-lime text-sm"
-                  >
-                    {shortAddr(h.address)}
-                  </Link>
-                  <span className="tabular text-mist text-sm">{fmtPct(h.pct)}</span>
-                </Row>
-              ),
-            )
-          )}
-        </Panel>
+      {/* ---- swap · market · chat ---- */}
+      <div className="flex flex-wrap items-start gap-4">
+        <TradePanel coin={coin} />
 
-        <Panel title="RECENT TRADES">
+        {/* market card */}
+        <div className="glass min-w-0 flex-[2.2_1_430px] overflow-hidden">
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))",
+              borderBottom: "1px solid rgba(148,168,196,.14)",
+            }}
+          >
+            <Stat label="Market cap" value={fmtMc(coin.marketCapUsd)} />
+            <Stat label="24h volume" value={coin.vol ?? "—"} />
+            <Stat
+              label="Holders"
+              value={holders?.count != null ? holders.count.toLocaleString() : "—"}
+            />
+            <Stat label="Trades" value={trades ? String(trades.length) : "—"} />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3.5 px-5 pb-1 pt-[18px]">
+            <div>
+              <div className="tabular text-[32px] leading-none" style={{ letterSpacing: "-.02em" }}>
+                {fmtPrice(coin.priceUsd)}
+              </div>
+              <div
+                className="mt-1 text-[13.5px] font-semibold"
+                style={{
+                  color:
+                    coin.change24h === null ? "#93a8c4" : coin.change24h >= 0 ? "#7cc9a3" : "#de8092",
+                }}
+              >
+                {coin.change24h === null
+                  ? "no trades yet"
+                  : `${coin.change24h >= 0 ? "+" : ""}${coin.change24h.toFixed(1)}%`}{" "}
+                <span className="text-faint font-medium">today</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-2 pt-1.5">
+            <PriceChart points={history ?? []} volume={coin.vol} />
+          </div>
+
+          <div className="px-5 pb-5">
+            <div className="text-mist mb-1.5 flex justify-between text-xs">
+              <span>Graduation</span>
+              <span className="tabular text-foam font-semibold">{pct}%</span>
+            </div>
+            <div className="bg-deep relative h-2.5 rounded-lg">
+              <div
+                className="animate-flow shadow-meter-glow h-full rounded-lg"
+                style={{
+                  width: `${pct}%`,
+                  backgroundImage: "linear-gradient(90deg,#4f74a8,#d3e0f9,#89a7db,#4f74a8)",
+                  backgroundSize: "200% 100%",
+                }}
+              />
+              <span
+                aria-hidden
+                className="absolute text-2xl leading-none"
+                style={{ top: -13, left: `${pct}%`, transform: "translateX(-60%)" }}
+              >
+                ⛵
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* chat card */}
+        <div className="glass w-full min-w-0 p-5 lg:max-w-[360px] lg:flex-[1_1_270px]">
+          <CoinComments coin={coin.address} />
+        </div>
+      </div>
+
+      {/* ---- recent trades · top holders ---- */}
+      <div className="mt-4 flex flex-wrap items-stretch gap-4">
+        <div className="glass min-h-[340px] min-w-[300px] flex-[1.3_1_420px] p-6">
+          <div className="mb-2.5 flex items-baseline justify-between">
+            <h2 className="text-faint text-xs font-medium" style={{ letterSpacing: ".12em" }}>
+              RECENT TRADES
+            </h2>
+            <span className="text-faint flex items-center gap-[7px] text-xs">
+              <span className="animate-pulse-soft bg-candle size-1.5 rounded-full" />
+              live
+            </span>
+          </div>
           {trades === null ? (
             <Empty>Can&rsquo;t reach the harbourmaster&rsquo;s log.</Empty>
           ) : trades.length === 0 ? (
@@ -202,39 +234,91 @@ export default async function TokenPage({
           ) : (
             trades.map((t) => (
               <Row key={t.id}>
-                <span className="flex items-center gap-2 text-sm">
-                  <span
-                    className="rounded-chip px-1.5 py-0.5 text-[11px] font-bold uppercase"
-                    style={{
-                      color: t.kind === "buy" ? "#7cc9a3" : "#de8092",
-                      background:
-                        t.kind === "buy" ? "rgba(124,201,163,.12)" : "rgba(222,128,146,.12)",
-                    }}
-                  >
-                    {t.kind}
-                  </span>
-                  <span className="tabular">{t.eth} USDC</span>
-                  <span className="text-mist">of ${coin.ticker}</span>
+                <span
+                  className="shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-bold uppercase"
+                  style={{
+                    color: t.kind === "buy" ? "#7cc9a3" : "#de8092",
+                    background: t.kind === "buy" ? "rgba(124,201,163,.12)" : "rgba(222,128,146,.12)",
+                  }}
+                >
+                  {t.kind}
+                </span>
+                <span className="tabular truncate font-semibold">
+                  {t.eth} <span className="text-mist font-sans font-normal">USDC of ${coin.ticker}</span>
                 </span>
                 <a
                   href={explorerTx(t.txHash)}
                   target="_blank"
                   rel="noreferrer"
-                  className="tabular text-mist hover:text-lime text-xs transition-colors"
+                  className="tabular text-mist hover:text-lime ml-auto shrink-0 text-[13px] transition-colors"
                 >
                   {t.ago} ↗
                 </a>
               </Row>
             ))
           )}
-        </Panel>
-      </div>
+        </div>
 
-      {/* deck chatter — the engagement thread. Capped to a readable column so a
-          chat doesn't stretch the full 1180px page width. */}
-      <div className="mt-6 max-w-[680px]">
-        <CoinComments coin={coin.address} />
+        <div className="glass min-h-[340px] min-w-[300px] flex-[1_1_380px] p-6">
+          <div className="mb-2.5 flex items-baseline justify-between">
+            <h2 className="text-faint text-xs font-medium" style={{ letterSpacing: ".12em" }}>
+              TOP HOLDERS
+            </h2>
+            {holders?.count != null && (
+              <span className="tabular text-mist text-[13px]">
+                {holders.count.toLocaleString()} aboard
+              </span>
+            )}
+          </div>
+          {holders === null || holders.rows.length === 0 ? (
+            <Empty>Holder manifest isn&rsquo;t indexed yet.</Empty>
+          ) : (
+            holders.rows.map((h) => (
+              <div
+                key={h.address}
+                className="py-[11px]"
+                style={{ borderBottom: "1px solid rgba(148,168,196,.14)" }}
+              >
+                <div className="flex justify-between gap-3 text-[14.5px]">
+                  {/* the locked LP position is always the largest holder — by construction */}
+                  {h.locked ? (
+                    <span className="text-body2 truncate">🏦 locked position</span>
+                  ) : (
+                    <Link
+                      href={`/u/${h.address}`}
+                      className="tabular text-body2 hover:text-lime truncate"
+                    >
+                      {`${h.address.slice(0, 5)}…${h.address.slice(-5)}`}
+                    </Link>
+                  )}
+                  <span className="tabular shrink-0 font-semibold">{fmtPct(h.pct)}</span>
+                </div>
+                <div
+                  className="mt-[7px] h-1 overflow-hidden rounded-full"
+                  style={{ background: "rgba(148,168,196,.14)" }}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, h.pct)}%`,
+                      background: "linear-gradient(90deg,#4f74a8,#8fb0e8)",
+                    }}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
+    </div>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-5 py-[15px]" style={{ boxShadow: "0 0 0 .5px rgba(148,168,196,.14)" }}>
+      <div className="text-faint text-xs">{label}</div>
+      <div className="tabular mt-1 text-[17px]">{value}</div>
     </div>
   )
 }
@@ -245,32 +329,6 @@ function fmtPct(pct: number): string {
   return `${pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`
 }
 
-function shortAddr(addr: string): string {
-  return `${addr.slice(0, 5)}…${addr.slice(-5)}`
-}
-
-function Panel({
-  title,
-  note,
-  children,
-}: {
-  title: string
-  note?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-panel bg-hull border p-[18px]">
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-mist text-xs font-bold" style={{ letterSpacing: 1 }}>
-          {title}
-        </h3>
-        {note && <span className="tabular text-mist text-[11px]">{note}</span>}
-      </div>
-      <div className="flex flex-col">{children}</div>
-    </div>
-  )
-}
-
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-mist py-6 text-center text-sm">{children}</p>
 }
@@ -278,7 +336,7 @@ function Empty({ children }: { children: React.ReactNode }) {
 function Row({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex items-center justify-between py-2.5"
+      className="flex items-center gap-3 py-3 text-[14.5px]"
       style={{ borderBottom: "1px solid rgba(148,168,196,0.14)" }}
     >
       {children}

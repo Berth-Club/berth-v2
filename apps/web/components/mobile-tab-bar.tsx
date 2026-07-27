@@ -13,7 +13,7 @@ export function MobileTabBar() {
   // Select by href, not position: this used to destructure NAV_ITEMS
   // positionally and silently broke the moment an entry was removed —
   // TypeScript won't flag destructuring past the end of an array.
-  const items = ["/", "/leaderboard", "/portfolio"]
+  const items = ["/", "/stats", "/portfolio"]
     .map((href) => NAV_ITEMS.find((i) => i.href === href))
     .filter((i): i is NonNullable<typeof i> => Boolean(i))
 
@@ -26,9 +26,9 @@ export function MobileTabBar() {
       {/* launch CTA */}
       <Link
         href={LAUNCH_HREF}
-        className="text-launch flex flex-col items-center gap-1 py-2.5 text-xs font-medium"
+        className="text-lime flex flex-col items-center gap-1 py-2.5 text-xs font-medium"
       >
-        <span className="bg-launch text-launch-foreground flex size-9 items-center justify-center rounded-xl shadow-[var(--glow-launch)]">
+        <span className="btn-glossy flex size-9 items-center justify-center rounded-xl">
           <Plus className="size-5" />
         </span>
         Launch

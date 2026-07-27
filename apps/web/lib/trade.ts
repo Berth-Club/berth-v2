@@ -67,15 +67,22 @@ const quoterV2Abi = [
  * trades far more often than it would save anyone from a sandwich — there is no
  * meaningful MEV on a pool this thin.
  */
-const SLIPPAGE_BPS = 500n
+export const DEFAULT_SLIPPAGE_BPS = 500n
+
+/** The tolerances the swap card offers. 5% is the default, for the reason above. */
+export const SLIPPAGE_CHOICES = [
+  { label: "1%", bps: 100n },
+  { label: "2%", bps: 200n },
+  { label: "5%", bps: 500n },
+] as const
 
 /**
  * amountOutMinimum = quote − slippage. bigint division truncates, so this always
  * rounds DOWN: the floor never lands above the quote, and never asks the pool for
  * more than it offered. Rounding the other way would manufacture reverts.
  */
-export function applySlippage(amountOut: bigint): bigint {
-  return (amountOut * (10_000n - SLIPPAGE_BPS)) / 10_000n
+export function applySlippage(amountOut: bigint, bps: bigint = DEFAULT_SLIPPAGE_BPS): bigint {
+  return (amountOut * (10_000n - bps)) / 10_000n
 }
 
 
@@ -118,7 +125,12 @@ export type Trade = {
  * Everything the trade panel needs: a live QuoterV2 quote, allowance handling,
  * and the swap itself. The panel stays presentational.
  */
-export function useTrade(coin: Coin, side: Side, amount: string): Trade {
+export function useTrade(
+  coin: Coin,
+  side: Side,
+  amount: string,
+  slippageBps: bigint = DEFAULT_SLIPPAGE_BPS
+): Trade {
   const { address } = useWallet()
   const coinAddress = coin.address as `0x${string}`
 
@@ -218,7 +230,7 @@ export function useTrade(coin: Coin, side: Side, amount: string): Trade {
           fee: UNISWAP.feeTier,
           recipient: address,
           amountIn,
-          amountOutMinimum: applySlippage(amountOut),
+          amountOutMinimum: applySlippage(amountOut, slippageBps),
           sqrtPriceLimitX96: 0n,
         },
       ],

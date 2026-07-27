@@ -52,15 +52,15 @@
     --radius-panel: 18px;
 
     /* --- shadows: v2 soft glow-lift on actions (no more hard deck offsets) --- */
-    --shadow-deck-lime: 0 8px 22px rgba(198, 255, 61, 0.2);
-    --shadow-deck-lime-lg: 0 12px 30px rgba(198, 255, 61, 0.34);
-    --shadow-deck-gold: 0 8px 22px rgba(242, 201, 76, 0.2);
-    --shadow-deck-gold-lg: 0 12px 30px rgba(242, 201, 76, 0.32);
-    --shadow-deck-red: 0 8px 22px rgba(255, 143, 110, 0.22);
+    --shadow-deck-lime: 0 8px 22px rgba(143, 176, 232, 0.24);
+    --shadow-deck-lime-lg: 0 12px 30px rgba(143, 176, 232, 0.34);
+    --shadow-deck-gold: 0 8px 22px rgba(137, 167, 219, 0.2);
+    --shadow-deck-gold-lg: 0 12px 30px rgba(137, 167, 219, 0.32);
+    --shadow-deck-red: 0 8px 22px rgba(222, 128, 146, 0.22);
     --shadow-deck-quiet: 0 6px 18px rgba(0, 0, 0, 0.35);
     --shadow-card-hover: 0 12px 34px rgb(0 0 0 / 0.45);
-    --shadow-gold-glow: 0 0 60px rgb(242 201 76 / 0.14);
-    --shadow-meter-glow: 0 0 12px rgb(198 255 61 / 0.4);
+    --shadow-gold-glow: 0 0 60px rgb(137 167 219 / 0.14);
+    --shadow-meter-glow: 0 0 12px rgb(137 167 219 / 0.4);
 
     /* --- motion: buoyant, never busy --- */
     --animate-flow: flow 2.5s linear infinite;
@@ -200,6 +200,133 @@
 }
 
 @layer components {
+  /* -------------------------------------------------------------------------
+     v3 "glossy glass" — the signature surface treatment. Three surfaces, one
+     rule: cards are RAISED, wells are CARVED IN, stat cells are a flat plane
+     ruled by hairlines. Every panel in the app is one of these three.
+     ------------------------------------------------------------------------- */
+
+  /* Raised card. */
+  .glass {
+    position: relative;
+    background: linear-gradient(
+      168deg,
+      rgba(46, 74, 110, 0.55),
+      rgba(15, 32, 51, 0.92) 46%,
+      rgba(10, 21, 36, 0.98)
+    );
+    border: 1px solid rgba(183, 201, 238, 0.22);
+    border-radius: 16px;
+    box-shadow:
+      inset 0 1px 0 rgba(234, 241, 250, 0.14),
+      inset 0 22px 44px -24px rgba(183, 201, 238, 0.18),
+      0 24px 48px -20px rgba(3, 8, 16, 0.8);
+    backdrop-filter: blur(8px);
+    }
+
+  /* Carved-in well: inputs, swap boxes, chips that read as recessed. */
+  .well {
+    background: linear-gradient(180deg, rgba(8, 17, 30, 0.9), rgba(11, 25, 41, 0.75));
+    border: 1px solid rgba(148, 168, 196, 0.22);
+    border-radius: 10px;
+    box-shadow:
+      inset 0 2px 8px rgba(3, 8, 16, 0.5),
+      inset 0 -1px 0 rgba(234, 241, 250, 0.05);
+    }
+  .well:focus-within {
+    border-color: #89a7db;
+    }
+
+  /* One cell of a bordered stat grid. The .cell-grid wrapper owns the border
+     and clips: never a gap-trick grid, so a partial row paints no phantom
+     cells (the 1px-gap trick shows the backdrop as a fake empty cell). */
+  .cell-grid {
+    display: grid;
+    border: 1px solid rgba(148, 168, 196, 0.22);
+    border-radius: 12px;
+    overflow: hidden;
+    }
+  .cell {
+    background: linear-gradient(170deg, rgba(42, 68, 102, 0.5), rgba(15, 32, 51, 0.9) 60%);
+    box-shadow:
+      0 0 0 0.5px rgba(148, 168, 196, 0.22),
+      inset 0 1px 0 rgba(234, 241, 250, 0.12);
+    }
+
+  /* Primary action: glossy periwinkle pill. Lifts on hover, sinks on press. */
+  .btn-glossy {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    background: linear-gradient(180deg, #d8e4fa, #b7c9ee 55%, #9db6e6);
+    color: #0d2340;
+    border: 1px solid rgba(216, 228, 250, 0.9);
+    border-radius: 999px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -6px 12px rgba(61, 90, 136, 0.28),
+      0 10px 26px rgba(143, 176, 232, 0.32);
+    transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+    }
+  .btn-glossy:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -6px 12px rgba(61, 90, 136, 0.28),
+      0 14px 32px rgba(143, 176, 232, 0.4);
+    }
+  .btn-glossy:active:not(:disabled) {
+    transform: translateY(2px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -6px 12px rgba(61, 90, 136, 0.28),
+      0 4px 12px rgba(143, 176, 232, 0.3);
+    }
+  .btn-glossy:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    }
+
+  /* Sell: the rose counterpart of .btn-glossy. Outlined rather than filled —
+     selling should never be the loudest thing on the card. */
+  .btn-sell {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    background: rgba(222, 128, 146, 0.1);
+    color: #f2c9d2;
+    border: 1px solid var(--color-tide);
+    border-radius: 999px;
+    transition: transform 0.14s ease, background-color 0.14s ease;
+    }
+  .btn-sell:hover:not(:disabled) {
+    background: rgba(222, 128, 146, 0.18);
+    transform: translateY(-2px);
+    }
+  .btn-sell:active:not(:disabled) {
+    transform: translateY(2px);
+    }
+  .btn-sell:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    }
+
+  /* Ghost pill — the quiet sibling of .btn-glossy (Back, Cancel, secondary). */
+  .btn-ghost {
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--color-body2);
+    background: transparent;
+    border: 1px solid rgba(148, 168, 196, 0.25);
+    border-radius: 999px;
+    transition: color 0.14s ease, border-color 0.14s ease;
+    }
+  .btn-ghost:hover:not(:disabled) {
+    border-color: #89a7db;
+    color: #89a7db;
+    }
+
   /* v3 button: clean flat fill, Inter 600, subtle lift. No glow. */
   .btn-deck {
     font-family: var(--font-display);

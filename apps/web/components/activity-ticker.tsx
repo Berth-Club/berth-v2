@@ -126,14 +126,17 @@ export function ActivityTicker() {
   if (!items || items.length === 0) return null
 
   return (
-    <div className="bg-deep overflow-hidden">
+    <div
+      className="bg-deep overflow-hidden"
+      style={{ borderTop: "1px solid rgba(148,168,196,0.16)" }}
+    >
       <div className="animate-tape flex w-max">
         {/* duplicated for the seamless -50% loop */}
         {[...items, ...items].map((item, i) => (
           <span
             key={`${item.key}-${i}`}
-            className="text-body2 whitespace-nowrap px-[26px] py-[7px] text-[13px] font-medium"
-            style={{ borderRight: "1px dashed rgba(148,168,196,0.14)" }}
+            className="text-mist whitespace-nowrap px-[26px] py-[9px] text-[11px] font-medium"
+            style={{ letterSpacing: ".16em" }}
           >
             {item.text} <span className="text-faint">· {ago(item.ts)}</span>
           </span>

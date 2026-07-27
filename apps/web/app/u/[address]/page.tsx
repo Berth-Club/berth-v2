@@ -39,14 +39,14 @@ export default async function UserPage({
   return (
     <div className="mx-auto max-w-[900px] px-5 pb-20 pt-6">
       <Link
-        href="/leaderboard"
+        href="/"
         className="text-mist hover:text-foam text-sm font-bold transition-colors"
       >
-        ← Back to harbor masters
+        ← Back to harbor
       </Link>
 
       {/* profile */}
-      <div className="rounded-panel bg-hull mt-5 flex flex-wrap items-center gap-5 border p-6">
+      <div className="glass mt-5 flex flex-wrap items-center gap-5 p-6">
         <span
           className="grid size-[84px] shrink-0 place-items-center rounded-full text-4xl"
           style={{ background: "#1b3450", border: "2px solid #8fb0e8" }}
@@ -90,7 +90,7 @@ export default async function UserPage({
       <section className="mt-8">
         <h2 className="font-display mb-3 text-xl">Coins created</h2>
         {!created || created.length === 0 ? (
-          <p className="text-mist rounded-panel bg-hull border p-8 text-center text-sm">
+          <p className="glass text-mist p-8 text-center text-sm">
             Nothing out of the shipyard yet.
           </p>
         ) : (
@@ -102,7 +102,7 @@ export default async function UserPage({
               <Link
                 key={c.address}
                 href={`/token/${c.address}`}
-                className="rounded-card bg-hull hover:border-lime flex items-center gap-3 border p-3 transition-colors"
+                className="glass hover:border-lime flex items-center gap-3 p-3.5 transition-colors"
               >
                 <CoinAvatar
                   image={c.image}
@@ -129,7 +129,7 @@ export default async function UserPage({
 
 function Stat({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div className="rounded-card bg-hull border p-3.5">
+    <div className="glass p-3.5">
       <div className="text-mist text-xs">{label}</div>
       <div className="tabular mt-0.5 text-xl" style={color ? { color } : undefined}>
         {value}
