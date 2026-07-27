@@ -10,25 +10,25 @@
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 
+import { SYSTEM, CONSTANTS } from "@workspace/contracts";
+
 /**
- * USDC on Arc Testnet (5042002) — the predeploy, 6 decimals, the quote
- * asset of every pool. Must stay in lockstep with LaunchpadConstants.USDC in
- * arc-launchpad and USDC.address in the web app.
- *
- * Arc has no wrapped native; this predeploy IS the quote asset. 6 decimals in
- * this ERC20 view, 18 in the native view — one balance behind two interfaces.
+ * USDC on Arc Testnet — the predeploy, 6 decimals, the quote asset of every
+ * pool. Sourced from @workspace/contracts (SYSTEM.usdc), the same module the
+ * web app reads, so it can't drift out of lockstep. Arc has no wrapped native;
+ * this predeploy IS the quote asset, 6 decimals here / 18 in the native view.
  *
  * Lowercase: {isCoinToken0} compares raw strings.
  */
-export const WRAPPED_NATIVE = "0x3600000000000000000000000000000000000000";
+export const WRAPPED_NATIVE = SYSTEM.usdc;
 
 /**
- * The top of every launch range. v1.3 emits only `initialTick` and always runs
- * the position to this bound, so there is no emitted tickUpper to read — the
- * indexer supplies it. Mirrors MAX_USABLE_TICK in BerthClubLaunchFactory:
- * TickMath.MAX_TICK rounded inward to a multiple of the 200 tick spacing.
+ * The top of every launch range. The factory emits only `initialTick` and runs
+ * the position to this bound, so there is no emitted tickUpper — the indexer
+ * supplies it. From @workspace/contracts (CONSTANTS.maxUsableTick): TickMath's
+ * MAX_TICK rounded inward to the 200 tick spacing.
  */
-export const MAX_USABLE_TICK = 887200;
+export const MAX_USABLE_TICK = CONSTANTS.maxUsableTick;
 
 /**
  * Which side of the pool the coin landed on.

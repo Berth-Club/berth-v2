@@ -14,7 +14,7 @@ import {
 // watch different factories. They diverged once (a stale web env vs a newer
 // indexer env) and launches landed on a contract nothing indexed. A new
 // deployment is a one-line bump in that package, not a per-service env change.
-import { CONTRACTS, START_BLOCK } from "@workspace/contracts";
+import { CONTRACTS, START_BLOCK, CHAIN } from "@workspace/contracts";
 
 const LAUNCH_FACTORY = CONTRACTS.launchFactory;
 const LP_LOCKER = CONTRACTS.lpLocker;
@@ -42,11 +42,11 @@ const tokenLaunchedEvent = parseAbiItem(
 export default createConfig({
   chains: {
     arc: {
-      id: 5042002,
+      id: CHAIN.id,
       // Deliberately NOT ponder's PONDER_RPC_URL_<chainId> convention: that bakes
       // the chain id into the key, so every chain change strands a dead variable
       // (this file previously carried PONDER_RPC_URL_4663). RPC_URL survives a move.
-      rpc: process.env.RPC_URL ?? "https://rpc.testnet.arc.network",
+      rpc: process.env.RPC_URL ?? CHAIN.defaultRpc,
       // Arc's public RPC collapses under ponder's default backfill concurrency
       // -- it timed out at 73s and killed the process with an
       // unhandledRejection. But 15/s was too far the other way: Arc produces

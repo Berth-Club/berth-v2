@@ -1,6 +1,9 @@
 import { defineChain } from "viem"
 
-import { env } from "@/lib/env"
+// Relative + .ts (not "@/lib/env"): chain.ts is imported by chain.selfcheck.ts,
+// which runs on raw node — node can't resolve the "@/" alias and needs the
+// explicit extension.
+import { env } from "./env.ts"
 
 /**
  * Arc Testnet (Circle's L1, chain id 5042002) — verified live: reth/v1.11.3,
@@ -32,19 +35,19 @@ import { env } from "@/lib/env"
  * key by domain at the provider if that exposure ever matters.
  */
 const RPC_URL = env.rpcUrl
-const EXPLORER_URL = "https://testnet.arcscan.app"
+const EXPLORER_URL = CHAIN.explorerUrl
 
 export const arc = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
+  id: CHAIN.id,
+  name: CHAIN.name,
   // The NATIVE view — correct for msg.value, gas and balances, which is all
   // viem/wagmi use this for. The 6-decimal ERC20 view lives in USDC below.
-  nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
+  nativeCurrency: CHAIN.nativeCurrency,
   rpcUrls: { default: { http: [RPC_URL] } },
   blockExplorers: { default: { name: "Arcscan", url: EXPLORER_URL } },
   testnet: true,
   contracts: {
-    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
+    multicall3: { address: CHAIN.multicall3 },
   },
 })
 
@@ -53,15 +56,15 @@ export const arc = defineChain({
  * launch pool. Same money as the native balance — see the note above.
  */
 export const USDC = {
-  address: "0x3600000000000000000000000000000000000000",
-  decimals: 6,
+  address: SYSTEM.usdc,
+  decimals: CONSTANTS.usdcDecimals,
 } as const
 
 /** Native (18dp) units per ERC20 USDC (6dp) unit. */
-export const NATIVE_PER_USDC = 1_000_000_000_000n
+export const NATIVE_PER_USDC = CONSTANTS.nativePerUsdc
 
 /** A launch token is always 18 decimals. */
-export const COIN_DECIMALS = 18
+export const COIN_DECIMALS = CONSTANTS.coinDecimals
 
 /**
  * Dollar price of ONE WHOLE COIN, from a coin-space tick.
@@ -122,7 +125,7 @@ export function ipfsToGateway(uri: string | null | undefined): string | null {
  * factories. A web-env override that drifted from the indexer was a real
  * outage; a redeploy is now a bump in that package, not a per-app env change.
  */
-import { CONTRACTS } from "@workspace/contracts"
+import { CHAIN, SYSTEM, CONSTANTS, CONTRACTS } from "@workspace/contracts"
 export { CONTRACTS }
 
 // Addresses are code constants now, so the app is always "configured". Kept as
@@ -139,19 +142,7 @@ export const CONTRACTS_CONFIGURED = true
  * Do NOT look these addresses up by name on the explorer: Arc testnet lists
  * dozens of verified contracts with these exact names.
  */
-export const UNISWAP = {
-  factory: "0x065b21b296F56186452B4482f62f56EE7D11a010",
-  nfpm: "0x78e21fff6711a81b8b2E02Cef063f7852d2f5fC2",
-  swapRouter: "0xB5D2f3Aae27dd5F4682B059A20c47f0a5B831c7f",
-  // Not in arc-launchpad's config (the contracts never quote on-chain), but the
-  // trade panel needs one. Found by checking every explorer hit named "QuoterV2"
-  // against `factory()` -- only this one answers with the factory above. The
-  // spec notes the "canonical" quoter address has code on Arc but reverts on
-  // factory(), so name-matching alone would have picked a dud.
-  quoterV2: "0xb1A5136826aDE2C39aBA4800442dCc223A2A7604",
-  feeTier: 10_000,
-  tickSpacing: 200,
-} as const
+export const UNISWAP = SYSTEM.uniswap
 
 /** Where a visitor gets testnet USDC. Nothing works without it. */
 export const FAUCET_URL = "https://faucet.circle.com"

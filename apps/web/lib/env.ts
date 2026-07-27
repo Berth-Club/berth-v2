@@ -8,13 +8,15 @@
  * Safe to import from client OR server code. Secrets and server-only URLs live
  * in `server-env.ts`, which is `server-only`.
  */
+import { CHAIN } from "@workspace/contracts"
+
 export const env = {
   /** Privy app id — wallet connect + auth. Empty string disables wallet UI. */
   privyAppId: process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? "",
   /** Indexer base URL for CLIENT-side reads (the browser hits this directly). */
   indexerUrl: process.env.NEXT_PUBLIC_INDEXER_URL ?? "http://localhost:42069",
   /** Arc RPC for client-side wallet/tx. */
-  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL ?? "https://rpc.testnet.arc.network",
+  rpcUrl: process.env.NEXT_PUBLIC_RPC_URL ?? CHAIN.defaultRpc,
   /** IPFS gateway host that renders uploaded coin art (trailing slash trimmed). */
   ipfsGateway: (process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud").replace(/\/+$/, ""),
   /** Canonical site origin for OpenGraph / canonical URLs. */
