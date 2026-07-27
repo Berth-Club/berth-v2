@@ -148,7 +148,7 @@ export default async function TokenPage({
           <div className="mt-5">
             <GraduationMeter progress={coin.curve} graduated={coin.graduated} size="page" />
             <p className="text-mist mt-3 text-[13px]">
-              Graduation — how far price has climbed the v3 range (~20,000 USDC buys it through). No
+              Graduation — how far price has climbed the v3 range (~8,787 USDC buys it through). No
               migration, it just keeps trading.
             </p>
           </div>
@@ -230,8 +230,9 @@ export default async function TokenPage({
         </Panel>
       </div>
 
-      {/* deck chatter — the engagement thread */}
-      <div className="mt-6">
+      {/* deck chatter — the engagement thread. Capped to a readable column so a
+          chat doesn't stretch the full 1180px page width. */}
+      <div className="mt-6 max-w-[680px]">
         <CoinComments coin={coin.address} />
       </div>
     </div>
