@@ -10,10 +10,16 @@ import { CoinComments } from "@/components/coin-comments"
 import { CopyPill } from "@/components/copy-pill"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { PendingCoin } from "@/components/pending-coin"
-import { arc, explorerTx, ipfsToGateway } from "@/lib/chain"
+import { arc, explorerAddress, explorerTx, ipfsToGateway } from "@/lib/chain"
 import { env } from "@/lib/env"
 import { fmtMc, fmtPrice } from "@/lib/format"
-import { fetchCoin, fetchHolders, fetchPriceHistory, fetchTrades } from "@/lib/indexer"
+import {
+  fetchCoin,
+  fetchCoinPool,
+  fetchHolders,
+  fetchPriceHistory,
+  fetchTrades,
+} from "@/lib/indexer"
 
 /** Is there a deployed contract at this address? A just-launched coin exists
  *  on-chain before the indexer logs it — that's a poll-and-wait, not a 404. */
@@ -28,22 +34,6 @@ async function hasContract(address: string): Promise<boolean> {
 }
 
 export const dynamic = "force-dynamic"
-
-/** The graduation threshold, in USDC. See lib/trade.ts for where it comes from. */
-const GRADUATION_USDC = 8787
-
-function SocialLink({ href, label }: { href: string; label: string }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer noopener nofollow"
-      className="well text-gold hover:border-lime inline-flex items-center rounded-full px-3.5 py-2 text-[12.5px] transition-colors"
-    >
-      {label} ↗
-    </a>
-  )
-}
 
 /**
  * Per-coin social card. When the coin has uploaded ipfs:// art we resolve it to
@@ -92,16 +82,35 @@ export default async function TokenPage({
     notFound()
   }
 
-  // All three are null when the indexer can't answer. Nothing here is invented:
+  // All are null when the indexer can't answer. Nothing here is invented:
   // an un-traded coin shows no trades, and holders stay empty until indexed.
-  const [trades, holders, history] = await Promise.all([
+  const [trades, holders, history, pool] = await Promise.all([
     fetchTrades(address),
     fetchHolders(address),
     fetchPriceHistory(address),
+    fetchCoinPool(address),
   ])
 
   const pct = Math.round(Math.min(1, Math.max(0, coin.graduated ? 1 : coin.curve)) * 100)
-  const hasSocials = coin.links.twitter || coin.links.telegram || coin.links.website
+
+  // Inline social links for the meta line — only the keys the creator supplied.
+  const socials = [
+    coin.links.twitter && { label: "𝕏", href: coin.links.twitter },
+    coin.links.telegram && { label: "Telegram", href: coin.links.telegram },
+    coin.links.website && { label: "Website", href: coin.links.website },
+  ].filter(Boolean) as { label: string; href: string }[]
+
+  // Four external-market chips. Contract/Pool go to the real Arc explorer
+  // (testnet.arcscan.app, via explorerAddress); the pool falls back to the coin
+  // address when the indexer hasn't handed us a pool. Dexscreener/GeckoTerminal
+  // resolve either address to the token's live USDC pool.
+  const poolAddr = pool ?? coin.address
+  const extLinks = [
+    { label: "Dexscreener", href: `https://dexscreener.com/arc/${coin.address}` },
+    { label: "GeckoTerminal", href: `https://www.geckoterminal.com/arc/pools/${poolAddr}` },
+    { label: "Contract", href: explorerAddress(coin.address) },
+    { label: "Pool", href: explorerAddress(poolAddr) },
+  ]
 
   return (
     <div className="mx-auto max-w-[1280px] px-5 pb-20 pt-6">
@@ -113,48 +122,72 @@ export default async function TokenPage({
         ‹ Back
       </Link>
 
-      {/* ---- About: what the coin is, and what is locked ---- */}
-      <div className="glass mb-4 px-6 py-[22px]">
-        <div className="flex flex-wrap items-start gap-6">
-          <div className="min-w-0 flex-[1_1_320px]">
-            <h1 className="font-display text-[17px]">About</h1>
-            <p className="text-mist mt-2 max-w-[62ch] text-sm leading-[1.65] text-pretty">
+      {/* ---- About: a compact card that uses all four corners ---- */}
+      <div className="glass mb-4 px-5 py-4">
+        {/* top row — About + description (left) · CONTRACT ADDRESS pill (right) */}
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div className="min-w-0 flex-[1_1_340px]">
+            <h1 className="font-display text-[15.5px]" style={{ letterSpacing: "-.01em" }}>
+              About
+            </h1>
+            <p className="text-mist mt-[5px] max-w-[70ch] text-[13.5px] leading-[1.6] text-pretty">
               {coin.lore ||
                 "Minted, pooled and locked in one transaction — keys burned at launch. 1% fee on every trade, split with the creator. No exit but through the curve."}
             </p>
-            {coin.graduated && (
-              <span
-                className="text-gold mt-2.5 inline-block rounded-full px-3 py-1 text-xs font-semibold"
-                style={{ border: "1px solid rgba(137,167,219,.4)" }}
-              >
-                🎓 graduated — trades like a normal market
-              </span>
-            )}
           </div>
-
-          <div className="ml-auto text-right">
-            <div className="text-faint text-[11px] font-medium" style={{ letterSpacing: ".12em" }}>
-              LOCKED
+          <div className="min-w-0 shrink text-right">
+            <div className="text-faint mb-[5px] text-[10.5px] font-medium" style={{ letterSpacing: ".12em" }}>
+              CONTRACT ADDRESS
             </div>
-            <div className="tabular mt-1 text-[26px]">
-              100% <span className="text-mist text-[15px]">LP</span>
-            </div>
-            <div className="text-faint mt-[3px] text-[12.5px]">
-              keys burned · graduates at{" "}
-              <span className="tabular">{GRADUATION_USDC.toLocaleString()}</span> USDC ·{" "}
-              <span className="tabular">{pct}%</span> there
-            </div>
+            <CopyPill address={coin.address} />
           </div>
         </div>
 
-        <div className="mt-[18px] flex flex-wrap items-center gap-2">
-          <CopyPill address={coin.address} />
-          {coin.links.twitter && <SocialLink href={coin.links.twitter} label="𝕏" />}
-          {coin.links.telegram && <SocialLink href={coin.links.telegram} label="Telegram" />}
-          {coin.links.website && <SocialLink href={coin.links.website} label="Website" />}
-          {!hasSocials && (
-            <span className="text-faint text-[12.5px]">No socials on this one.</span>
-          )}
+        {/* bottom row — meta line (left) · external market chips (right) */}
+        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-faint flex flex-wrap items-center gap-[11px] text-[12.5px]">
+            <span>
+              by{" "}
+              <Link href={`/u/${coin.creator}`} className="text-gold tabular hover:text-lime-hi">
+                {coin.creator}
+              </Link>
+            </span>
+            <span style={{ color: "rgba(148,168,196,.4)" }}>·</span>
+            <span>launched {coin.age} ago</span>
+            {coin.graduated && (
+              <span
+                className="text-gold rounded-full px-[9px] py-[2px] text-[11px] font-semibold"
+                style={{ border: "1px solid rgba(137,167,219,.4)" }}
+              >
+                🎓 graduated
+              </span>
+            )}
+            {socials.map((s) => (
+              <a
+                key={s.label}
+                href={s.href}
+                target="_blank"
+                rel="noreferrer noopener nofollow"
+                className="text-gold font-semibold hover:text-lime-hi"
+              >
+                {s.label} ↗
+              </a>
+            ))}
+          </div>
+          <div className="ml-auto flex flex-wrap justify-end gap-1.5">
+            {extLinks.map((lk) => (
+              <a
+                key={lk.label}
+                href={lk.href}
+                target="_blank"
+                rel="noreferrer noopener nofollow"
+                className="bg-hull text-body2 hover:border-lime hover:text-lime-hi inline-flex items-center gap-1 rounded-full px-[11px] py-[5px] text-[11.5px] font-semibold transition-colors"
+                style={{ border: "1px solid rgba(148,168,196,.22)" }}
+              >
+                {lk.label} ↗
+              </a>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -206,7 +239,7 @@ export default async function TokenPage({
           </div>
 
           <div className="px-5 pb-5">
-            <div className="text-mist mb-1.5 flex justify-between text-xs">
+            <div className="text-mist mb-5 flex justify-between text-xs">
               <span>Graduation</span>
               <span className="tabular text-foam font-semibold">{pct}%</span>
             </div>

@@ -4,21 +4,20 @@ import * as React from "react"
 import Link from "next/link"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { FACE_OPTIONS } from "@/lib/coin"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { useImageUpload } from "@/lib/use-image-upload"
 import { explorerTx } from "@/lib/chain"
-import { CoinAvatar } from "@/components/coin-avatar"
 import { buildConfig, normalizeTicker, parseUsdcInput, useLaunch } from "@/lib/launch"
 
 /**
- * Launch a coin. v3 is ONE view — form on the left, a live preview + the fee
- * table stuck to the right — not a stepper. The only other state is the success
- * card, which replaces the whole thing once the receipt lands.
+ * Launch a coin. v3 FINAL is ONE view — form on the left, a live preview + the
+ * fee table stuck to the right — not a stepper. The only other state is the
+ * success card, which replaces the whole thing once the receipt lands.
  *
- * Everything under the hood is unchanged: IPFS pin, CREATE2 address mining, and
- * a deploy simulation that gates the signature.
+ * No emoji anywhere: coin art is either an uploaded image or a neutral
+ * placeholder. Everything under the hood is unchanged — deferred IPFS pin,
+ * CREATE2 address mining, and a deploy simulation that gates the signature.
  */
 export function LaunchWizard() {
   const [launched, setLaunched] = React.useState(false)
@@ -31,10 +30,12 @@ export function LaunchWizard() {
   const [lore, setLore] = React.useState("")
   const [twitter, setTwitter] = React.useState("")
   const [telegram, setTelegram] = React.useState("")
-  const [website, setWebsite] = React.useState("")
   const [dragging, setDragging] = React.useState(false)
+  // IPFS consent gate: the drop-zone is disabled until the creator confirms the
+  // art will be moderated and pinned to public IPFS.
+  const [ipfsOk, setIpfsOk] = React.useState(false)
+  const [advOpen, setAdvOpen] = React.useState(false)
 
-  const [emoji, setEmoji] = React.useState(FACE_OPTIONS[0]!)
   const [devBuy, setDevBuy] = React.useState("")
   const { celebrate } = useFx()
   const { connected, wrongNetwork, switchToArc, connect, getAccessToken } = useWallet()
@@ -74,19 +75,20 @@ export function LaunchWizard() {
   // Memoized: this object is a query key for the predict read and the deploy
   // simulation. A fresh identity every render would refetch forever.
   //
-  // lore and emoji ARE deps: they go into metadataURI, which is a constructor
-  // arg and therefore part of the CREATE2 initcode hash. Leave them out and the
-  // previewed address stops matching the one that actually gets deployed.
+  // lore ANd the image URI ARE deps: they go into metadataURI, which is a
+  // constructor arg and therefore part of the CREATE2 initcode hash. Leave them
+  // out and the previewed address stops matching the one that gets deployed.
+  // There is no emoji picker anymore, so buildConfig's emoji arg defaults — the
+  // coin launches identically whether or not an image was uploaded.
   const config = React.useMemo(
     () =>
       name.trim() && normalizeTicker(ticker)
-        ? buildConfig(name, ticker, lore, emoji, upload.imageUri ?? undefined, {
+        ? buildConfig(name, ticker, lore, undefined, upload.imageUri ?? undefined, {
             twitter: twitter.trim() || undefined,
             telegram: telegram.trim() || undefined,
-            website: website.trim() || undefined,
           })
         : undefined,
-    [name, ticker, lore, emoji, upload.imageUri, twitter, telegram, website]
+    [name, ticker, lore, upload.imageUri, twitter, telegram]
   )
 
   // Deferred IPFS pin. The drop only HELD the file; pin it once the coin is a
@@ -104,10 +106,10 @@ export function LaunchWizard() {
   const badDevBuy = valueWei === undefined
 
   // The image is part of metadataURI, so a pin in flight means the config (and
-  // thus the mined address) is not final yet. But an image is OPTIONAL — "drag an
-  // image, or pick a face" — so we only block while a file the creator actually
-  // dropped is still pinning. Emoji-only (nothing held) launches freely. An
-  // upload OUTAGE also unlocks the launch rather than trapping the creator.
+  // thus the mined address) is not final yet. But an image is OPTIONAL — launch
+  // with art or with the neutral placeholder — so we only block while a file the
+  // creator actually dropped is still pinning. A no-image launch proceeds
+  // freely. An upload OUTAGE also unlocks the launch rather than trapping them.
   const degradedAllowed = upload.outage || !upload.available
   const imageBlocking =
     upload.status === "uploading" || (upload.held && !upload.imageUri && !degradedAllowed)
@@ -137,45 +139,22 @@ export function LaunchWizard() {
   React.useEffect(() => {
     if (launch.status === "done" && !celebrated.current) {
       celebrated.current = true
-      celebrate(`$${tickerUp} has left the shipyard 🚢`)
+      celebrate(`$${tickerUp} is live`)
       setLaunched(true)
     }
   }, [launch.status, celebrate, tickerUp])
 
-  const face = upload.previewUrl ? (
-    // Preview is the LOCAL file (object URL), not the gateway — a just-pinned
-    // CID can briefly 404 and would flash the fallback.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={upload.previewUrl} alt={`${tickerUp} art`} className="size-full object-cover" />
-  ) : null
-
   if (launched) {
     return (
       <div className="glass mx-auto mt-[30px] max-w-[560px] p-9 text-center">
-        {upload.previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={upload.previewUrl}
-            alt={`${tickerUp} art`}
-            className="animate-bob mx-auto size-24 rounded-2xl object-cover"
-            style={{ border: "1px solid rgba(148,168,196,0.2)" }}
-          />
-        ) : upload.imageUri ? (
-          <CoinAvatar
-            image={upload.imageUri}
-            emoji={emoji}
-            ticker={tickerUp}
-            size={96}
-            className="animate-bob mx-auto rounded-2xl"
-            style={{ border: "1px solid rgba(148,168,196,0.2)" }}
-          />
-        ) : (
-          <div className="animate-bob text-[56px]" aria-hidden>
-            {emoji}
-          </div>
-        )}
-        <h2 className="font-display mt-2 text-[30px]">${tickerUp} has left the shipyard</h2>
-        <p className="text-mist mb-[22px] mt-2">Block confirmed. Calm seas and green candles, captain.</p>
+        <div
+          className="mx-auto grid size-[72px] place-items-center rounded-full"
+          style={{ background: "rgba(137,167,219,.1)", border: "1px solid rgba(137,167,219,.45)" }}
+        >
+          <CheckIcon />
+        </div>
+        <h2 className="font-display mt-4 text-[26px]">${tickerUp} is live</h2>
+        <p className="text-mist mb-[22px] mt-2">Block confirmed. Pool created, liquidity locked.</p>
         <div className="flex flex-wrap justify-center gap-2.5">
           {launch.token && (
             <Link href={`/token/${launch.token}`} className="btn-glossy px-[22px] py-[13px] text-base">
@@ -201,319 +180,402 @@ export function LaunchWizard() {
   }
 
   return (
-    <div className="flex flex-wrap items-start gap-4">
-      {/* ---- the form ---- */}
-      <div className="glass min-w-0 flex-[1.7_1_460px] p-[26px]">
-        <h1 className="font-display mb-[18px] text-[26px]">Launch token</h1>
+    <>
+      <Link href="/" className="btn-frost mb-4 inline-flex items-center gap-[7px] px-4 py-[9px] text-[13.5px]">
+        ‹ Back
+      </Link>
 
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-          <Field label="Name" hint="Letters, numbers, spaces. 32 max.">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value.slice(0, 32))}
-              placeholder="Token name"
-              className={inputCls}
-            />
-          </Field>
-          <Field label="Ticker" hint="Letters and numbers. 10 max.">
-            <input
-              value={ticker}
-              onChange={(e) => setTicker(normalizeTicker(e.target.value))}
-              placeholder="symbol"
-              className={cn(inputCls, "tabular uppercase")}
-            />
-          </Field>
-        </div>
+      <div className="flex flex-wrap items-start gap-4">
+        {/* ---- the form ---- */}
+        <div className="glass min-w-0 flex-[1.7_1_460px] p-[26px]">
+          <h1 className="font-display mb-[18px] text-[26px]">Launch token</h1>
 
-        <div className="mt-3.5">
-          <Field label="Description" hint="No links. 140 characters max.">
-            <input
-              value={lore}
-              onChange={(e) => setLore(e.target.value.slice(0, 140))}
-              placeholder="A short description of the token"
-              className={inputCls}
-            />
-          </Field>
-        </div>
-
-        {/* image or face */}
-        <div className="mt-3.5">
-          <FieldLabel>Token image</FieldLabel>
-          <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragging(true)
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragging(false)
-              acceptFile(e.dataTransfer.files)
-            }}
-            className="flex flex-wrap items-center gap-3 rounded-xl p-1 transition-colors"
-            style={{ background: dragging ? "rgba(143,176,232,.06)" : "transparent" }}
-          >
-            <div
-              className="bg-deep relative grid size-14 shrink-0 place-items-center overflow-hidden rounded-[10px] text-2xl"
-              style={{ border: `1px dashed ${dragging ? "#8fb0e8" : "rgba(148,168,196,.3)"}` }}
-            >
-              {face ?? <span aria-hidden>{emoji}</span>}
-              {upload.status === "uploading" && (
-                <span className="text-foam absolute inset-0 grid place-items-center bg-black/50 text-[11px] font-bold">
-                  pinning…
-                </span>
-              )}
-            </div>
-
-            <label className="text-gold hover:bg-lime/10 cursor-pointer rounded-full px-[15px] py-2.5 text-xs font-semibold transition-colors"
-              style={{ letterSpacing: ".08em", border: "1px solid #89a7db" }}
-            >
-              UPLOAD
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+            <Field label="Name" hint="Letters, numbers, spaces. 32 max.">
               <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => {
-                  acceptFile(e.target.files)
-                  e.target.value = "" // allow re-picking the same file
-                }}
+                value={name}
+                onChange={(e) => setName(e.target.value.slice(0, 32))}
+                placeholder="Token name"
+                className={inputCls}
               />
+            </Field>
+            <Field label="Ticker" hint="Letters and numbers. 10 max.">
+              <input
+                value={ticker}
+                onChange={(e) => setTicker(normalizeTicker(e.target.value))}
+                placeholder="symbol"
+                className={cn(inputCls, "tabular uppercase")}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-3.5">
+            <Field label="Description" hint="No links. 140 characters max.">
+              <textarea
+                value={lore}
+                onChange={(e) => setLore(e.target.value.slice(0, 140))}
+                placeholder="A short description of the token"
+                rows={3}
+                className={cn(inputCls, "resize-y font-sans")}
+              />
+            </Field>
+          </div>
+
+          {/* image — gated behind the IPFS consent checkbox */}
+          <div className="mt-3.5">
+            <FieldLabel>Token image</FieldLabel>
+            <label className="text-mist mb-2.5 mt-0.5 flex cursor-pointer items-start gap-[9px] text-[12.5px] leading-relaxed">
+              <input
+                type="checkbox"
+                checked={ipfsOk}
+                onChange={(e) => setIpfsOk(e.target.checked)}
+                className="mt-0.5 size-[15px] shrink-0"
+                style={{ accentColor: "#89a7db" }}
+              />
+              I understand that selected artwork will be moderated and uploaded to public IPFS.
             </label>
 
-            {/* Faces are only an option while there's no pinned art. */}
-            {(!upload.previewUrl || upload.status === "error") && (
-              <div className="flex flex-wrap gap-1.5">
-                {FACE_OPTIONS.slice(0, 10).map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setEmoji(e)}
-                    aria-pressed={emoji === e}
-                    className="bg-deep grid size-9 place-items-center rounded-lg text-[19px] transition-transform hover:scale-110"
-                    style={{ border: `1.5px solid ${emoji === e ? "#89a7db" : "rgba(148,168,196,.2)"}` }}
-                  >
-                    {e}
-                  </button>
-                ))}
+            {ipfsOk ? (
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragging(true)
+                }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragging(false)
+                  acceptFile(e.dataTransfer.files)
+                }}
+                className="flex cursor-pointer items-center gap-3.5 rounded-xl px-[18px] py-4 transition-colors"
+                style={{
+                  border: `1.5px dashed ${dragging ? "#89a7db" : "rgba(137,167,219,.5)"}`,
+                  background: dragging ? "rgba(137,167,219,.06)" : "rgba(8,17,30,.5)",
+                }}
+              >
+                <div className="relative size-11 shrink-0 overflow-hidden rounded-[10px]">
+                  {upload.previewUrl ? (
+                    // Preview is the LOCAL file (object URL), not the gateway — a
+                    // just-pinned CID can briefly 404 and would flash the fallback.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={upload.previewUrl} alt={`${tickerUp} art`} className="size-full object-cover" />
+                  ) : (
+                    <ImagePlaceholder size={44} strong />
+                  )}
+                  {upload.status === "uploading" && (
+                    <span className="text-foam absolute inset-0 grid place-items-center bg-black/50 text-[10px] font-bold">
+                      pinning…
+                    </span>
+                  )}
+                </div>
+                <div className="text-body2 text-sm font-semibold">
+                  {upload.previewUrl ? "Replace token image" : "Upload token image"}
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    acceptFile(e.target.files)
+                    e.target.value = "" // allow re-picking the same file
+                  }}
+                />
+              </label>
+            ) : (
+              <div
+                className="flex items-center gap-3.5 rounded-xl px-[18px] py-4"
+                style={{ border: "1.5px dashed rgba(148,168,196,.25)", background: "rgba(8,17,30,.35)" }}
+              >
+                <div
+                  className="grid size-11 shrink-0 place-items-center rounded-[10px]"
+                  style={{ background: "#0b1929", border: "1px solid rgba(148,168,196,.18)" }}
+                >
+                  <ImagePlaceholder size={44} />
+                </div>
+                <div className="text-faint text-sm font-semibold">Confirm public upload first</div>
               </div>
+            )}
+
+            {upload.previewUrl && (
+              <button
+                type="button"
+                onClick={upload.reset}
+                className="text-faint mt-1.5 inline-block text-[11.5px] underline underline-offset-[3px]"
+              >
+                Remove image
+              </button>
+            )}
+
+            <UploadStatus upload={upload} connected={connected} connect={connect} />
+          </div>
+
+          {/* socials — X / Telegram two-up */}
+          <div className="mt-3.5 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+            <Field label="X profile">
+              <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="x.com/handle" className={inputCls} inputMode="url" />
+            </Field>
+            <Field label="Telegram">
+              <input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="t.me/community" className={inputCls} inputMode="url" />
+            </Field>
+          </div>
+
+          {/* dev buy */}
+          <div className="mt-3.5">
+            <FieldLabel>Developer buy — your own first buy, optional</FieldLabel>
+            <div
+              className="well flex items-center gap-2 py-1 pl-3.5 pr-1"
+              style={overCap || badDevBuy ? { borderColor: "#de8092" } : undefined}
+            >
+              <input
+                value={devBuy}
+                onChange={(e) => setDevBuy(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="0.00"
+                inputMode="decimal"
+                aria-label="Developer buy in USDC"
+                className="tabular min-w-0 flex-1 bg-transparent py-2.5 text-base font-semibold outline-none"
+              />
+              <span
+                className="bg-hull flex shrink-0 items-center gap-[7px] rounded-full px-3 py-1.5 text-[12.5px] font-semibold"
+                style={{ border: "1px solid rgba(148,168,196,.25)" }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
+                USDC
+              </span>
+            </div>
+            {/* The cap comes off the chain, never a hardcoded number — the factory
+                admin can move it, and a stale copy here would let someone pay gas
+                to revert. */}
+            {badDevBuy ? (
+              <p className="mt-1.5 text-[12.5px] font-semibold" style={{ color: "#de8092" }}>
+                That dev-buy isn&apos;t a number.
+              </p>
+            ) : overCap ? (
+              <p className="mt-1.5 text-[12.5px] font-semibold" style={{ color: "#de8092" }}>
+                Over the cap — max <span className="tabular">{launch.capUsdc}</span> USDC (~
+                {launch.capPct}% of supply). The launch would revert; we won&apos;t let you pay gas to
+                fail.
+              </p>
+            ) : devUsdc > 0 ? (
+              <p className="text-faint mt-1.5 text-[11.5px]">
+                ≈ <span className="tabular">{devPct.toFixed(2)}</span>% of supply · max{" "}
+                <span className="tabular">{launch.capUsdc}</span> USDC
+              </p>
+            ) : (
+              <p className="text-faint mt-1.5 text-[11.5px]">
+                Max <span className="tabular">{launch.capUsdc}</span> · ~{launch.capPct}% of supply
+              </p>
             )}
           </div>
 
-          <UploadStatus upload={upload} connected={connected} connect={connect} />
-        </div>
-
-        {/* socials */}
-        <div
-          className="mt-3.5 grid gap-3.5"
-          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))" }}
-        >
-          <Field label="X profile">
-            <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="x.com/handle" className={inputCls} inputMode="url" />
-          </Field>
-          <Field label="Telegram">
-            <input value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="t.me/community" className={inputCls} inputMode="url" />
-          </Field>
-          <Field label="Website">
-            <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="berth.club" className={inputCls} inputMode="url" />
-          </Field>
-        </div>
-
-        {/* dev buy */}
-        <div className="mt-3.5">
-          <FieldLabel>Developer buy — your own first buy, optional</FieldLabel>
-          <div
-            className="well flex items-center gap-2 py-1 pl-3.5 pr-1"
-            style={overCap || badDevBuy ? { borderColor: "#de8092" } : undefined}
+          {/* Advanced — the one-transaction / fee fine print, collapsed by default */}
+          <button
+            type="button"
+            onClick={() => setAdvOpen((v) => !v)}
+            aria-expanded={advOpen}
+            className="text-body2 hover:text-foam mt-[18px] flex w-full items-center justify-between pt-4 text-[14.5px] font-semibold"
+            style={{ borderTop: "1px solid rgba(148,168,196,.14)" }}
           >
-            <input
-              value={devBuy}
-              onChange={(e) => setDevBuy(e.target.value.replace(/[^0-9.]/g, ""))}
-              placeholder="0.00"
-              inputMode="decimal"
-              aria-label="Developer buy in USDC"
-              className="tabular min-w-0 flex-1 bg-transparent py-2.5 text-base font-semibold outline-none"
-            />
+            <span>Advanced</span>
             <span
-              className="bg-hull flex shrink-0 items-center gap-[7px] rounded-full px-3 py-1.5 text-[12.5px] font-semibold"
-              style={{ border: "1px solid rgba(148,168,196,.25)" }}
+              className="text-faint inline-block transition-transform duration-200"
+              style={{ transform: advOpen ? "rotate(180deg)" : "none" }}
+              aria-hidden
             >
-              <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
-              USDC
+              ⌄
             </span>
-          </div>
-          {/* The cap comes off the chain, never a hardcoded number — the factory
-              admin can move it, and a stale copy here would let someone pay gas
-              to revert. */}
-          {badDevBuy ? (
-            <p className="mt-1.5 text-[12.5px] font-semibold" style={{ color: "#de8092" }}>
-              That dev-buy isn&apos;t a number.
-            </p>
-          ) : overCap ? (
-            <p className="mt-1.5 text-[12.5px] font-semibold" style={{ color: "#de8092" }}>
-              Over the cap — max <span className="tabular">{launch.capUsdc}</span> USDC (~
-              {launch.capPct}% of supply). The launch would revert; we won&apos;t let you pay gas to
-              fail.
-            </p>
-          ) : devUsdc > 0 ? (
-            <p className="text-faint mt-1.5 text-[11.5px]">
-              ≈ <span className="tabular">{devPct.toFixed(2)}</span>% of supply · max{" "}
-              <span className="tabular">{launch.capUsdc}</span> USDC
-            </p>
+          </button>
+          {advOpen && (
+            <div className="text-faint mt-2.5 text-[12.5px] leading-[1.7]">
+              One transaction: mint, token/USDC pool, LP locked. Launch fee 1 USDC. Supply fixed at
+              100B — no team allocation, keys burned at launch.
+            </div>
+          )}
+
+          {gate ? (
+            <button onClick={gate.act} className="btn-glossy mt-3 w-full py-[15px] text-base">
+              {gate.label}
+            </button>
           ) : (
-            <p className="text-faint mt-1.5 text-[11.5px]">
-              Max <span className="tabular">{launch.capUsdc}</span> · ~{launch.capPct}% of supply
-            </p>
+            // Opens the confirm modal — the address grind + simulation start there,
+            // not on every keystroke.
+            <button
+              onClick={() => setArmed(true)}
+              disabled={!canLaunch}
+              className="btn-glossy mt-3 w-full py-[15px] text-base"
+            >
+              Launch token
+            </button>
           )}
         </div>
 
-        <div
-          className="text-faint mt-[18px] flex flex-wrap items-center justify-between gap-2.5 pt-4 text-[12.5px]"
-          style={{ borderTop: "1px solid rgba(148,168,196,.14)" }}
-        >
-          <span>One transaction: mint · token/USDC pool · LP locked</span>
-          <span className="tabular">1 USDC due</span>
-        </div>
-
-        {gate ? (
-          <button onClick={gate.act} className="btn-glossy mt-3 w-full py-[15px] text-base">
-            {gate.label}
-          </button>
-        ) : (
-          // Opens the confirm modal — the address grind + simulation start there,
-          // not on every keystroke.
-          <button
-            onClick={() => setArmed(true)}
-            disabled={!canLaunch}
-            className="btn-glossy mt-3 w-full py-[15px] text-base"
-          >
-            Launch token
-          </button>
-        )}
-      </div>
-
-      {/* ---- live preview + the deal ---- */}
-      <div className="glass w-full flex-[1_1_280px] p-[26px] lg:sticky lg:top-[104px] lg:max-w-[380px]">
-        <div
-          className="bg-deep grid size-[76px] place-items-center overflow-hidden rounded-[14px] text-4xl"
-          style={{ border: "1px solid rgba(148,168,196,.2)" }}
-        >
-          {face ?? <span aria-hidden>{emoji}</span>}
-        </div>
-        <div className="font-display mt-3.5 text-2xl">{name || "Your token"}</div>
-        <div className="text-faint tabular mt-0.5 text-[13.5px]">${tickerUp}</div>
-
-        <div className="mt-[18px]">
-          <Deal k="Launch fee" v="1 USDC" mono />
-          <Deal k="Trading fees" v="1% · split with creator" />
-          <Deal k="Graduation" v="8,787 USDC" mono />
-          <Deal k="Pool" v="token / USDC" />
-          <Deal k="Liquidity" v="Locked forever" tone="#7cc9a3" last />
-        </div>
-
-        <p className="text-faint mt-3.5 text-xs">
-          Supply is fixed at 100B for every ship. Team allocation 0%. Keys burned at launch.
-        </p>
-      </div>
-
-      {/* ---- confirm modal: computes on open, launches on confirm ---- */}
-      {armed && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center p-4"
-          style={{ background: "rgba(3,8,16,.72)", backdropFilter: "blur(4px)" }}
-          onClick={() => {
-            if (launch.status !== "signing" && launch.status !== "mining") {
-              launch.reset()
-              setArmed(false)
-            }
-          }}
-        >
-          <div className="glass w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
-            <h2 className="font-display text-[22px]">Launch ${tickerUp}</h2>
-            <p className="text-mist mt-1 text-[13px]">
-              One transaction mints the supply, opens the token/USDC pool, and locks the LP forever.
-            </p>
-
-            {/* identity */}
-            <div className="well mt-4 flex items-center gap-3 p-3">
+        {/* ---- live preview + the deal ---- */}
+        <div className="glass w-full flex-[1_1_280px] p-[26px] lg:sticky lg:top-[104px] lg:max-w-[380px]">
+          <div className="size-[76px] overflow-hidden rounded-[14px]">
+            {upload.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={upload.previewUrl} alt={`${tickerUp} art`} className="size-full object-cover" style={{ border: "1px solid rgba(148,168,196,.2)" }} />
+            ) : (
               <div
-                className="bg-deep grid size-11 shrink-0 place-items-center overflow-hidden rounded-xl text-2xl"
-                style={{ border: "1px solid rgba(148,168,196,.2)" }}
+                className="grid size-full place-items-center rounded-[14px]"
+                style={{ background: "#0b1929", border: "1px solid rgba(148,168,196,.2)" }}
               >
-                {face ?? <span aria-hidden>{emoji}</span>}
+                <ImagePlaceholder size={76} />
               </div>
-              <div className="min-w-0">
-                <div className="truncate font-semibold">{name || "Your token"}</div>
-                <div className="text-faint tabular text-[12.5px]">${tickerUp}</div>
-              </div>
-            </div>
-
-            {/* terms */}
-            <div className="mt-4 flex flex-col gap-2 text-[13px]">
-              <div className="flex items-center justify-between">
-                <span className="text-faint">Launch fee</span>
-                <span className="tabular">1 USDC</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-faint">Developer buy</span>
-                <span className="tabular">{devUsdc || 0} USDC</span>
-              </div>
-            </div>
-
-            {/* address grind + on-chain simulation, started by opening this modal */}
-            <PredictStatus launch={launch} gate={false} show />
-
-            <div className="mt-5 flex gap-2.5">
-              <button
-                onClick={() => {
-                  launch.reset()
-                  setArmed(false)
-                }}
-                disabled={launch.status === "signing" || launch.status === "mining"}
-                className="btn-ghost bg-deep flex-1 py-3 text-[15px] disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={launch.launch}
-                disabled={!launch.ready || launch.status === "signing" || launch.status === "mining"}
-                className="btn-glossy flex-[1.5] py-3 text-[15px]"
-              >
-                {launch.status === "signing"
-                  ? "Check your wallet…"
-                  : launch.status === "mining"
-                    ? "Leaving the yard…"
-                    : launch.ready
-                      ? "Confirm & launch"
-                      : launch.blocked
-                        ? "Can't launch"
-                        : "Preparing…"}
-              </button>
-            </div>
-
-            {launch.error && (
-              <p className="mt-2.5 text-center text-[13px]" style={{ color: "#de8092" }}>
-                {launch.error}
-              </p>
-            )}
-            {launch.hash && (
-              <a
-                href={explorerTx(launch.hash)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-mist mt-2 block text-center text-xs underline"
-              >
-                Track the transaction ↗
-              </a>
             )}
           </div>
+          <div className="font-display mt-3.5 text-2xl">{name || "Your token"}</div>
+          <div className="text-faint tabular mt-0.5 text-[13.5px]">${tickerUp}</div>
+
+          <div className="mt-[18px]">
+            <Deal k="Launch fee" v="1 USDC" mono />
+            <Deal k="Trading fees" v="1% · split with creator" />
+            <Deal k="Graduation" v="8,787 USDC" mono />
+            <Deal k="Pool" v="token / USDC" />
+            <Deal k="Liquidity" v="Locked" tone="#7cc9a3" last />
+          </div>
+
+          <p className="text-faint mt-3.5 text-xs">
+            Supply is fixed at 100B for every ship. Team allocation 0%. Keys burned at launch.
+          </p>
         </div>
-      )}
-    </div>
+
+        {/* ---- confirm modal: computes on open, launches on confirm ---- */}
+        {armed && (
+          <div
+            className="fixed inset-0 z-50 grid place-items-center p-4"
+            style={{ background: "rgba(3,8,16,.72)", backdropFilter: "blur(4px)" }}
+            onClick={() => {
+              if (launch.status !== "signing" && launch.status !== "mining") {
+                launch.reset()
+                setArmed(false)
+              }
+            }}
+          >
+            <div className="glass w-full max-w-[420px] p-6" onClick={(e) => e.stopPropagation()}>
+              <h2 className="font-display text-[22px]">Launch ${tickerUp}</h2>
+              <p className="text-mist mt-1 text-[13px]">
+                One transaction mints the supply, opens the token/USDC pool, and locks the LP forever.
+              </p>
+
+              {/* identity */}
+              <div className="well mt-4 flex items-center gap-3 p-3">
+                <div className="size-11 shrink-0 overflow-hidden rounded-xl">
+                  {upload.previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={upload.previewUrl} alt={`${tickerUp} art`} className="size-full object-cover" style={{ border: "1px solid rgba(148,168,196,.2)" }} />
+                  ) : (
+                    <div
+                      className="grid size-full place-items-center rounded-xl"
+                      style={{ background: "#0b1929", border: "1px solid rgba(148,168,196,.2)" }}
+                    >
+                      <ImagePlaceholder size={44} />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{name || "Your token"}</div>
+                  <div className="text-faint tabular text-[12.5px]">${tickerUp}</div>
+                </div>
+              </div>
+
+              {/* terms */}
+              <div className="mt-4 flex flex-col gap-2 text-[13px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-faint">Launch fee</span>
+                  <span className="tabular">1 USDC</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-faint">Developer buy</span>
+                  <span className="tabular">{devUsdc || 0} USDC</span>
+                </div>
+              </div>
+
+              {/* address grind + on-chain simulation, started by opening this modal */}
+              <PredictStatus launch={launch} gate={false} show />
+
+              <div className="mt-5 flex gap-2.5">
+                <button
+                  onClick={() => {
+                    launch.reset()
+                    setArmed(false)
+                  }}
+                  disabled={launch.status === "signing" || launch.status === "mining"}
+                  className="btn-ghost bg-deep flex-1 py-3 text-[15px] disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={launch.launch}
+                  disabled={!launch.ready || launch.status === "signing" || launch.status === "mining"}
+                  className="btn-glossy flex-[1.5] py-3 text-[15px]"
+                >
+                  {launch.status === "signing"
+                    ? "Check your wallet…"
+                    : launch.status === "mining"
+                      ? "Leaving the yard…"
+                      : launch.ready
+                        ? "Confirm & launch"
+                        : launch.blocked
+                          ? "Can't launch"
+                          : "Preparing…"}
+                </button>
+              </div>
+
+              {launch.error && (
+                <p className="mt-2.5 text-center text-[13px]" style={{ color: "#de8092" }}>
+                  {launch.error}
+                </p>
+              )}
+              {launch.hash && (
+                <a
+                  href={explorerTx(launch.hash)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-mist mt-2 block text-center text-xs underline"
+                >
+                  Track the transaction ↗
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
-const inputCls =
-  "well w-full px-3.5 py-3 text-[14.5px] outline-none"
+const inputCls = "well w-full px-3.5 py-3 text-[14.5px] outline-none"
+
+/** Neutral image placeholder — a framed-picture glyph, never an emoji. */
+function ImagePlaceholder({ size, strong }: { size: number; strong?: boolean }) {
+  const px = Math.round(size * 0.45)
+  return (
+    <svg
+      width={px}
+      height={px}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={strong ? "#93a8c4" : "#6e82a0"}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="M21 15l-5-5-11 11" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#89a7db" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  )
+}
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-mist mb-1.5 text-[12.5px] font-semibold">{children}</div>
@@ -583,16 +645,16 @@ function UploadStatus({
       <button
         type="button"
         onClick={() => (connected ? upload.retry() : connect())}
-        className="text-gold mt-1.5 text-[11.5px] underline underline-offset-2"
+        className="text-gold mt-1.5 block text-[11.5px] underline underline-offset-2"
       >
         {connected ? "Retry upload →" : "Connect your wallet to upload art →"}
       </button>
     )
   }
   if (upload.status === "error" && upload.outage)
-    return <Note tone="#89a7db">Art upload is unavailable right now — launch with a face instead.</Note>
+    return <Note tone="#89a7db">Art upload is unavailable right now — launch without an image instead.</Note>
   if (upload.status === "error") return <Note tone="#de8092">{upload.error}</Note>
-  return <Note>Drag an image here, or pick a face. PNG, JPEG, WebP or GIF.</Note>
+  return null
 }
 
 function Note({ children, tone }: { children: React.ReactNode; tone?: string }) {

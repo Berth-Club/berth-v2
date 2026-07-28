@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 import { useWallet } from "@/components/wallet-provider"
 
@@ -9,16 +10,31 @@ function short(a?: string) {
   return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""
 }
 
+/** A deterministic conic-gradient identicon disc from the address. */
+function identicon(addr?: string): React.CSSProperties {
+  let h = 0
+  for (const c of addr ?? "berth") h = (h * 31 + c.charCodeAt(0)) >>> 0
+  const a = h % 360
+  const b = (a + 60 + (h % 80)) % 360
+  return { background: `conic-gradient(from ${h % 360}deg, hsl(${a} 62% 64%), hsl(${b} 55% 46%), hsl(${a} 62% 64%))` }
+}
+
 /**
- * The header wallet control. Disconnected → connect. Wrong network → switch.
- * Connected → a pill that OPENS A MENU (address+copy, balance, portfolio,
- * disconnect) instead of the old footgun where the pill disconnected on click.
+ * v3 FINAL wallet control. Disconnected → frosted "Connect wallet". Wrong
+ * network → switch. Connected → a frosted pill (identicon + address) opening an
+ * opaque flat dropdown: identicon + address + "Connected · Arc" status, copy
+ * button, an inset balance card, then glossy Portfolio + quiet-red Disconnect.
+ * Closes on outside click, Esc, and any navigation.
  */
 export function WalletMenu() {
   const wallet = useWallet()
+  const pathname = usePathname()
   const [open, setOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
+
+  // Close on navigation.
+  React.useEffect(() => setOpen(false), [pathname])
 
   React.useEffect(() => {
     if (!open) return
@@ -47,7 +63,7 @@ export function WalletMenu() {
 
   if (wallet.wrongNetwork) {
     return (
-      <button onClick={wallet.switchToArc} className="btn-glossy px-4 py-2.5 text-[15px]">
+      <button onClick={wallet.switchToArc} className="btn-glossy px-4 py-2.5 text-[14.5px]">
         Wrong network — switch
       </button>
     )
@@ -58,8 +74,7 @@ export function WalletMenu() {
       <button
         onClick={wallet.connect}
         disabled={!wallet.ready}
-        className="btn-quiet rounded-chip px-4 py-2.5 text-[11.5px] disabled:opacity-50"
-        style={{ letterSpacing: ".14em" }}
+        className="btn-frost text-body2 px-4 py-2.5 text-[13.5px] font-semibold disabled:opacity-50"
       >
         Connect wallet
       </button>
@@ -72,62 +87,72 @@ export function WalletMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="btn-quiet rounded-chip tabular px-4 py-2.5 text-[11.5px]"
-        style={{ letterSpacing: ".14em" }}
+        className="btn-frost flex items-center gap-2 py-2 pl-2 pr-3.5"
       >
-        {wallet.label}
+        <span aria-hidden className="size-6 shrink-0 rounded-full" style={identicon(wallet.address)} />
+        <span className="tabular text-body2 text-[13px]">{short(wallet.address)}</span>
       </button>
 
       {open && (
         <div
           role="menu"
-          className="glass absolute right-0 z-40 mt-2 w-[264px] p-4"
-          style={{ animation: "popIn .2s ease" }}
+          className="absolute right-0 z-40 mt-2 w-[288px] p-4"
+          style={{
+            background: "rgba(14,26,41,.97)",
+            border: "1px solid rgba(148,168,196,.16)",
+            borderRadius: 20,
+            boxShadow: "0 24px 48px -20px rgba(3,8,16,.8)",
+            animation: "popIn .18s ease",
+          }}
         >
-          {/* address + copy */}
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2">
-              <span
-                className="size-6 shrink-0 rounded-full"
-                style={{ background: "linear-gradient(135deg,#8fb0e8,#4f74a8)" }}
-              />
-              <span className="tabular text-body2 text-sm">{short(wallet.address)}</span>
+          {/* identity + copy */}
+          <div className="flex items-start justify-between gap-2">
+            <span className="flex items-center gap-2.5">
+              <span aria-hidden className="size-9 shrink-0 rounded-full" style={identicon(wallet.address)} />
+              <span className="flex flex-col">
+                <span className="tabular text-foam text-[13.5px]">{short(wallet.address)}</span>
+                <span className="text-faint mt-0.5 flex items-center gap-1.5 text-[11.5px]">
+                  <span className="size-1.5 rounded-full" style={{ background: "#7cc9a3" }} />
+                  Connected · Arc
+                </span>
+              </span>
             </span>
             <button
               onClick={copy}
-              className="rounded-chip text-faint hover:text-lime px-2 py-0.5 font-mono text-[11px] uppercase transition-colors"
+              className="text-faint hover:text-lime px-1.5 py-0.5 font-mono text-[10.5px] uppercase transition-colors"
+              style={{ letterSpacing: ".1em" }}
             >
-              {copied ? "Copied ✓" : "Copy"}
+              {copied ? "Copied" : "Copy"}
             </button>
           </div>
 
-          {/* balance */}
-          <div className="well mb-3 flex items-center justify-between px-3 py-2">
+          {/* balance card */}
+          <div className="well mt-3.5 px-3.5 py-3">
             <span className="text-faint font-mono text-[10px] uppercase" style={{ letterSpacing: ".12em" }}>
               Balance
             </span>
             {/* "—" not "0.00": an unread balance and an empty wallet are
                 different answers, and only one of them is a fact. */}
-            <span className="tabular text-foam text-sm">
-              {wallet.balance ? `${wallet.balance} USDC` : "—"}
-            </span>
+            <div className="tabular text-foam mt-1 text-[22px]">
+              {wallet.balance ? `${wallet.balance}` : "—"}
+              <span className="text-faint ml-1.5 text-[13px]">USDC</span>
+            </div>
           </div>
 
           {/* actions */}
           <Link
-            href="/portfolio"
+            href="/hold"
             onClick={() => setOpen(false)}
-            className="hover:bg-bulwark rounded-btn text-body2 hover:text-foam flex items-center justify-between px-3 py-2 text-sm transition-colors"
+            className="btn-glossy mt-3.5 block w-full py-2.5 text-center text-[14px]"
           >
-            <span>The Hold</span>
-            <span aria-hidden>→</span>
+            Portfolio
           </Link>
           <button
             onClick={() => {
               setOpen(false)
               wallet.disconnect()
             }}
-            className="hover:bg-bulwark rounded-btn text-faint mt-0.5 w-full px-3 py-2 text-left text-sm transition-colors"
+            className="mt-2 w-full rounded-full py-2.5 text-center text-[13.5px] font-semibold transition-colors hover:bg-[rgba(222,128,146,.08)]"
             style={{ color: "#de8092" }}
           >
             Disconnect

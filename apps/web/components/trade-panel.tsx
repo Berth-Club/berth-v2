@@ -49,6 +49,26 @@ function UsdcMark() {
   return <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
 }
 
+/** The settings gear on the collapsed slippage pill. */
+function GearIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#93a8c4"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  )
+}
+
 function AssetChip({ coin, usdc }: { coin: Coin; usdc: boolean }) {
   return (
     <span
@@ -75,6 +95,9 @@ export function TradePanel({ coin }: { coin: Coin }) {
   const [side, setSide] = React.useState<Side>("buy")
   const [amount, setAmount] = React.useState(seeded && /^\d+(\.\d+)?$/.test(seeded) ? seeded : "")
   const [slippage, setSlippage] = React.useState<bigint>(DEFAULT_SLIPPAGE_BPS)
+  // Slippage lives in a collapsed pill; Adjust opens presets + a custom % field.
+  const [slipOpen, setSlipOpen] = React.useState(false)
+  const [slipCustom, setSlipCustom] = React.useState("")
   const [lastTx, setLastTx] = React.useState<`0x${string}`>()
   const { celebrate } = useFx()
   const { connected, wrongNetwork, connect, switchToArc } = useWallet()
@@ -108,6 +131,17 @@ export function TradePanel({ coin }: { coin: Coin }) {
   function flip() {
     setSide(buying ? "sell" : "buy")
     setAmount("")
+  }
+
+  // The current tolerance as a percent, for the collapsed pill: 500n bps -> "5".
+  const slipLabel = (Number(slippage) / 100).toString()
+  // A typed custom % -> bps. Keeps useTrade's slippage as the single bigint bps
+  // source; the presets and this field just write to it.
+  function setCustomSlip(v: string) {
+    const clean = v.replace(/[^0-9.]/g, "").slice(0, 4)
+    setSlipCustom(clean)
+    const n = parseFloat(clean)
+    if (Number.isFinite(n) && n > 0) setSlippage(BigInt(Math.round(n * 100)))
   }
 
   const receive = trade.quoting ? (
@@ -209,29 +243,69 @@ export function TradePanel({ coin }: { coin: Coin }) {
         ))}
       </div>
 
-      {/* slippage */}
+      {/* slippage — a collapsed pill (`5% ⚙ Adjust`) that expands to 1/2/5%
+          presets + a custom % field; "Done" collapses it again. */}
       <div className="text-mist my-3.5 flex flex-wrap items-center gap-2 text-[13px]">
         <span>Slippage</span>
-        <div className="ml-auto flex gap-1.5">
-          {SLIPPAGE_CHOICES.map((s) => {
-            const on = slippage === s.bps
-            return (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => setSlippage(s.bps)}
-                aria-pressed={on}
-                className="rounded-full px-3 py-[5px] text-xs font-semibold transition-colors"
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+          {slipOpen && (
+            <>
+              {SLIPPAGE_CHOICES.map((s) => {
+                const on = slippage === s.bps && !slipCustom
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onClick={() => {
+                      setSlippage(s.bps)
+                      setSlipCustom("")
+                    }}
+                    aria-pressed={on}
+                    className="rounded-full px-3 py-[5px] text-xs font-semibold transition-colors"
+                    style={{
+                      background: on ? "rgba(137,167,219,.12)" : "transparent",
+                      color: on ? "#89a7db" : "#93a8c4",
+                      border: `1px solid ${on ? "#89a7db" : "rgba(148,168,196,.2)"}`,
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })}
+              <div
+                className="flex items-center gap-px rounded-full px-[11px] py-[5px]"
                 style={{
-                  background: on ? "rgba(137,167,219,.12)" : "transparent",
-                  color: on ? "#89a7db" : "#93a8c4",
-                  border: `1px solid ${on ? "#89a7db" : "rgba(148,168,196,.2)"}`,
+                  background: slipCustom ? "rgba(137,167,219,.12)" : "transparent",
+                  border: `1px solid ${slipCustom ? "#89a7db" : "rgba(148,168,196,.2)"}`,
                 }}
               >
-                {s.label}
-              </button>
-            )
-          })}
+                <input
+                  inputMode="decimal"
+                  value={slipCustom}
+                  onChange={(e) => setCustomSlip(e.target.value)}
+                  placeholder="Custom"
+                  aria-label="Custom slippage percent"
+                  className="tabular w-[52px] bg-transparent text-right text-xs font-semibold outline-none"
+                />
+                <span
+                  className="text-xs font-semibold"
+                  style={{ color: slipCustom ? "#89a7db" : "#6e82a0" }}
+                >
+                  %
+                </span>
+              </div>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setSlipOpen((o) => !o)}
+            className="bg-deep text-foam flex items-center gap-[7px] rounded-full px-[13px] py-[6px] text-[12.5px] font-semibold"
+            style={{ border: "1px solid rgba(148,168,196,.14)" }}
+          >
+            <span className="tabular">{slipLabel}%</span>
+            <GearIcon />
+            <span>{slipOpen ? "Done" : "Adjust"}</span>
+          </button>
         </div>
       </div>
 

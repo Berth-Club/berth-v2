@@ -522,6 +522,33 @@ export async function fetchCoin(address: string): Promise<Coin | null> {
   return coins?.find((c) => c.address.toLowerCase() === address.toLowerCase()) ?? null
 }
 
+/**
+ * Resolve a $TICKER to its coin, for the /coin/:ticker route. Tickers are not
+ * unique on-chain — anyone can launch a second $DOG — so on a collision the most
+ * recently created coin wins. fetchCoins already returns createdAt-desc, so the
+ * first match is the newest; no extra sort needed.
+ */
+export async function fetchCoinByTicker(ticker: string): Promise<Coin | null> {
+  const coins = await fetchCoins()
+  if (!coins) return null
+  const t = ticker.replace(/^\$/, "").toLowerCase()
+  return coins.find((c) => c.ticker.toLowerCase() === t) ?? null
+}
+
+/**
+ * The Uniswap pool address for one coin — for the token page's "Pool" explorer
+ * chip. It isn't carried on `Coin`, and it's a cheap single-row read, so it
+ * rides alongside the page's other indexer fetches. null when unreachable.
+ */
+export async function fetchCoinPool(address: string): Promise<string | null> {
+  if (!isAddress(address)) return null
+  const data = await gql<{ coin: { pool: string } | null }>(
+    `query ($coin: String!) { coin(address: $coin) { pool } }`,
+    { coin: address.toLowerCase() },
+  )
+  return data?.coin?.pool ?? null
+}
+
 export type Trade = {
   /** `${txHash}-${logIndex}` — one tx can hold two swaps, so this is the row key. */
   id: string

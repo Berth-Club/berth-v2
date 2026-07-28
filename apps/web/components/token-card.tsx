@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { fmtPrice, fmtMc } from "@/lib/format"
+import { fmtMc } from "@/lib/format"
 import type { Coin } from "@/lib/coin"
 
 /** The snap-buy size, in USDC. Matches the design's "⚡ Snap buy 100 USDC". */
@@ -15,6 +15,9 @@ export const SNAP_BUY_USDC = 100
  * 24h chip — tinted green/red per the spec. `change: null` means "no trades
  * yet, no basis to compute it" and renders neutral: a coin that has never
  * traded must not show a green +0.0%.
+ *
+ * Kept here because the Analytics screen (`app/stats`) still renders it; the
+ * Harbor cards themselves no longer show per-token change (removed by v3).
  */
 export function ChangeChip({
   change,
@@ -46,143 +49,104 @@ export function ChangeChip({
 }
 
 /**
- * A ship in the water. Hover lifts 4px + periwinkle border.
+ * A ship in the water — v3 flat-glass card. Per-token generated art fills the
+ * square tile (the creator's uploaded face, or the deterministic emoji on a
+ * moonlit radial), a "Graduated" pill rides the top-left of graduated coins,
+ * and a ⚡ snap-buy pill sits top-right.
  *
- * The ☆ and the ⚡ row sit inside the card's link, so both swallow the click:
- * the star is a local toggle, snap-buy has its own destination. They're buttons
- * rather than nested <a>s — an anchor inside an anchor is invalid markup.
+ * The card links to `/coin/${ticker}`. The ⚡ pill has its own destination
+ * (`?buy=100`), so it's a <button> that swallows the click — an anchor nested
+ * in an anchor is invalid markup.
  */
-export function TokenCard({
-  coin,
-  watched,
-  onToggleWatch,
-}: {
-  coin: Coin
-  watched?: boolean
-  onToggleWatch?: (address: string) => void
-}) {
+export function TokenCard({ coin }: { coin: Coin }) {
   const router = useRouter()
-  const pct = Math.round(Math.min(1, Math.max(0, coin.graduated ? 1 : coin.curve)) * 100)
 
   return (
     <Link
-      href={`/token/${coin.address}`}
-      className={cn(
-        "bg-hull hover:shadow-card-hover hover:border-lime relative flex flex-col rounded-[9px] border p-4 transition-all duration-150 hover:-translate-y-1"
-      )}
+      href={`/coin/${coin.ticker}`}
+      className="group relative flex flex-col rounded-[20px] border p-3 pb-3.5 transition-transform duration-150 hover:-translate-y-1"
       style={{
-        borderColor: coin.graduated ? "rgba(137,167,219,.55)" : "rgba(148,168,196,0.2)",
+        background: "rgba(13,24,39,.82)",
+        borderColor: coin.graduated ? "rgba(137,167,219,.55)" : "rgba(148,168,196,.2)",
+        boxShadow: "0 14px 30px -18px rgba(3,8,16,.7)",
       }}
     >
-      {/* graduated tab straddles the top border */}
-      {coin.graduated && (
-        <span
-          className="text-gold absolute left-3.5 text-[11px] font-bold"
-          style={{
-            top: -11,
-            letterSpacing: 1.5,
-            background: "#0d1a2b",
-            border: "1px solid rgba(137,167,219,.55)",
-            borderRadius: 10,
-            padding: "3px 10px",
-          }}
-        >
-          🎓 GRADUATED
-        </span>
-      )}
-
-      <div className="flex items-center gap-3">
+      {/* per-token generated art */}
+      <div
+        className="relative grid aspect-square place-items-center overflow-hidden rounded-[14px]"
+        style={{
+          background: "radial-gradient(circle at 50% 40%, #14345a, #0a1524 82%)",
+          border: "1px solid rgba(148,168,196,.16)",
+        }}
+      >
+        {/* Fills the tile edge-to-edge: uploaded art is full-bleed (object-cover,
+            clipped to the tile's rounding); the emoji fallback stays centered at
+            a sensible size (size drives only the emoji font). */}
         <CoinAvatar
           image={coin.image}
           emoji={coin.emoji}
           name={coin.name}
           ticker={coin.ticker}
-          size={48}
-          className="bg-deep rounded-[9px]"
-          style={{ border: "1px solid rgba(148,168,196,0.2)" }}
+          size={96}
+          className="bg-transparent"
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
         />
-        <div className="min-w-0">
-          <div className="truncate font-bold">{coin.name}</div>
-          <div className="text-mist text-[13px]">${coin.ticker}</div>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <ChangeChip change={coin.change24h} />
-          {onToggleWatch && (
-            <button
-              type="button"
-              title={watched ? "Remove from watchlist" : "Add to watchlist"}
-              aria-label={watched ? `Unwatch $${coin.ticker}` : `Watch $${coin.ticker}`}
-              aria-pressed={watched}
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onToggleWatch(coin.address)
-              }}
-              className={cn(
-                "hover:text-lime text-base leading-none transition-colors",
-                watched ? "text-gold" : "text-faint"
-              )}
-            >
-              {watched ? "★" : "☆"}
-            </button>
-          )}
-        </div>
-      </div>
 
-      <div className="mt-3.5 flex justify-between text-sm">
-        <span>
-          <span className="text-mist">Price </span>
-          <span className="tabular">{fmtPrice(coin.priceUsd)}</span>
-        </span>
-        <span>
-          <span className="text-mist">MC </span>
-          <span className="tabular">{fmtMc(coin.marketCapUsd)}</span>
-        </span>
-      </div>
-
-      {/* graduation bar with the ⛵ riding the head of the fill */}
-      <div className="mt-3">
-        <div className="text-mist mb-1.5 flex justify-between text-[11px]">
-          <span>Graduation</span>
-          <span className="tabular">{pct}%</span>
-        </div>
-        <div className="bg-deep relative h-2 rounded-md">
-          <div
-            className="animate-flow h-full rounded-md"
-            style={{
-              width: `${pct}%`,
-              backgroundImage: "linear-gradient(90deg,#4f74a8,#d3e0f9,#89a7db,#4f74a8)",
-              backgroundSize: "200% 100%",
-            }}
-          />
+        {coin.graduated && (
           <span
-            aria-hidden
-            className="absolute text-[22px] leading-none"
-            style={{ top: -11, left: `${pct}%`, transform: "translateX(-60%)" }}
+            className="absolute left-2.5 top-2.5 text-[12px] font-semibold"
+            style={{
+              color: "#e9eef7",
+              background: "rgba(13,26,43,.5)",
+              border: "1px solid rgba(234,241,250,.22)",
+              borderRadius: 999,
+              padding: "5px 12px",
+              backdropFilter: "blur(6px)",
+            }}
           >
-            ⛵
+            Graduated
           </span>
-        </div>
+        )}
+
+        {/* Opens the coin with 100 USDC pre-filled — it does NOT fire a trade.
+            A one-click swap off a grid card is not something to do before the
+            user has seen the quote and the price impact. */}
+        <button
+          type="button"
+          title="Snap buy 100 USDC"
+          aria-label={`Snap buy 100 USDC of $${coin.ticker}`}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            router.push(`/coin/${coin.ticker}?buy=${SNAP_BUY_USDC}`)
+          }}
+          className="absolute right-2.5 top-2.5 leading-none transition-colors"
+          style={{
+            fontSize: 13,
+            color: "#d3e0f9",
+            background: "rgba(13,26,43,.72)",
+            border: "1px solid rgba(148,168,196,.35)",
+            borderRadius: 999,
+            padding: "6px 10px",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          ⚡
+        </button>
       </div>
 
-      {/* Opens the coin with the amount pre-filled — it does NOT fire a trade.
-          A one-click 100 USDC swap straight off a grid card is not something to
-          do before the user has seen the quote and the price impact. */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          router.push(`/token/${coin.address}?buy=${SNAP_BUY_USDC}`)
-        }}
-        className="text-gold hover:border-lime mt-3 rounded-[10px] py-2.5 text-center text-[13px] font-bold transition-colors"
-        style={{
-          background: "rgba(137,167,219,.07)",
-          border: "1px solid rgba(148,168,196,.2)",
-        }}
-      >
-        ⚡ Snap buy {SNAP_BUY_USDC} USDC
-      </button>
+      <div className="font-display mt-[11px] truncate text-[16.5px]">{coin.name}</div>
+      <div className="text-mist mt-px text-[13px]">${coin.ticker}</div>
+
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="tabular text-[19px]">{fmtMc(coin.marketCapUsd)}</span>
+        <span className="text-faint text-[11px] font-semibold tracking-[.1em]">MC</span>
+      </div>
+
+      <div className="text-faint mt-2 flex justify-between gap-2 text-[12.5px]">
+        <span className="tabular truncate">{coin.creator}</span>
+        <span className="shrink-0">{coin.age} ago</span>
+      </div>
     </Link>
   )
 }

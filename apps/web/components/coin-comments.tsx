@@ -189,6 +189,13 @@ export function CoinComments({ coin, symbol }: { coin: string; symbol: string })
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value.slice(0, MAX))}
+              onKeyDown={(e) => {
+                // Enter posts; Shift+Enter keeps its newline.
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  submit()
+                }
+              }}
               rows={2}
               placeholder="Signal the fleet…"
               className="well min-w-0 flex-1 resize-none rounded-xl p-3 text-[13.5px] outline-none"
