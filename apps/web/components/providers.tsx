@@ -21,12 +21,14 @@ const privyConfig: PrivyClientConfig = {
   defaultChain: arc,
   supportedChains: [arc],
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-  // Put detected extensions on the FIRST screen. With only `loginMethods`, Privy
-  // collapses every wallet behind a generic "Continue with a wallet" row, so an
-  // installed Rabby or MetaMask is two clicks deep and invisible until then.
-  // `primary` takes up to four entries and renders them in this order.
+  // First screen: social + email (Google, X, email) — a memecoin launchpad wants
+  // a wallet-less onboarding, not a wall of external-wallet connectors. External
+  // wallets stay available under "More options" for people who prefer them.
+  // NOTE: Google and Twitter/X must also be enabled in the Privy dashboard
+  // (Login methods) for this app id, or these rows won't authenticate.
   loginMethodsAndOrder: {
-    primary: ["detected_ethereum_wallets", "wallet_connect", "email"],
+    primary: ["google", "twitter", "email"],
+    overflow: ["detected_ethereum_wallets", "wallet_connect", "coinbase_wallet"],
   },
   appearance: {
     // Detection is the only supported way to surface browser extensions now:
