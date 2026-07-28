@@ -245,6 +245,63 @@ const IDLE: Launch = {
   reset: () => {},
 }
 
+export type CurvePreset = {
+  /** curveConfigId to pass to deploy/predict. */
+  id: bigint
+  /** Fee tier in hundredths of a bip: 10000 = 1%, 3000 = 0.3%, 500 = 0.05%. */
+  feeBps: number
+  /** Display label, "1%" / "0.3%" / "0.05%". */
+  label: string
+  /** Graduation threshold in USDC for this preset. */
+  graduationUsdc: number
+}
+
+/**
+ * The live fee-tier menu, read from the factory's curve presets. The economics
+ * are owner-configurable and presets can be toggled, so we READ them (never
+ * hardcode): each enabled preset carries its own fee tier since v1.7.
+ * Shipped today: 0 → 1%, 1 → 0.3%, 2 → 0.05%.
+ *
+ * Reads a fixed 0/1/2 (the deployed count) so the hook order is stable; a preset
+ * is shown only when it exists (id < count) and is enabled.
+ */
+export function useCurvePresets(): { presets: CurvePreset[]; loading: boolean } {
+  /* eslint-disable react-hooks/rules-of-hooks */
+  const count = useReadContract({
+    address: CONTRACTS.launchFactory,
+    abi: LaunchFactoryAbi,
+    functionName: "curveConfigCount",
+    chainId: arc.id,
+  })
+  const n = count.data
+  const reads = [0n, 1n, 2n].map((id) =>
+    useReadContract({
+      address: CONTRACTS.launchFactory,
+      abi: LaunchFactoryAbi,
+      functionName: "getCurveConfig",
+      args: [id],
+      chainId: arc.id,
+      query: { enabled: n === undefined || id < n },
+    })
+  )
+  /* eslint-enable react-hooks/rules-of-hooks */
+
+  const presets: CurvePreset[] = reads
+    .map((r, i) => ({ cfg: r.data, id: BigInt(i) }))
+    .filter((x): x is { cfg: NonNullable<typeof x.cfg>; id: bigint } => !!x.cfg && x.cfg.enabled)
+    .map(({ cfg, id }) => {
+      const feeBps = Number(cfg.fee)
+      return {
+        id,
+        feeBps,
+        label: `${feeBps / 10000}%`,
+        graduationUsdc: Number(cfg.graduationThreshold) / 1e6,
+      }
+    })
+
+  return { presets, loading: count.isLoading || reads.some((r) => r.isLoading) }
+}
+
 /**
  * Everything the wizard needs to launch for real.
  *
@@ -259,7 +316,11 @@ const IDLE: Launch = {
 export function useLaunch(
   config: LaunchConfig | undefined,
   valueWei: bigint | undefined,
-  active: boolean
+  active: boolean,
+  /** Which curve preset (fee tier) to launch against. 0 = 1% (the shipped
+   *  default); 1 = 0.3%; 2 = 0.05%. The predict + deploy MUST use the same id or
+   *  the pool-free check (tier-aware since v1.7) is answered for the wrong tier. */
+  curveConfigId: bigint = CURVE_CONFIG_ID
 ): Launch {
   if (!PRIVY_CONFIGURED) return IDLE
 
@@ -325,7 +386,7 @@ export function useLaunch(
     // v1.4 added the curveConfigId arg (the pool-free check is per fee tier).
     // The predicted ADDRESS is independent of it — but the arity must match or
     // the call reverts to encode.
-    args: address && config && salts[0] ? [address, config, salts[0], CURVE_CONFIG_ID] : undefined,
+    args: address && config && salts[0] ? [address, config, salts[0], curveConfigId] : undefined,
     chainId: arc.id,
     query: { enabled: canRead && salts.length > 0 },
   })
@@ -347,7 +408,7 @@ export function useLaunch(
     address: CONTRACTS.launchFactory,
     abi: LaunchFactoryAbi,
     functionName: "deploy",
-    args: config && salts.length > 0 ? [config, CURVE_CONFIG_ID, salts] : undefined,
+    args: config && salts.length > 0 ? [config, curveConfigId, salts] : undefined,
     value: totalValueWei,
     chainId: arc.id,
     query: { enabled: canRead && totalValueWei !== undefined && salts.length > 0 },

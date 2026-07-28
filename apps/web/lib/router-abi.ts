@@ -37,9 +37,37 @@ export const swapRouterAbi = [
     ],
     outputs: [{ name: "amountOut", type: "uint256" }],
   },
+  // Batch calls in one tx. Used for the 1-transaction buy: [selfPermit, swap].
+  // The results array is ignored — we only care that both legs ran atomically.
+  {
+    type: "function",
+    name: "multicall",
+    stateMutability: "payable",
+    inputs: [{ name: "data", type: "bytes[]" }],
+    outputs: [{ name: "results", type: "bytes[]" }],
+  },
+  // Consumes an EIP-2612 permit the CALLER signed (owner = msg.sender, spender =
+  // this router). Lets a buy approve USDC and swap it in a single transaction:
+  // the router calls IERC20Permit(token).permit(...) inside the multicall.
+  {
+    type: "function",
+    name: "selfPermit",
+    stateMutability: "payable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+      { name: "v", type: "uint8" },
+      { name: "r", type: "bytes32" },
+      { name: "s", type: "bytes32" },
+    ],
+    outputs: [],
+  },
 ] as const
 
 /** Read out of the deployed router's bytecode on Arc testnet. */
 export const EXPECTED_SELECTORS: Record<string, `0x${string}`> = {
   exactInputSingle: "0x04e45aaf",
+  multicall: "0xac9650d8", // multicall(bytes[])
+  selfPermit: "0xf3995c67",
 }

@@ -8,7 +8,7 @@ import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
 import { useImageUpload } from "@/lib/use-image-upload"
 import { explorerTx } from "@/lib/chain"
-import { buildConfig, normalizeTicker, parseUsdcInput, useLaunch } from "@/lib/launch"
+import { buildConfig, normalizeTicker, parseUsdcInput, useCurvePresets, useLaunch } from "@/lib/launch"
 
 /**
  * Launch a coin. v3 FINAL is ONE view — form on the left, a live preview + the
@@ -37,6 +37,11 @@ export function LaunchWizard() {
   const [advOpen, setAdvOpen] = React.useState(false)
 
   const [devBuy, setDevBuy] = React.useState("")
+  // Fee tier = which curve preset the coin launches (and thus trades) against.
+  // 0 → 1% (default), 1 → 0.3%, 2 → 0.05%. Read live from the factory.
+  const [curveConfigId, setCurveConfigId] = React.useState(0n)
+  const { presets } = useCurvePresets()
+  const feeLabel = presets.find((p) => p.id === curveConfigId)?.label ?? "1%"
   const { celebrate } = useFx()
   const { connected, wrongNetwork, switchToArc, connect, getAccessToken } = useWallet()
   const upload = useImageUpload(getAccessToken)
@@ -119,7 +124,7 @@ export function LaunchWizard() {
   // set of moments the old step-2 gate covered, minus the extra click.
   const formReady = !!config && !badDevBuy && !imageBlocking
   // Gated on `armed`: no salt grind or simulation until they click Launch.
-  const launch = useLaunch(config, valueWei, armed && formReady && connected && !wrongNetwork)
+  const launch = useLaunch(config, valueWei, armed && formReady && connected && !wrongNetwork, curveConfigId)
 
   // Advisory only — instant, works before connecting. The authority is the
   // on-chain simulation (launch.blocked).
@@ -368,6 +373,37 @@ export function LaunchWizard() {
             )}
           </div>
 
+          {/* fee tier — which curve preset (and pool fee tier) the coin launches
+              against. Presets are read live; 1% is the default. */}
+          {presets.length > 1 && (
+            <div className="mt-3.5">
+              <FieldLabel>Fee tier</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {presets.map((p) => {
+                  const on = p.id === curveConfigId
+                  return (
+                    <button
+                      key={p.id.toString()}
+                      type="button"
+                      onClick={() => setCurveConfigId(p.id)}
+                      aria-pressed={on}
+                      className={cn(
+                        "rounded-full px-4 py-2 text-[13.5px] font-semibold transition-colors",
+                        on ? "btn-glossy" : "btn-frost text-body2"
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-faint mt-1.5 text-[11.5px]">
+                The trade fee on every swap, split with you. Lower tiers suit tighter,
+                higher-volume markets. Default 1%.
+              </p>
+            </div>
+          )}
+
           {/* Advanced — the one-transaction / fee fine print, collapsed by default */}
           <button
             type="button"
@@ -429,7 +465,7 @@ export function LaunchWizard() {
 
           <div className="mt-[18px]">
             <Deal k="Launch fee" v="1 USDC" mono />
-            <Deal k="Trading fees" v="1% · split with creator" />
+            <Deal k="Trading fees" v={`${feeLabel} · split with creator`} />
             <Deal k="Graduation" v="8,787 USDC" mono />
             <Deal k="Pool" v="token / USDC" />
             <Deal k="Liquidity" v="Locked" tone="#7cc9a3" last />

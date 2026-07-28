@@ -1,19 +1,33 @@
 "use client"
 
 import * as React from "react"
-import { erc20Abi, formatUnits, parseUnits } from "viem"
+import { encodeFunctionData, erc20Abi, formatUnits, parseSignature, parseUnits } from "viem"
 import {
-  useBalance,
   useReadContract,
+  useSignTypedData,
   useSimulateContract,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi"
 
-import { UNISWAP, USDC, COIN_DECIMALS, arc } from "@/lib/chain"
+import { CONTRACTS, UNISWAP, USDC, COIN_DECIMALS, arc } from "@/lib/chain"
+import { LaunchFactoryAbi } from "@/lib/abis"
 import { swapRouterAbi } from "@/lib/router-abi"
 import { useWallet } from "@/components/wallet-provider"
 import type { Coin } from "@/lib/coin"
+
+/** EIP-2612 reads for building the USDC permit domain + message. */
+const permitReadAbi = [
+  { type: "function", name: "name", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  { type: "function", name: "version", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const
 
 /**
  * QuoterV2 — minimal ABI, kept local on purpose. `lib/abis/` holds the verified
@@ -144,13 +158,26 @@ export function useTrade(
   const [tokenIn, tokenOut] =
     side === "buy" ? [USDC.address, coinAddress] : [coinAddress, USDC.address]
 
+  // The coin's REAL pool fee tier. Since v1.7 a launch pools at its preset's tier
+  // (1% / 0.3% / 0.05%), frozen as feeTierOf(token). Quoting or swapping at the
+  // hardcoded 1% would hit an empty pool for a non-default coin. Default to 1%
+  // while the read is in flight or for a token this factory didn't launch.
+  const feeRead = useReadContract({
+    address: CONTRACTS.launchFactory,
+    abi: LaunchFactoryAbi,
+    functionName: "feeTierOf",
+    args: [coinAddress],
+    chainId: arc.id,
+  })
+  const feeTier = feeRead.data && Number(feeRead.data) > 0 ? Number(feeRead.data) : UNISWAP.feeTier
+
   // chainId is pinned so quotes still work before connect and while the wallet
   // sits on the wrong network — the user sees real numbers before committing.
   const quote = useSimulateContract({
     address: UNISWAP.quoterV2,
     abi: quoterV2Abi,
     functionName: "quoteExactInputSingle",
-    args: [{ tokenIn, tokenOut, amountIn, fee: UNISWAP.feeTier, sqrtPriceLimitX96: 0n }],
+    args: [{ tokenIn, tokenOut, amountIn, fee: feeTier, sqrtPriceLimitX96: 0n }],
     chainId: arc.id,
     query: {
       enabled: amountIn > 0n,
@@ -179,20 +206,36 @@ export function useTrade(
     chainId: arc.id,
     query: { enabled: side === "sell" && !!address },
   })
-  // BOTH sides need an allowance now. On Robinhood a buy sent native ETH and the
-  // router wrapped it, so only sells approved. Here a buy spends ERC20 USDC, so
-  // it needs the same approve step -- a two-tx buy, not one.
-  const spendToken = side === "buy" ? USDC.address : coinAddress
+  // Sells spend the coin (no permit), so they still approve first. Buys spend
+  // USDC, which supports EIP-2612 — a buy signs a permit and swaps in ONE tx
+  // (permit + swap via the router's multicall), so it needs no allowance read.
   const allowance = useReadContract({
-    address: spendToken,
+    address: coinAddress,
     abi: erc20Abi,
     functionName: "allowance",
     args: address ? [address, UNISWAP.swapRouter] : undefined,
     chainId: arc.id,
-    query: { enabled: !!address },
+    query: { enabled: !!address && side === "sell" },
+  })
+  const needsApproval = side === "sell" && amountIn > 0n && (allowance.data ?? 0n) < amountIn
+
+  // USDC permit domain + the owner's live nonce, for the 1-tx buy. Name/version
+  // are read (not hardcoded) so a domain mismatch can't silently sign an invalid
+  // permit; both fall back to the known Arc values while loading.
+  const usdcName = useReadContract({ address: USDC.address, abi: permitReadAbi, functionName: "name", chainId: arc.id })
+  const usdcVersion = useReadContract({ address: USDC.address, abi: permitReadAbi, functionName: "version", chainId: arc.id })
+  const usdcNonce = useReadContract({
+    address: USDC.address,
+    abi: permitReadAbi,
+    functionName: "nonces",
+    args: address ? [address] : undefined,
+    chainId: arc.id,
+    query: { enabled: !!address && side === "buy" },
   })
 
-  const needsApproval = amountIn > 0n && (allowance.data ?? 0n) < amountIn
+  const { signTypedDataAsync } = useSignTypedData()
+  const [signing, setSigning] = React.useState(false)
+  const [signErr, setSignErr] = React.useState<string>()
 
   const { writeContract, data: hash, isPending, error: writeError, reset: resetWrite } = useWriteContract()
   const receipt = useWaitForTransactionReceipt({ hash, chainId: arc.id })
@@ -210,14 +253,11 @@ export function useTrade(
     if (step === "approve" && hash) approveHash.current = hash
   }, [step, hash])
 
+  // A plain swap — used by the SELL path after its approve confirms. `value` is
+  // 0: on Arc the quote asset is an ordinary ERC20 that also happens to be the
+  // gas token, so a swap is just a swap, never payable.
   const swap = React.useCallback(() => {
     if (!address || amountOut === undefined || amountOut === 0n) return
-
-    // One plain call, both directions. No multicall, no wrap, no unwrap, no
-    // refund leg: on Arc the quote asset is an ordinary ERC20 that happens to
-    // also be the gas token, so a swap is just a swap. `value` is 0 -- sending
-    // native alongside would be a second, unrelated payment the router would
-    // strand, since it has no wrapped-native path to spend it through.
     setStep("swap")
     writeContract({
       address: UNISWAP.swapRouter,
@@ -227,7 +267,7 @@ export function useTrade(
         {
           tokenIn,
           tokenOut,
-          fee: UNISWAP.feeTier,
+          fee: feeTier,
           recipient: address,
           amountIn,
           amountOutMinimum: applySlippage(amountOut, slippageBps),
@@ -236,28 +276,112 @@ export function useTrade(
       ],
       chainId: arc.id,
     })
-  }, [address, amountOut, amountIn, side, tokenIn, tokenOut, writeContract])
+  }, [address, amountOut, amountIn, tokenIn, tokenOut, feeTier, slippageBps, writeContract])
+
+  // The BUY path: sign a USDC permit off-chain, then send permit + swap together
+  // via the router's multicall — one on-chain transaction, no separate approve.
+  const buyWithPermit = React.useCallback(async () => {
+    if (!address || amountOut === undefined || amountOut === 0n) return
+    setSignErr(undefined)
+    setSigning(true)
+    try {
+      // Fresh nonce at sign time — a stale one makes the permit unusable.
+      const nres = await usdcNonce.refetch()
+      const nonce = nres.data
+      if (nonce === undefined) throw new Error("Couldn't read the USDC nonce.")
+      const deadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 60)
+      const signature = await signTypedDataAsync({
+        domain: {
+          name: usdcName.data ?? "USDC",
+          version: usdcVersion.data ?? "2",
+          chainId: arc.id,
+          verifyingContract: USDC.address,
+        },
+        types: {
+          Permit: [
+            { name: "owner", type: "address" },
+            { name: "spender", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "nonce", type: "uint256" },
+            { name: "deadline", type: "uint256" },
+          ],
+        },
+        primaryType: "Permit",
+        // spender = the router (selfPermit calls permit(msg.sender, this, …)).
+        message: { owner: address, spender: UNISWAP.swapRouter, value: amountIn, nonce, deadline },
+      })
+      const parsed = parseSignature(signature)
+      const v = Number(parsed.v ?? BigInt(27 + (parsed.yParity ?? 0)))
+      const permitCall = encodeFunctionData({
+        abi: swapRouterAbi,
+        functionName: "selfPermit",
+        args: [USDC.address, amountIn, deadline, v, parsed.r, parsed.s],
+      })
+      const swapCall = encodeFunctionData({
+        abi: swapRouterAbi,
+        functionName: "exactInputSingle",
+        args: [
+          {
+            tokenIn,
+            tokenOut,
+            fee: feeTier,
+            recipient: address,
+            amountIn,
+            amountOutMinimum: applySlippage(amountOut, slippageBps),
+            sqrtPriceLimitX96: 0n,
+          },
+        ],
+      })
+      setStep("swap")
+      writeContract({
+        address: UNISWAP.swapRouter,
+        abi: swapRouterAbi,
+        functionName: "multicall",
+        args: [[permitCall, swapCall]],
+        chainId: arc.id,
+      })
+    } catch (e) {
+      setSignErr(shortError(e instanceof Error ? e.message : String(e)))
+    } finally {
+      setSigning(false)
+    }
+  }, [
+    address,
+    amountOut,
+    amountIn,
+    tokenIn,
+    tokenOut,
+    feeTier,
+    slippageBps,
+    usdcNonce,
+    usdcName.data,
+    usdcVersion.data,
+    signTypedDataAsync,
+    writeContract,
+  ])
 
   const submit = React.useCallback(() => {
+    if (side === "buy") {
+      void buyWithPermit()
+      return
+    }
+    // Sell: approve the coin (exact amount, not max — this is over the user's
+    // real position, and Arc testnet is full of lookalike contracts), then the
+    // swap auto-chains off the approve receipt so it stays one click.
     if (needsApproval) {
       setStep("approve")
       approveHash.current = undefined
       writeContract({
-        address: spendToken,
+        address: coinAddress,
         abi: erc20Abi,
         functionName: "approve",
-        // Exact amount, not max. Arc testnet is full of lookalike contracts (see
-        // the warning in lib/chain.ts), and this allowance is over the user's
-        // actual dollars, not a memecoin. An unlimited approval is a standing
-        // risk; one extra tx is the cheaper trade. The swap auto-chains off the
-        // approve receipt, so it stays a single click.
         args: [UNISWAP.swapRouter, amountIn],
         chainId: arc.id,
       })
       return
     }
     swap()
-  }, [needsApproval, writeContract, spendToken, amountIn, swap])
+  }, [side, buyWithPermit, needsApproval, writeContract, coinAddress, amountIn, swap])
 
   // Approve landed → fire the swap automatically (one click for the user).
   // Swap landed → refetch allowance/balance, otherwise a stale allowance would
@@ -296,7 +420,7 @@ export function useTrade(
     disabledReason = side === "buy" ? "The range is dry — nothing left to buy" : "Quote came back empty"
   }
 
-  const busy = isPending || receipt.isLoading
+  const busy = isPending || receipt.isLoading || signing
 
   return {
     amountOut,
@@ -317,9 +441,11 @@ export function useTrade(
     // Only a swap receipt counts: during the approve->swap hand-off `hash`
     // still points at the approve, so its lingering success must not register.
     success: step === "swap" && receipt.isSuccess && hash !== approveHash.current,
-    error: writeError ? shortError(writeError.message) : undefined,
+    error: signErr ?? (writeError ? shortError(writeError.message) : undefined),
     reset: () => {
       setStep("idle")
+      setSigning(false)
+      setSignErr(undefined)
       resetWrite()
     },
   }
