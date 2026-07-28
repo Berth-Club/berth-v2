@@ -276,7 +276,7 @@ export function LaunchWizard() {
                   setDragging(false)
                   acceptFile(e.dataTransfer.files)
                 }}
-                className="flex cursor-pointer items-center justify-center gap-3.5 rounded-xl px-[18px] py-6 transition-colors"
+                className="flex cursor-pointer flex-col items-center justify-center gap-2.5 rounded-xl px-[18px] py-7 text-center transition-colors"
                 style={{
                   border: `1.5px dashed ${dragging ? "#89a7db" : "rgba(137,167,219,.5)"}`,
                   background: dragging ? "rgba(137,167,219,.06)" : "rgba(8,17,30,.5)",
@@ -312,7 +312,7 @@ export function LaunchWizard() {
               </label>
             ) : (
               <div
-                className="flex items-center gap-3.5 rounded-xl px-[18px] py-4"
+                className="flex flex-col items-center justify-center gap-2.5 rounded-xl px-[18px] py-7 text-center"
                 style={{ border: "1.5px dashed rgba(148,168,196,.25)", background: "rgba(8,17,30,.35)" }}
               >
                 <div
