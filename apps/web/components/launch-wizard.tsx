@@ -152,12 +152,36 @@ export function LaunchWizard() {
   if (launched) {
     return (
       <div className="glass mx-auto mt-[30px] max-w-[560px] p-9 text-center">
-        <div
-          className="mx-auto grid size-[72px] place-items-center rounded-full"
-          style={{ background: "rgba(137,167,219,.1)", border: "1px solid rgba(137,167,219,.45)" }}
-        >
-          <CheckIcon />
-        </div>
+        {/* Show the coin's own art (the local preview, still valid on this same
+            component) so the creator sees what they launched — with a small check
+            badge for the confirmation. Falls back to the plain check when there's
+            no uploaded image. */}
+        {upload.previewUrl ? (
+          <div className="relative mx-auto size-[76px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={upload.previewUrl}
+              alt={`${tickerUp} art`}
+              className="size-full rounded-2xl object-cover"
+              style={{ border: "1px solid rgba(137,167,219,.45)" }}
+            />
+            <span
+              className="absolute -bottom-1.5 -right-1.5 grid size-6 place-items-center rounded-full"
+              style={{ background: "#b7c9ee", border: "2px solid #0d1a2b" }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M5 13l4 4L19 7" stroke="#0d2340" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </div>
+        ) : (
+          <div
+            className="mx-auto grid size-[72px] place-items-center rounded-full"
+            style={{ background: "rgba(137,167,219,.1)", border: "1px solid rgba(137,167,219,.45)" }}
+          >
+            <CheckIcon />
+          </div>
+        )}
         <h2 className="font-display mt-4 text-[26px]">${tickerUp} is live</h2>
         <p className="text-mist mb-[22px] mt-2">Block confirmed. Pool created, liquidity locked.</p>
         <div className="flex flex-wrap justify-center gap-2.5">
@@ -252,7 +276,7 @@ export function LaunchWizard() {
                   setDragging(false)
                   acceptFile(e.dataTransfer.files)
                 }}
-                className="flex cursor-pointer items-center gap-3.5 rounded-xl px-[18px] py-4 transition-colors"
+                className="flex cursor-pointer items-center justify-center gap-3.5 rounded-xl px-[18px] py-6 transition-colors"
                 style={{
                   border: `1.5px dashed ${dragging ? "#89a7db" : "rgba(137,167,219,.5)"}`,
                   background: dragging ? "rgba(137,167,219,.06)" : "rgba(8,17,30,.5)",
