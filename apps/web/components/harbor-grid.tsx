@@ -205,7 +205,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
       {pageSlice.length > 0 ? (
         <div className="flex flex-wrap gap-3.5">
           {pageSlice.map((coin) => (
-            <div key={coin.address} className="min-w-[210px] grow basis-[210px]">
+            <div key={coin.address} className="grow basis-[calc(50%-7px)] md:min-w-[210px] md:basis-[210px]">
               <TokenCard coin={coin} />
             </div>
           ))}
@@ -267,7 +267,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
 function Segmented({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex max-w-full items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="flex max-w-full flex-wrap items-center gap-1 p-1"
       style={{ background: "rgba(8,17,30,.8)", border: "1px solid rgba(148,168,196,.18)", borderRadius: 999 }}
     >
       {children}
