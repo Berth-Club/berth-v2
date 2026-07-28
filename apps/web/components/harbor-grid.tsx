@@ -166,7 +166,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
           ))}
         </Segmented>
 
-        <div className="well ml-auto flex min-w-[200px] items-center gap-2 rounded-full px-3.5">
+        <div className="well flex w-full items-center gap-2 rounded-full px-3.5 md:ml-auto md:w-auto md:min-w-[200px]">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#93a8c4" strokeWidth={2} strokeLinecap="round" className="shrink-0" aria-hidden>
             <circle cx="11" cy="11" r="7" />
             <path d="M16.5 16.5L21 21" />
@@ -267,7 +267,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
 function Segmented({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="flex items-center gap-1 p-1"
+      className="flex max-w-full items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       style={{ background: "rgba(8,17,30,.8)", border: "1px solid rgba(148,168,196,.18)", borderRadius: 999 }}
     >
       {children}
@@ -291,7 +291,7 @@ function Pill({
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={`whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${className ?? ""}`}
+      className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${className ?? ""}`}
       style={{ background: on ? "#1b3450" : "transparent", color: on ? "#eaf1fa" : "#93a8c4" }}
     >
       {children}
