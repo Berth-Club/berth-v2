@@ -35,7 +35,9 @@ const RANGES: { key: Range; label: string }[] = [
   { key: "7d", label: "7d" },
 ]
 
-const PER_PAGE = 24
+// 20 fills complete rows at the common column counts (2 / 4 / 5) so the last row
+// never leaves a lone empty cell; 24 left a gap on the 5-wide desktop grid.
+const PER_PAGE = 20
 const DAY = 86_400
 
 function matches(coin: Coin, q: string): boolean {
@@ -51,10 +53,16 @@ function matches(coin: Coin, q: string): boolean {
 function sortCoins(coins: Coin[], sort: Sort): Coin[] {
   const out = [...coins]
   switch (sort) {
-    case "trending":
-      // Never-traded coins (change24h === null) have no claim to "trending" —
-      // they sort last rather than posing as flat at 0%.
-      return out.sort((a, b) => (b.change24h ?? -Infinity) - (a.change24h ?? -Infinity))
+    case "trending": {
+      // Real trending = biggest 24h move. But a field of never-traded coins all
+      // have change24h === null, which made the bare subtraction return NaN and
+      // shuffle them randomly. Fall through to volume, then recency, so the order
+      // is always stable and sensible (traded first, else newest).
+      const chg = (c: Coin) => c.change24h ?? -Infinity
+      return out.sort(
+        (a, b) => chg(b) - chg(a) || b.volumeUsd - a.volumeUsd || b.createdAt - a.createdAt
+      )
+    }
     // No per-coin recent-buy timestamp reaches the client, so "Recent buys"
     // ranks by holder count — the closest real proxy for buying interest.
     case "buys":
