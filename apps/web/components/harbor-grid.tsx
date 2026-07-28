@@ -54,13 +54,18 @@ function sortCoins(coins: Coin[], sort: Sort): Coin[] {
   const out = [...coins]
   switch (sort) {
     case "trending": {
-      // Real trending = biggest 24h move. But a field of never-traded coins all
-      // have change24h === null, which made the bare subtraction return NaN and
-      // shuffle them randomly. Fall through to volume, then recency, so the order
-      // is always stable and sensible (traded first, else newest).
+      // Coins with real uploaded art lead — the emoji-only ones sink to the end
+      // so the discovery grid looks its best. Then real 24h movers, then volume,
+      // then recency (a field of never-traded coins is all change24h=null, which
+      // alone returned NaN and shuffled them randomly).
+      const hasArt = (c: Coin) => (c.image?.startsWith("ipfs://") ? 1 : 0)
       const chg = (c: Coin) => c.change24h ?? -Infinity
       return out.sort(
-        (a, b) => chg(b) - chg(a) || b.volumeUsd - a.volumeUsd || b.createdAt - a.createdAt
+        (a, b) =>
+          hasArt(b) - hasArt(a) ||
+          chg(b) - chg(a) ||
+          b.volumeUsd - a.volumeUsd ||
+          b.createdAt - a.createdAt
       )
     }
     // No per-coin recent-buy timestamp reaches the client, so "Recent buys"
@@ -194,10 +199,15 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
         </Segmented>
       </div>
 
+      {/* Flexbox, not CSS grid: a partial last row's cards GROW to fill the width
+          (grow + basis), so there's never a lone empty cell left behind. min-w
+          keeps them from shrinking below a card's width before wrapping. */}
       {pageSlice.length > 0 ? (
-        <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))" }}>
+        <div className="flex flex-wrap gap-3.5">
           {pageSlice.map((coin) => (
-            <TokenCard key={coin.address} coin={coin} />
+            <div key={coin.address} className="min-w-[210px] grow basis-[210px]">
+              <TokenCard coin={coin} />
+            </div>
           ))}
         </div>
       ) : (
