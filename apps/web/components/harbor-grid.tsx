@@ -181,15 +181,41 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
         </div>
       </div>
 
-      {/* sort pills + time-range capsule */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Segmented>
-          {SORTS.map((s) => (
-            <Pill key={s.key} on={sort === s.key} onClick={() => reset(setSort)(s.key)} className="text-[13.5px]">
-              {s.label}
-            </Pill>
-          ))}
-        </Segmented>
+      {/* sort + time-range. Sort is a compact dropdown on mobile (six pills
+          wrapped into a capsule read as cluttered/cropped there) and the full
+          pill capsule from md up. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {/* mobile: sort dropdown */}
+        <div className="relative w-full md:hidden">
+          <select
+            value={sort}
+            onChange={(e) => reset(setSort)(e.target.value as Sort)}
+            aria-label="Sort coins"
+            className="well text-body2 w-full appearance-none rounded-full py-2.5 pl-4 pr-10 text-[13.5px] font-semibold outline-none"
+          >
+            {SORTS.map((s) => (
+              <option key={s.key} value={s.key} className="bg-deep">
+                Sort · {s.label}
+              </option>
+            ))}
+          </select>
+          <svg
+            className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2"
+            width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#93a8c4" strokeWidth="2.5" aria-hidden
+          >
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        {/* md+: sort pills */}
+        <div className="hidden md:block">
+          <Segmented>
+            {SORTS.map((s) => (
+              <Pill key={s.key} on={sort === s.key} onClick={() => reset(setSort)(s.key)} className="text-[13.5px]">
+                {s.label}
+              </Pill>
+            ))}
+          </Segmented>
+        </div>
         <Segmented>
           {RANGES.map((r) => (
             <Pill key={r.key} on={range === r.key} onClick={() => reset(setRange)(r.key)}>
