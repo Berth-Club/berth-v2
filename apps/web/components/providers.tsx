@@ -21,13 +21,11 @@ const privyConfig: PrivyClientConfig = {
   defaultChain: arc,
   supportedChains: [arc],
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-  // First screen: social + email (Google, X, email) — a memecoin launchpad wants
-  // a wallet-less onboarding, not a wall of external-wallet connectors. External
-  // wallets stay available under "More options" for people who prefer them.
-  // NOTE: Google and Twitter/X must also be enabled in the Privy dashboard
-  // (Login methods) for this app id, or these rows won't authenticate.
+  // First screen: email only for now — wallet-less onboarding without a wall of
+  // external-wallet connectors. External wallets stay under "More options".
+  // (Google / X can be added back here once enabled in the Privy dashboard.)
   loginMethodsAndOrder: {
-    primary: ["google", "twitter", "email"],
+    primary: ["email"],
     overflow: ["detected_ethereum_wallets", "wallet_connect", "coinbase_wallet"],
   },
   appearance: {
