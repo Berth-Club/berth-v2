@@ -243,7 +243,14 @@ export default async function TokenPage({
               <span>Graduation</span>
               <span className="tabular text-foam font-semibold">{pct}%</span>
             </div>
-            <div className="bg-deep relative h-2.5 rounded-lg">
+            <div
+              className="relative h-2.5 rounded-lg"
+              style={{
+                background: "rgba(3,8,16,.85)",
+                border: "1px solid rgba(148,168,196,.1)",
+                boxShadow: "inset 0 1px 3px rgba(0,0,0,.55)",
+              }}
+            >
               <div
                 className="animate-flow shadow-meter-glow h-full rounded-lg"
                 style={{

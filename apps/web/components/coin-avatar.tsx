@@ -3,7 +3,7 @@
 import * as React from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { ipfsToGateway } from "@/lib/chain"
+import { ipfsToProxy } from "@/lib/chain"
 
 /**
  * A coin's face. Renders the creator's uploaded art (`image` = `ipfs://CID`)
@@ -32,7 +32,7 @@ export function CoinAvatar({
   className?: string
   style?: React.CSSProperties
 }) {
-  const src = ipfsToGateway(image)
+  const src = ipfsToProxy(image)
   // Track WHICH src failed (not a bare boolean) so a new/changed image gets a
   // fresh attempt without an effect to reset it. A slow gateway shows the tile
   // background until the img paints; a real load failure flips to the emoji.

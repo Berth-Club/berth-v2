@@ -75,7 +75,18 @@ function AssetChip({ coin, usdc }: { coin: Coin; usdc: boolean }) {
       className="bg-hull flex shrink-0 items-center gap-[7px] rounded-full px-3 py-[7px] text-[13.5px] font-semibold"
       style={{ border: "1px solid rgba(148,168,196,.25)" }}
     >
-      {usdc ? <UsdcMark /> : <span aria-hidden>{coin.emoji}</span>}
+      {usdc ? (
+        <UsdcMark />
+      ) : (
+        <CoinAvatar
+          image={coin.image}
+          emoji={coin.emoji}
+          name={coin.name}
+          ticker={coin.ticker}
+          size={16}
+          className="rounded-full"
+        />
+      )}
       {usdc ? "USDC" : `$${coin.ticker}`}
     </span>
   )

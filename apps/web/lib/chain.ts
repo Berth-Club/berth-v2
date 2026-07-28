@@ -118,6 +118,20 @@ export function ipfsToGateway(uri: string | null | undefined): string | null {
   return `${IPFS_GATEWAY}/ipfs/${path}`
 }
 
+/**
+ * `ipfs://CID` -> our own cached image proxy (`/api/img?cid=CID`) for in-app
+ * display. The proxy fetches from the gateway ONCE and caches the bytes, so the
+ * slow public-gateway latency is paid once per coin instead of on every render.
+ * Use this for <img> in the app; `ipfsToGateway` stays for absolute URLs that
+ * leave the app (OpenGraph/Twitter cards a crawler fetches).
+ */
+export function ipfsToProxy(uri: string | null | undefined): string | null {
+  if (!uri || !uri.startsWith("ipfs://")) return null
+  const path = uri.slice("ipfs://".length).replace(/^\/+/, "")
+  if (!path) return null
+  return `/api/img?cid=${encodeURIComponent(path)}`
+}
+
 
 /**
  * Launchpad addresses live in @workspace/contracts — the ONE place both the
