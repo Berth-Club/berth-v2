@@ -21,12 +21,12 @@ const privyConfig: PrivyClientConfig = {
   defaultChain: arc,
   supportedChains: [arc],
   embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
-  // First screen: email only for now — wallet-less onboarding without a wall of
-  // external-wallet connectors. External wallets stay under "More options".
-  // (Google / X can be added back here once enabled in the Privy dashboard.)
+  // First screen: email + detected extensions (MetaMask, Rabby, … show by name
+  // when installed) + WalletConnect. `detected_ethereum_wallets` is the only
+  // supported way to surface extensions — there's no per-wallet key.
   loginMethodsAndOrder: {
-    primary: ["email"],
-    overflow: ["detected_ethereum_wallets", "wallet_connect", "coinbase_wallet"],
+    primary: ["email", "detected_ethereum_wallets", "wallet_connect"],
+    overflow: ["coinbase_wallet"],
   },
   appearance: {
     // Detection is the only supported way to surface browser extensions now:
