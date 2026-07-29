@@ -166,7 +166,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
   )
 
   return (
-    <div className="glass w-full min-w-0 p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
+    <div className="glass w-full min-w-0 self-start p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
       {/* identity */}
       <div className="mb-4 flex items-center gap-3">
         <CoinAvatar
