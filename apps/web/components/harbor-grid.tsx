@@ -35,8 +35,8 @@ const RANGES: { key: Range; label: string }[] = [
   { key: "7d", label: "7d" },
 ]
 
-// 20 fills complete rows at the common column counts (2 / 4 / 5) so the last row
-// never leaves a lone empty cell; 24 left a gap on the 5-wide desktop grid.
+// 20 fills complete rows at 2 / 4 / 5 columns; at the 3-wide md breakpoint the
+// last row is short, which the grid handles by leaving empty cells.
 const PER_PAGE = 20
 const DAY = 86_400
 
@@ -225,15 +225,14 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
         </Segmented>
       </div>
 
-      {/* Flexbox, not CSS grid: a partial last row's cards GROW to fill the width
-          (grow + basis), so there's never a lone empty cell left behind. min-w
-          keeps them from shrinking below a card's width before wrapping. */}
+      {/* Fixed-column grid, not flex + grow: with grow, a partial last row's cards
+          stretched wide, and since the art is aspect-square, wider meant TALLER —
+          the last row didn't match the rest. Equal columns keep every card the
+          same size; a short last row just leaves empty cells. */}
       {pageSlice.length > 0 ? (
-        <div className="flex flex-wrap gap-3.5">
+        <div className="grid grid-cols-2 gap-3.5 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {pageSlice.map((coin) => (
-            <div key={coin.address} className="grow basis-[calc(50%-7px)] md:min-w-[210px] md:basis-[210px]">
-              <TokenCard coin={coin} />
-            </div>
+            <TokenCard key={coin.address} coin={coin} />
           ))}
         </div>
       ) : (

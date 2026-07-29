@@ -36,6 +36,15 @@ async function hasContract(address: string): Promise<boolean> {
 export const dynamic = "force-dynamic"
 
 /**
+ * Trades / holders cards. Both lists are capped and scroll inside the card
+ * (the chat card already does this) — unbounded, 20 trades stretched the card
+ * past 1000px and `items-stretch` dragged the 12-row holders card up with it,
+ * leaving a wall of empty panel.
+ */
+const LIST_CARD = "glass flex h-[420px] min-w-[300px] flex-col p-6"
+const LIST_SCROLL = "-mr-2 min-h-0 flex-1 overflow-y-auto pr-2"
+
+/**
  * Per-coin social card. When the coin has uploaded ipfs:// art we resolve it to
  * a gateway URL and use a large summary card; otherwise a plain summary, no
  * fabricated image. The image is already a hosted URL, so no ImageResponse.
@@ -279,7 +288,7 @@ export default async function TokenPage({
 
       {/* ---- recent trades · top holders ---- */}
       <div className="mt-4 flex flex-wrap items-stretch gap-4">
-        <div className="glass min-h-[340px] min-w-[300px] flex-[1.3_1_420px] p-6">
+        <div className={`${LIST_CARD} flex-[1.3_1_420px]`}>
           <div className="mb-2.5 flex items-baseline justify-between">
             <h2 className="text-faint text-xs font-medium" style={{ letterSpacing: ".12em" }}>
               RECENT TRADES
@@ -289,39 +298,41 @@ export default async function TokenPage({
               live
             </span>
           </div>
-          {trades === null ? (
-            <Empty>Can&rsquo;t reach the harbourmaster&rsquo;s log.</Empty>
-          ) : trades.length === 0 ? (
-            <Empty>No trades yet — this one&rsquo;s still at the dock.</Empty>
-          ) : (
-            trades.map((t) => (
-              <Row key={t.id}>
-                <span
-                  className="shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-bold uppercase"
-                  style={{
-                    color: t.kind === "buy" ? "#7cc9a3" : "#de8092",
-                    background: t.kind === "buy" ? "rgba(124,201,163,.12)" : "rgba(222,128,146,.12)",
-                  }}
-                >
-                  {t.kind}
-                </span>
-                <span className="tabular truncate font-semibold">
-                  {t.eth} <span className="text-mist font-sans font-normal">USDC of ${coin.ticker}</span>
-                </span>
-                <a
-                  href={explorerTx(t.txHash)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="tabular text-mist hover:text-lime ml-auto shrink-0 text-[13px] transition-colors"
-                >
-                  {t.ago} ↗
-                </a>
-              </Row>
-            ))
-          )}
+          <div className={LIST_SCROLL}>
+            {trades === null ? (
+              <Empty>Can&rsquo;t reach the harbourmaster&rsquo;s log.</Empty>
+            ) : trades.length === 0 ? (
+              <Empty>No trades yet — this one&rsquo;s still at the dock.</Empty>
+            ) : (
+              trades.map((t) => (
+                <Row key={t.id}>
+                  <span
+                    className="shrink-0 rounded-full px-2.5 py-1 text-[11.5px] font-bold uppercase"
+                    style={{
+                      color: t.kind === "buy" ? "#7cc9a3" : "#de8092",
+                      background: t.kind === "buy" ? "rgba(124,201,163,.12)" : "rgba(222,128,146,.12)",
+                    }}
+                  >
+                    {t.kind}
+                  </span>
+                  <span className="tabular truncate font-semibold">
+                    {t.eth} <span className="text-mist font-sans font-normal">USDC of ${coin.ticker}</span>
+                  </span>
+                  <a
+                    href={explorerTx(t.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="tabular text-mist hover:text-lime ml-auto shrink-0 text-[13px] transition-colors"
+                  >
+                    {t.ago} ↗
+                  </a>
+                </Row>
+              ))
+            )}
+          </div>
         </div>
 
-        <div className="glass min-h-[340px] min-w-[300px] flex-[1_1_380px] p-6">
+        <div className={`${LIST_CARD} flex-[1_1_380px]`}>
           <div className="mb-2.5 flex items-baseline justify-between">
             <h2 className="text-faint text-xs font-medium" style={{ letterSpacing: ".12em" }}>
               TOP HOLDERS
@@ -332,44 +343,46 @@ export default async function TokenPage({
               </span>
             )}
           </div>
-          {holders === null || holders.rows.length === 0 ? (
-            <Empty>Holder manifest isn&rsquo;t indexed yet.</Empty>
-          ) : (
-            holders.rows.map((h) => (
-              <div
-                key={h.address}
-                className="py-[11px]"
-                style={{ borderBottom: "1px solid rgba(148,168,196,.14)" }}
-              >
-                <div className="flex justify-between gap-3 text-[14.5px]">
-                  {/* the locked LP position is always the largest holder — by construction */}
-                  {h.locked ? (
-                    <span className="text-body2 truncate">🏦 locked position</span>
-                  ) : (
-                    <Link
-                      href={`/u/${h.address}`}
-                      className="tabular text-body2 hover:text-lime truncate"
-                    >
-                      {`${h.address.slice(0, 5)}…${h.address.slice(-5)}`}
-                    </Link>
-                  )}
-                  <span className="tabular shrink-0 font-semibold">{fmtPct(h.pct)}</span>
-                </div>
+          <div className={LIST_SCROLL}>
+            {holders === null || holders.rows.length === 0 ? (
+              <Empty>Holder manifest isn&rsquo;t indexed yet.</Empty>
+            ) : (
+              holders.rows.map((h) => (
                 <div
-                  className="mt-[7px] h-1 overflow-hidden rounded-full"
-                  style={{ background: "rgba(148,168,196,.14)" }}
+                  key={h.address}
+                  className="py-[11px]"
+                  style={{ borderBottom: "1px solid rgba(148,168,196,.14)" }}
                 >
+                  <div className="flex justify-between gap-3 text-[14.5px]">
+                    {/* the locked LP position is always the largest holder — by construction */}
+                    {h.locked ? (
+                      <span className="text-body2 truncate">🏦 locked position</span>
+                    ) : (
+                      <Link
+                        href={`/u/${h.address}`}
+                        className="tabular text-body2 hover:text-lime truncate"
+                      >
+                        {`${h.address.slice(0, 5)}…${h.address.slice(-5)}`}
+                      </Link>
+                    )}
+                    <span className="tabular shrink-0 font-semibold">{fmtPct(h.pct)}</span>
+                  </div>
                   <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(100, h.pct)}%`,
-                      background: "linear-gradient(90deg,#4f74a8,#8fb0e8)",
-                    }}
-                  />
+                    className="mt-[7px] h-1 overflow-hidden rounded-full"
+                    style={{ background: "rgba(148,168,196,.14)" }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, h.pct)}%`,
+                        background: "linear-gradient(90deg,#4f74a8,#8fb0e8)",
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

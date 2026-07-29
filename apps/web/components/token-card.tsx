@@ -143,7 +143,8 @@ export function TokenCard({ coin }: { coin: Coin }) {
         <span className="text-faint text-[11px] font-semibold tracking-[.1em]">MC</span>
       </div>
 
-      <div className="text-faint mt-2 flex justify-between gap-2 text-[12.5px]">
+      {/* mt-auto: footers stay aligned even if a card above it ever grows */}
+      <div className="text-faint mt-auto flex justify-between gap-2 pt-2 text-[12.5px]">
         <span className="tabular truncate">{coin.creator}</span>
         <span className="shrink-0">{coin.age} ago</span>
       </div>
