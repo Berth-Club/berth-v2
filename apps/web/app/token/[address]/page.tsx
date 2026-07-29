@@ -238,7 +238,7 @@ export default async function TokenPage({
             <PriceChart points={history ?? []} volume={coin.vol} />
           </div>
 
-          <div className="px-5 pb-5">
+          <div className="px-5 pb-5 pt-9">
             <div className="text-mist mb-5 flex justify-between text-xs">
               <span>Graduation</span>
               <span className="tabular text-foam font-semibold">{pct}%</span>

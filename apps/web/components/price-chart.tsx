@@ -16,7 +16,7 @@ const TIMEFRAMES = [
 ] as const
 
 const W = 600
-const H = 220
+const H = 188
 
 /**
  * Real price history only.

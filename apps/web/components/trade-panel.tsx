@@ -166,7 +166,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
   )
 
   return (
-    <div className="glass flex w-full min-w-0 flex-col p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
+    <div className="glass w-full min-w-0 self-start p-5 lg:max-w-[400px] lg:flex-[1_1_290px]">
       {/* identity */}
       <div className="mb-4 flex items-center gap-3">
         <CoinAvatar
@@ -237,7 +237,7 @@ export function TradePanel({ coin }: { coin: Coin }) {
       </div>
 
       {/* % of available balance */}
-      <div className="mt-auto flex gap-2 pt-3.5">
+      <div className="mt-3.5 flex gap-2">
         {PERCENTS.map((p) => (
           <button
             key={p}
