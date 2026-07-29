@@ -9,6 +9,7 @@ import { useWallet } from "@/components/wallet-provider"
 import { useImageUpload } from "@/lib/use-image-upload"
 import { explorerTx } from "@/lib/chain"
 import { buildConfig, normalizeTicker, parseUsdcInput, useCurvePresets, useLaunch } from "@/lib/launch"
+import { isNameBlocked, isTickerBlocked } from "@/lib/blocklist"
 
 /**
  * Launch a coin. v3 FINAL is ONE view — form on the left, a live preview + the
@@ -76,6 +77,7 @@ export function LaunchWizard() {
 
   const valueWei = parseUsdcInput(devBuy)
   const tickerUp = normalizeTicker(ticker) || "TICKER"
+  const nameBlocked = isNameBlocked(name) || isTickerBlocked(tickerUp)
 
   // Memoized: this object is a query key for the predict read and the deploy
   // simulation. A fresh identity every render would refetch forever.
@@ -122,7 +124,7 @@ export function LaunchWizard() {
   // The simulation is a full deploy eth_call. Without a review step to hang it
   // on it runs whenever the form is genuinely launchable — which is the same
   // set of moments the old step-2 gate covered, minus the extra click.
-  const formReady = !!config && !badDevBuy && !imageBlocking
+  const formReady = !!config && !badDevBuy && !imageBlocking && !nameBlocked
   // Gated on `armed`: no salt grind or simulation until they click Launch.
   const launch = useLaunch(config, valueWei, armed && formReady && connected && !wrongNetwork, curveConfigId)
 
@@ -227,6 +229,11 @@ export function LaunchWizard() {
                 placeholder="Token name"
                 className={inputCls}
               />
+              {nameBlocked && (
+                <p className="mt-1 text-[12px]" style={{ color: "#de8092" }}>
+                  This name is reserved. Pick another.
+                </p>
+              )}
             </Field>
             <Field label="Ticker" hint="Letters and numbers. 10 max.">
               <input
