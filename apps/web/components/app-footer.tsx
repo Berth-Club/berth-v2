@@ -65,12 +65,12 @@ export function AppFooter() {
         >
           <span className="text-faint font-mono text-[11.5px]">© 2026 Berth Labs, LLC.</span>
           <a
-            href="https://x.com/berthdotclub"
+            href="https://x.com/Berth_Club"
             target="_blank"
             rel="noreferrer noopener"
             className="btn-frost text-body2 hover:text-foam inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[12.5px]"
           >
-            𝕏 @berthdotclub
+            𝕏 @Berth_Club
           </a>
         </div>
       </div>
