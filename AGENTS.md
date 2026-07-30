@@ -1,3 +1,7 @@
+> New here? Read [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) first for the big
+> picture (what the app is, how web/indexer/contracts/DB fit together, how to run,
+> test, and deploy). This file is the strict conventions + tripwires.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
