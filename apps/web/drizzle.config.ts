@@ -17,7 +17,7 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: { url: process.env.DATABASE_URL! },
-  tablesFilter: ["coin_comments"],
+  tablesFilter: ["coin_comments", "user_profiles"],
   strict: true,
   verbose: true,
 })
