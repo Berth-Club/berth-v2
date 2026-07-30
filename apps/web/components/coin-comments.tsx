@@ -2,9 +2,18 @@
 
 import * as React from "react"
 
+import { UserAvatar } from "@/components/user-avatar"
 import { useWallet } from "@/components/wallet-provider"
 
-type Comment = { id: string; author: string; body: string; createdAt: number; balance: string | null }
+type Comment = {
+  id: string
+  author: string
+  body: string
+  createdAt: number
+  balance: string | null
+  name: string | null
+  image: string | null
+}
 
 function short(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -18,28 +27,6 @@ function ago(ts: number) {
 }
 
 const MAX = 280
-
-// Deterministic nautical glyph per author — the design's avatar is a dark disc
-// with an emoji, not a colored blob. Same author always gets the same glyph.
-const GLYPHS = ["⚓", "🌊", "⛵", "🐚", "🦑", "🐙", "🦀", "🧭", "🪝", "🐠", "🐳", "🫧"]
-function glyph(seed: string): string {
-  let h = 0
-  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0
-  return GLYPHS[h % GLYPHS.length]!
-}
-
-/** The design's avatar: 28px dark disc, faint border, centered glyph. */
-function Avatar({ seed }: { seed: string }) {
-  return (
-    <div
-      aria-hidden
-      className="grid size-7 shrink-0 place-items-center rounded-full text-[13px]"
-      style={{ background: "#0b1929", border: "1px solid rgba(148,168,196,.2)" }}
-    >
-      {glyph(seed)}
-    </div>
-  )
-}
 
 /**
  * The comment thread for a coin. Reads are public; posting needs a connected
@@ -156,10 +143,17 @@ export function CoinComments({ coin, symbol }: { coin: string; symbol: string })
               className="flex gap-2.5 py-[11px] text-sm"
               style={{ borderBottom: "1px solid rgba(148,168,196,0.14)" }}
             >
-              <Avatar seed={c.author} />
+              <UserAvatar address={c.author} image={c.image} />
               <div className="min-w-0 flex-1">
                 <div className="text-faint flex flex-wrap items-center gap-[7px] text-xs">
-                  <span className="tabular text-body2 font-semibold">{short(c.author)}</span>
+                  {c.name ? (
+                    <>
+                      <span className="text-body2 max-w-[10rem] truncate font-semibold">{c.name}</span>
+                      <span className="tabular text-faint text-[11px]">{short(c.author)}</span>
+                    </>
+                  ) : (
+                    <span className="tabular text-body2 font-semibold">{short(c.author)}</span>
+                  )}
                   {c.balance && (
                     <span
                       className="rounded-full px-[7px] py-[2px] font-mono text-[10px]"
@@ -185,7 +179,7 @@ export function CoinComments({ coin, symbol }: { coin: string; symbol: string })
       {connected ? (
         <div className="mt-3.5 flex flex-col gap-2">
           <div className="flex gap-2">
-            <Avatar seed={address ?? "you"} />
+            <UserAvatar address={address ?? "you"} />
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value.slice(0, MAX))}

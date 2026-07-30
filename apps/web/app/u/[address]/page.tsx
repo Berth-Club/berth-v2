@@ -2,8 +2,12 @@ import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { ProfileEditor } from "@/components/profile-editor"
+import { UserAvatar } from "@/components/user-avatar"
 import { fmtMc } from "@/lib/format"
 import { fetchCaptain, fetchCaptains, fetchCoinsByCreator } from "@/lib/indexer"
+import { httpUrlOrNull } from "@/lib/profile-input"
+import { getProfile } from "@/lib/profiles"
 
 export const dynamic = "force-dynamic"
 
@@ -25,16 +29,23 @@ export default async function UserPage({
   const { address } = await params
   const addr = decodeURIComponent(address)
 
-  const [captain, created, all] = await Promise.all([
+  const [captain, created, all, profile] = await Promise.all([
     fetchCaptain(addr),
     fetchCoinsByCreator(addr),
     fetchCaptains(),
+    getProfile(addr),
   ])
 
-  // No row means this wallet has never launched or traded here — not an error.
-  if (!captain) notFound()
+  // 404 only when there's NOTHING to show — neither chain activity nor a profile.
+  // A wallet that onboarded and set a profile but never traded still has a page.
+  if (!captain && !profile) notFound()
 
-  const rank = all ? all.findIndex((c) => c.address.toLowerCase() === addr.toLowerCase()) + 1 : 0
+  // Prefer the captain's canonical address; fall back to the route param for a
+  // profile-only wallet with no captain row.
+  const displayAddress = captain?.address ?? addr
+  const rank = all
+    ? all.findIndex((c) => c.address.toLowerCase() === displayAddress.toLowerCase()) + 1
+    : 0
 
   return (
     <div className="mx-auto max-w-[900px] px-5 pb-20 pt-6">
@@ -47,19 +58,35 @@ export default async function UserPage({
 
       {/* profile */}
       <div className="glass mt-5 flex flex-wrap items-center gap-5 p-6">
-        <span
-          className="grid size-[84px] shrink-0 place-items-center rounded-full text-4xl"
-          style={{ background: "#1b3450", border: "2px solid #8fb0e8" }}
-          aria-hidden
-        >
-          ⚓
-        </span>
+        <UserAvatar
+          address={displayAddress}
+          image={profile?.image}
+          size={84}
+          style={{ border: "2px solid #8fb0e8" }}
+        />
 
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-[30px] leading-tight">{short(captain.address)}</h1>
-          <div className="tabular text-mist break-all text-sm">{captain.address}</div>
-          <div className="text-mist mt-1 text-[13px]">
-            Docked <span className="tabular">{since(captain.firstSeenAt)}</span>
+          <h1 className="font-display text-[30px] leading-tight">
+            {profile?.name ?? short(displayAddress)}
+          </h1>
+          <div className="tabular text-mist break-all text-sm">{displayAddress}</div>
+          {profile?.bio && <p className="text-body2 mt-2 max-w-prose text-sm">{profile.bio}</p>}
+          <div className="text-mist mt-1 flex flex-wrap items-center gap-x-3 text-[13px]">
+            {captain && (
+              <span>
+                Docked <span className="tabular">{since(captain.firstSeenAt)}</span>
+              </span>
+            )}
+            {httpUrlOrNull(profile?.social) && (
+              <a
+                href={httpUrlOrNull(profile?.social)!}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="text-gold hover:text-lime-hi"
+              >
+                {profile!.social!.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗
+              </a>
+            )}
           </div>
         </div>
 
@@ -71,17 +98,20 @@ export default async function UserPage({
         )}
       </div>
 
-      {/* stats — every one of these is indexed, none are derived guesses */}
+      <ProfileEditor address={displayAddress} initial={profile} />
+
+      {/* stats — every one of these is indexed, none are derived guesses. A
+          profile-only wallet with no captain row reads 0/— across the board. */}
       <div
         className="mt-4 grid gap-3"
         style={{ gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))" }}
       >
-        <Stat label="Coins created" value={String(captain.coinsCreated)} />
-        <Stat label="Buys" value={String(captain.buys)} color="#7cc9a3" />
-        <Stat label="Sells" value={String(captain.sells)} color="#de8092" />
+        <Stat label="Coins created" value={String(captain?.coinsCreated ?? 0)} />
+        <Stat label="Buys" value={String(captain?.buys ?? 0)} color="#7cc9a3" />
+        <Stat label="Sells" value={String(captain?.sells ?? 0)} color="#de8092" />
         <Stat
           label="Volume"
-          value={captain.volumeNative > 0 ? fmtMc(captain.volumeUsd) : "—"}
+          value={captain && captain.volumeNative > 0 ? fmtMc(captain.volumeUsd) : "—"}
           color="#8fb0e8"
         />
       </div>

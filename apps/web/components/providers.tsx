@@ -4,6 +4,7 @@ import { PrivyProvider, type PrivyClientConfig } from "@privy-io/react-auth"
 import { WagmiProvider } from "@privy-io/wagmi"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
+import { OnboardingProfile } from "@/components/onboarding-profile"
 import { arc } from "@/lib/chain"
 import { wagmiConfig } from "@/lib/wagmi"
 import { env } from "@/lib/env"
@@ -51,7 +52,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider appId={appId} config={privyConfig}>
       <QueryClientProvider client={queryClient}>
-        <WagmiProvider config={wagmiConfig}>{children}</WagmiProvider>
+        <WagmiProvider config={wagmiConfig}>
+          {children}
+          <OnboardingProfile />
+        </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>
   )

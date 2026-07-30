@@ -135,9 +135,29 @@ export async function fetchCaptains(): Promise<Captain[] | null> {
   })
 }
 
+const CAPTAIN_QUERY = `query ($address: String!) {
+  captain(address: $address) { address coinsCreated buys sells volumeNative firstSeenAt }
+}`
+
 export async function fetchCaptain(address: string): Promise<Captain | null> {
-  const all = await fetchCaptains()
-  return all?.find((c) => c.address.toLowerCase() === address.toLowerCase()) ?? null
+  // Query the one captain directly — NOT via fetchCaptains(), which is the
+  // top-50-by-volume leaderboard and so drops prolific-but-low-volume creators,
+  // 404ing them on their own /u page.
+  const data = await gql<{ captain: RawCaptain | null }>(CAPTAIN_QUERY, {
+    address: address.toLowerCase(),
+  })
+  const c = data?.captain
+  if (!c) return null
+  const volumeNative = nativeToUsdc(c.volumeNative)
+  return {
+    address: c.address,
+    coinsCreated: c.coinsCreated,
+    buys: c.buys,
+    sells: c.sells,
+    volumeNative,
+    volumeUsd: volumeNative,
+    firstSeenAt: Number(c.firstSeenAt),
+  }
 }
 
 /**
@@ -484,6 +504,7 @@ function toCoin(c: IndexedCoin): Coin {
     name: c.name,
     ticker: c.symbol,
     creator: short(c.creator),
+    creatorAddress: c.creator.toLowerCase(),
     age: ago(Number(c.createdAt)),
     priceUsd: priceNative,
     // Real and nullable: the indexer returns null when there's no ~24h-old

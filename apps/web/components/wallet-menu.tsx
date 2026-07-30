@@ -141,6 +141,13 @@ export function WalletMenu() {
 
           {/* actions */}
           <Link
+            href={`/u/${wallet.address}`}
+            onClick={() => setOpen(false)}
+            className="btn-frost mt-3.5 block w-full py-2.5 text-center text-[13.5px]"
+          >
+            Profile
+          </Link>
+          <Link
             href="/hold"
             onClick={() => setOpen(false)}
             className="btn-glossy mt-3.5 block w-full py-2.5 text-center text-[14px]"

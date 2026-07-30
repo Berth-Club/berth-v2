@@ -13,9 +13,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:check": "node --conditions=react-server --import tsx lib/comments.check.ts"
+    "db:check": "node --conditions=react-server --import tsx lib/comments.check.ts",
+    "db:check:profiles": "node --conditions=react-server --import tsx lib/profiles.check.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1098.0",
     "@noble/hashes": "^1.8.0",
     "@privy-io/react-auth": "^3.35.1",
     "@privy-io/server-auth": "^1.32.5",

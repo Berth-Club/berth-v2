@@ -99,7 +99,7 @@ function AssetChip({ coin, usdc }: { coin: Coin; usdc: boolean }) {
  * When disconnected the CTA reads "Connect wallet" and connects. It never
  * scolds: the button is always the next step, never an error message.
  */
-export function TradePanel({ coin }: { coin: Coin }) {
+export function TradePanel({ coin, creatorName }: { coin: Coin; creatorName?: string | null }) {
   const params = useSearchParams()
   // ⚡ Snap buy lands here with ?buy=100. It pre-fills, never auto-submits.
   const seeded = params.get("buy")
@@ -182,8 +182,11 @@ export function TradePanel({ coin }: { coin: Coin }) {
           <div className="font-display truncate text-[18px]">{coin.name}</div>
           <div className="text-faint text-[12.5px]">
             ${coin.ticker} · by{" "}
-            <Link href={`/u/${coin.creator}`} className="text-gold tabular hover:underline">
-              {coin.creator}
+            <Link
+              href={`/u/${coin.creatorAddress}`}
+              className={`text-gold hover:underline ${creatorName ? "" : "tabular"}`}
+            >
+              {creatorName ?? coin.creator}
             </Link>
           </div>
         </div>

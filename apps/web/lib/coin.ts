@@ -17,7 +17,10 @@ export type Coin = {
   image: string | null
   name: string
   ticker: string
+  /** Shortened creator address for display, e.g. "0xb45c…d462e". */
   creator: string
+  /** Full lowercased creator address — for /u links and profile lookup. */
+  creatorAddress: string
   age: string
   /** null = the ETH/USD feed is unreachable, so USD is unknown. Renders "—". */
   priceUsd: number | null

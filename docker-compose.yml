@@ -74,12 +74,17 @@ services:
         NEXT_PUBLIC_RPC_URL: ${NEXT_PUBLIC_RPC_URL:-https://rpc.testnet.arc.network}
         NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-}
         NEXT_PUBLIC_SITE_URL: http://localhost:3000
+        NEXT_PUBLIC_R2_PUBLIC_BASE: ${NEXT_PUBLIC_R2_PUBLIC_BASE:-}
     environment:
       # server-side (read at runtime)
       INDEXER_URL: http://indexer:42069
       DATABASE_URL: postgres://berth:berth@app-db:5432/berth
       PRIVY_APP_SECRET: ${PRIVY_APP_SECRET:-}
       PINATA_JWT: ${PINATA_JWT:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BUCKET:-}
       RPC_URL: ${RPC_URL:-https://rpc.testnet.arc.network}
       PORT: "3000"
     ports:

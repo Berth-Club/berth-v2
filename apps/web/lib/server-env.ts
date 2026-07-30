@@ -20,4 +20,13 @@ export const serverEnv = {
   privyAppSecret: process.env.PRIVY_APP_SECRET,
   /** Scoped (upload-only) Pinata JWT — pins coin art to IPFS. */
   pinataJwt: process.env.PINATA_JWT,
+  /** Cloudflare R2 (S3-compatible) — stores mutable profile avatars. Any field
+   *  missing => avatar uploads degrade to "unavailable". The public URL to serve
+   *  them from is NEXT_PUBLIC_R2_PUBLIC_BASE (env.ts), a cookie-less host. */
+  r2: {
+    accountId: process.env.R2_ACCOUNT_ID,
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    bucket: process.env.R2_BUCKET,
+  },
 } as const

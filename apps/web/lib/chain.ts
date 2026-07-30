@@ -132,6 +132,20 @@ export function ipfsToProxy(uri: string | null | undefined): string | null {
   return `/api/img?cid=${encodeURIComponent(path)}`
 }
 
+/**
+ * The <img src> for a stored profile image, branching on scheme: `ipfs://`
+ * (legacy avatars + coin CIDs) goes through the cached proxy; an https url (an
+ * R2 avatar) is used directly; anything else is null (falls back to the glyph).
+ * Write-validation (isStorableImage) already restricts stored https urls to the
+ * R2 host, and a plain <img src> can't execute script, so direct use is safe.
+ */
+export function avatarSrc(image: string | null | undefined): string | null {
+  if (!image) return null
+  if (image.startsWith("ipfs://")) return ipfsToProxy(image)
+  if (image.startsWith("https://")) return image
+  return null
+}
+
 
 /**
  * Launchpad addresses live in @workspace/contracts — the ONE place both the

@@ -1,7 +1,7 @@
 ---
 title: "feat: User profile identity (avatar, name, bio) + onboarding step"
 type: feat
-status: active
+status: completed
 date: 2026-07-29
 origin: docs/brainstorms/2026-07-29-profile-identity-requirements.md
 ---
@@ -97,7 +97,7 @@ memecoin launchpad. (see origin: docs/brainstorms/2026-07-29-profile-identity-re
 
 ## Implementation Units
 
-- [ ] **Unit 1: `user_profiles` table + data access**
+- [x] **Unit 1: `user_profiles` table + data access**
 
 **Goal:** Persist and read profiles by wallet address, with batch lookup.
 **Requirements:** R1, R2, R10.
@@ -122,7 +122,7 @@ memecoin launchpad. (see origin: docs/brainstorms/2026-07-29-profile-identity-re
 - Error path: `DATABASE_URL` unset → reads return empty/null, writes no-op, no throw.
 **Verification:** self-check passes; a migration file exists that creates only the app table (indexer schema untouched).
 
-- [ ] **Unit 2: Profile API (public read, auth'd write) + validation**
+- [x] **Unit 2: Profile API (public read, auth'd write) + validation**
 
 **Goal:** Public GET by address(es); owner-only upsert.
 **Requirements:** R11, R12, R13, R10.
@@ -147,7 +147,7 @@ memecoin launchpad. (see origin: docs/brainstorms/2026-07-29-profile-identity-re
 - Happy path: GET batch returns a map for known addresses and omits unknown ones.
 **Verification:** unauthorized writes rejected; a signed-in user can only mutate their own row; malformed input 422s.
 
-- [ ] **Unit 3: `UserAvatar` / `UserIdentity` + wire into all surfaces**
+- [x] **Unit 3: `UserAvatar` / `UserIdentity` + wire into all surfaces**
 
 **Goal:** Render profile avatar+name (fallback to generated avatar + short address) everywhere a user appears.
 **Requirements:** R6, R7, R8, R9, R10, R2.
@@ -175,7 +175,7 @@ memecoin launchpad. (see origin: docs/brainstorms/2026-07-29-profile-identity-re
 - Integration: `listComments` returns author name/image for authors who have profiles and nulls for those who don't, in one batched lookup (assert in `lib/comments.check.ts`).
 **Verification:** on a surface with mixed users, profiled users show identity and unprofiled users show the old identity; no N+1 (single profile query per surface load).
 
-- [ ] **Unit 4: `ProfileForm` + edit from /u**
+- [x] **Unit 4: `ProfileForm` + edit from /u**
 
 **Goal:** Owner can create/edit their profile from their /u page.
 **Requirements:** R1, R3, R11, R12.
@@ -196,7 +196,7 @@ memecoin launchpad. (see origin: docs/brainstorms/2026-07-29-profile-identity-re
 - Error path: oversize/invalid image or over-cap name → inline error, no submit (server still enforces).
 **Verification:** owner can round-trip an edit; non-owners see read-only.
 
-- [ ] **Unit 5: One-time skippable onboarding step**
+- [x] **Unit 5: One-time skippable onboarding step**
 
 **Goal:** After first login, invite profile setup once, skippable, never blocking.
 **Requirements:** R4, R5.

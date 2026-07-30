@@ -21,6 +21,10 @@ export const env = {
   ipfsGateway: (process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud").replace(/\/+$/, ""),
   /** Canonical site origin for OpenGraph / canonical URLs. */
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+  /** Public base URL that serves R2 avatars (trailing slash trimmed). MUST be a
+   *  cookie-less host (r2.dev or a dedicated subdomain, never the app origin) so
+   *  a served image can't run as same-origin script. Empty => avatars off. */
+  r2PublicBase: (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE || "").replace(/\/+$/, ""),
 } as const
 
 /** Whether wallet features can work at all (Privy configured). */

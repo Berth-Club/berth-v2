@@ -10,6 +10,7 @@ import { CoinComments } from "@/components/coin-comments"
 import { CopyPill } from "@/components/copy-pill"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { PendingCoin } from "@/components/pending-coin"
+import { UserAvatar } from "@/components/user-avatar"
 import { arc, explorerAddress, explorerTx, ipfsToGateway } from "@/lib/chain"
 import { env } from "@/lib/env"
 import { fmtMc, fmtPrice } from "@/lib/format"
@@ -20,6 +21,7 @@ import {
   fetchPriceHistory,
   fetchTrades,
 } from "@/lib/indexer"
+import { getProfile, getProfiles } from "@/lib/profiles"
 
 /** Is there a deployed contract at this address? A just-launched coin exists
  *  on-chain before the indexer logs it — that's a poll-and-wait, not a 404. */
@@ -93,12 +95,15 @@ export default async function TokenPage({
 
   // All are null when the indexer can't answer. Nothing here is invented:
   // an un-traded coin shows no trades, and holders stay empty until indexed.
-  const [trades, holders, history, pool] = await Promise.all([
+  const [trades, holders, history, pool, creatorProfile] = await Promise.all([
     fetchTrades(address),
     fetchHolders(address),
     fetchPriceHistory(address),
     fetchCoinPool(address),
+    getProfile(coin.creatorAddress),
   ])
+  // Batch-resolve holder identities in one query (see origin plan R9, R10).
+  const holderProfiles = await getProfiles(holders?.rows.map((h) => h.address) ?? [])
 
   const pct = Math.round(Math.min(1, Math.max(0, coin.graduated ? 1 : coin.curve)) * 100)
 
@@ -157,8 +162,11 @@ export default async function TokenPage({
           <div className="text-faint flex flex-wrap items-center gap-[11px] text-[12.5px]">
             <span>
               by{" "}
-              <Link href={`/u/${coin.creator}`} className="text-gold tabular hover:text-lime-hi">
-                {coin.creator}
+              <Link
+                href={`/u/${coin.creatorAddress}`}
+                className={`text-gold hover:text-lime-hi ${creatorProfile?.name ? "" : "tabular"}`}
+              >
+                {creatorProfile?.name ?? coin.creator}
               </Link>
             </span>
             <span style={{ color: "rgba(148,168,196,.4)" }}>·</span>
@@ -203,7 +211,7 @@ export default async function TokenPage({
       {/* ---- swap · market · chat ---- */}
       {/* items-stretch so the chat card matches the tallest sibling's height */}
       <div className="flex flex-wrap items-stretch gap-4">
-        <TradePanel coin={coin} />
+        <TradePanel coin={coin} creatorName={creatorProfile?.name ?? null} />
 
         {/* market card */}
         <div className="glass min-w-0 flex-[2.2_1_430px] overflow-hidden">
@@ -360,9 +368,19 @@ export default async function TokenPage({
                     ) : (
                       <Link
                         href={`/u/${h.address}`}
-                        className="tabular text-body2 hover:text-lime truncate"
+                        className="text-body2 hover:text-lime flex min-w-0 items-center gap-2"
                       >
-                        {`${h.address.slice(0, 5)}…${h.address.slice(-5)}`}
+                        <UserAvatar
+                          address={h.address}
+                          image={holderProfiles.get(h.address.toLowerCase())?.image}
+                          size={20}
+                        />
+                        <span
+                          className={`truncate ${holderProfiles.get(h.address.toLowerCase())?.name ? "" : "tabular"}`}
+                        >
+                          {holderProfiles.get(h.address.toLowerCase())?.name ??
+                            `${h.address.slice(0, 5)}…${h.address.slice(-5)}`}
+                        </span>
                       </Link>
                     )}
                     <span className="tabular shrink-0 font-semibold">{fmtPct(h.pct)}</span>

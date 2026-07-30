@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 
 import { coinComments } from "@/lib/db/schema"
+import { getProfile, getProfiles } from "@/lib/profiles"
 import { serverEnv } from "@/lib/server-env"
 
 /**
@@ -44,6 +45,10 @@ export type Comment = {
   createdAt: number
   /** The poster's holding of this coin when they posted, e.g. "22k". */
   balance: string | null
+  /** Author's profile display name at read time, or null (falls back to address). */
+  name: string | null
+  /** Author's profile avatar (`ipfs://CID`) at read time, or null. */
+  image: string | null
 }
 
 /** true when a DB is configured — the API returns 503 otherwise. */
@@ -68,13 +73,21 @@ export async function listComments(coin: string, limit = 100): Promise<Comment[]
       .where(eq(coinComments.coin, coin.toLowerCase()))
       .orderBy(desc(coinComments.createdAt))
       .limit(limit)
-    return rows.map((r) => ({
-      id: String(r.id),
-      author: r.author,
-      body: r.body,
-      createdAt: toUnix(r.createdAt),
-      balance: r.balance,
-    }))
+    // One batched profile lookup over the distinct authors in this page, so the
+    // thread renders names/avatars without an N+1 (see origin plan R7, R10).
+    const profiles = await getProfiles(rows.map((r) => r.author))
+    return rows.map((r) => {
+      const p = profiles.get(r.author.toLowerCase())
+      return {
+        id: String(r.id),
+        author: r.author,
+        body: r.body,
+        createdAt: toUnix(r.createdAt),
+        balance: r.balance,
+        name: p?.name ?? null,
+        image: p?.image ?? null,
+      }
+    })
   } catch (err) {
     // Degrade to an empty thread, but never silently — a missing table or a
     // pending migration looks identical to "no comments yet" from the UI.
@@ -98,12 +111,17 @@ export async function addComment(
     .values({ coin: coin.toLowerCase(), author, body, balance })
     .returning({ id: coinComments.id, createdAt: coinComments.createdAt })
   if (!row) return null
+  // Attach the poster's own profile so the optimistic insert shows their
+  // identity immediately, same as a reloaded thread would.
+  const p = await getProfile(author)
   return {
     id: String(row.id),
     author,
     body,
     createdAt: toUnix(row.createdAt),
     balance,
+    name: p?.name ?? null,
+    image: p?.image ?? null,
   }
 }
 

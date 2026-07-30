@@ -29,3 +29,21 @@ export const coinComments = pgTable(
   },
   (t) => [index("coin_comments_coin_idx").on(t.coin, desc(t.createdAt))]
 )
+
+/**
+ * Editable off-chain identity for a wallet. Keyed by the LOWERCASED address, so
+ * every surface can resolve `wallet -> {name, avatar, …}` with a plain lookup.
+ * All content columns are nullable: a profile with only an avatar, or only a
+ * name, is valid, and a wallet with no row at all just falls back to its derived
+ * identity (generated avatar + short address).
+ */
+export const userProfiles = pgTable("user_profiles", {
+  wallet: text("wallet").primaryKey(),
+  name: text("name"),
+  bio: text("bio"),
+  /** A single http(s) URL (e.g. an X profile). */
+  social: text("social"),
+  /** Uploaded avatar as `ipfs://CID`, same shape as a coin's image. */
+  image: text("image"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+})
