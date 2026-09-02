@@ -1,6 +1,6 @@
 import { ponder } from "ponder:registry";
-import { and, count, desc, eq, gt, lte } from "ponder";
-import { coin, swap, holder, feeBalance, feeRecipient, captain } from "ponder:schema";
+import { and, desc, eq, gt, lte } from "ponder";
+import { coin, swap, feeBalance, feeRecipient, captain } from "ponder:schema";
 
 // Tick-space math lives in lib/ so it can be unit-checked without Ponder's
 // virtual modules: `node lib/ticks.ts`. Read the comments there before touching
@@ -73,9 +73,6 @@ async function readGraduation(
   return { pairedPrincipal, graduated, curve: Number(progressBps) / 10_000 };
 }
 
-/** Mint source / burn sink. Never counts as a holder. */
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-
 /** The launch factory. Swap handlers fire on pools, so they cannot read it off the log. */
 const FACTORY_ADDRESS = CONTRACTS.launchFactory;
 
@@ -83,11 +80,6 @@ const DAY = 86_400n;
 
 function abs(n: bigint): bigint {
   return n < 0n ? -n : n;
-}
-
-/** Holder row id. Lowercased so it matches the `hex()` columns, which store lowercase. */
-function holderId(coinAddr: string, address: string): string {
-  return `${coinAddr.toLowerCase()}-${address.toLowerCase()}`;
 }
 
 /**
@@ -195,19 +187,6 @@ ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
     // No swaps yet => nothing to compare against => no 24h change.
     change24h: null,
   });
-
-  // The launch tx mints the supply and funds the LP *before* it emits
-  // TokenLaunched (verified on chain: the token's Transfer logs are at logIndex
-  // 4/8/13, this event at 17). Those Transfer handlers ran first and already
-  // wrote holder rows, but had no coin row to bump — so seed the count here.
-  const [seed] = await context.db.sql
-    .select({ n: count() })
-    .from(holder)
-    .where(and(eq(holder.coin, a.token), gt(holder.balance, 0n)));
-
-  if (seed && seed.n > 0) {
-    await context.db.update(coin, { address: a.token }).set({ holderCount: seed.n });
-  }
 
   // The dev buy is a real swap that this indexer structurally CANNOT see.
   //
@@ -319,60 +298,6 @@ ponder.on("LaunchPool:Swap", async ({ event, context }) => {
     isBuy ? { buys: 1, volumeNative: amountNative } : { sells: 1, volumeNative: amountNative },
     event.block.timestamp,
   );
-});
-
-// ---------------------------------------------------------------------------
-// Holders — rebuilt purely from ERC20 Transfer logs
-// ---------------------------------------------------------------------------
-
-/**
- * Applies a signed delta to one holder's balance.
- * Returns the resulting change in the coin's holder count: -1, 0 or +1.
- */
-async function applyBalance(
-  context: any,
-  coinAddr: `0x${string}`,
-  address: `0x${string}`,
-  delta: bigint,
-): Promise<number> {
-  if (address === ZERO_ADDRESS) return 0; // mint/burn endpoint, not a holder
-
-  const id = holderId(coinAddr, address);
-  const prev = (await context.db.find(holder, { id }))?.balance ?? 0n;
-
-  // Clamp at zero. A balance must never go negative even if we somehow saw a
-  // send before its matching receive (reorg, or a token that mints oddly).
-  const sum = prev + delta;
-  const next = sum > 0n ? sum : 0n;
-
-  await context.db
-    .insert(holder)
-    .values({ id, coin: coinAddr, address, balance: next })
-    .onConflictDoUpdate({ balance: next });
-
-  // Only crossing the zero boundary moves the count.
-  return (next > 0n ? 1 : 0) - (prev > 0n ? 1 : 0);
-}
-
-ponder.on("LaunchToken:Transfer", async ({ event, context }) => {
-  const { from, to, value } = event.args;
-  if (value === 0n) return; // moves no balance, so it can't move the holder set
-
-  const token = event.log.address;
-  const delta =
-    (await applyBalance(context, token, from, -value)) +
-    (await applyBalance(context, token, to, value));
-
-  if (delta === 0) return;
-
-  // The launch-tx mints arrive before TokenLaunched, so the coin row may not
-  // exist yet; TokenLaunched seeds holderCount from the rows we just wrote.
-  const c = await context.db.find(coin, { address: token });
-  if (!c) return;
-
-  await context.db
-    .update(coin, { address: token })
-    .set({ holderCount: c.holderCount + delta });
 });
 
 // ---------------------------------------------------------------------------

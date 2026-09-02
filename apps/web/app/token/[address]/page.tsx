@@ -17,10 +17,10 @@ import { fmtMc, fmtPrice } from "@/lib/format"
 import {
   fetchCoin,
   fetchCoinPool,
-  fetchHolders,
   fetchPriceHistory,
   fetchTrades,
 } from "@/lib/indexer"
+import { fetchHolders } from "@/lib/holders"
 import { getProfile, getProfiles } from "@/lib/profiles"
 
 /** Is there a deployed contract at this address? A just-launched coin exists

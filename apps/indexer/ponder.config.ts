@@ -5,7 +5,6 @@ import {
   LaunchFactoryAbi,
   LpLockerAbi,
   FeeLockerAbi,
-  LaunchTokenAbi,
   UniswapV3PoolAbi,
 } from "./abis/berth";
 
@@ -58,14 +57,11 @@ export default createConfig({
         process.env.RPC_URL ?? CHAIN.defaultRpc,
         process.env.RPC_URL_PAID,
       ].filter((url): url is string => Boolean(url)),
-      // Arc's public RPC collapses under ponder's default backfill concurrency
-      // -- it timed out at 73s and killed the process with an
-      // unhandledRejection. But 15/s was too far the other way: Arc produces
-      // ~0.5s blocks, so a factory deployed a day ago is already ~150k blocks
-      // back, and 15/s put the initial backfill at a 2.5-hour ETA. 50/s is the
-      // compromise that keeps it alive without the wait. A paid endpoint would
-      // let this go much higher -- see R11.
-      maxRequestsPerSecond: 50,
+      // THERE IS NO REQUEST CAP ANY MORE. `maxRequestsPerSecond: 50` used to sit
+      // here; in ponder 0.16 that option is @deprecated and does nothing — it
+      // typechecked and was ignored (observed: the limiter self-settled to 3
+      // rps regardless). The only real lever is keeping the per-block workload
+      // small, which is why there is no ERC20 Transfer source below.
     },
   },
   contracts: {
@@ -96,18 +92,6 @@ export default createConfig({
         address: LAUNCH_FACTORY,
         event: tokenLaunchedEvent,
         parameter: "pool",
-      }),
-      startBlock: START_BLOCK,
-    },
-    // Same factory pattern, on the `token` param: the ERC20 Transfer log of every
-    // launched coin. Drives the holder table + coin.holderCount.
-    LaunchToken: {
-      chain: "arc",
-      abi: LaunchTokenAbi,
-      address: factory({
-        address: LAUNCH_FACTORY,
-        event: tokenLaunchedEvent,
-        parameter: "token",
       }),
       startBlock: START_BLOCK,
     },

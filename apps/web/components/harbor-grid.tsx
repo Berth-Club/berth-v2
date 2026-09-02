@@ -69,9 +69,9 @@ function sortCoins(coins: Coin[], sort: Sort): Coin[] {
       )
     }
     // No per-coin recent-buy timestamp reaches the client, so "Recent buys"
-    // ranks by holder count — the closest real proxy for buying interest.
+    // ranks by trade count — the closest real proxy for buying interest.
     case "buys":
-      return out.sort((a, b) => b.holderCount - a.holderCount)
+      return out.sort((a, b) => b.swapCount - a.swapCount)
     case "new":
       return out.sort((a, b) => b.createdAt - a.createdAt)
     case "old":

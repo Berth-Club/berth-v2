@@ -44,8 +44,8 @@ export type Coin = {
   vol: string | null
   /** Numeric USD volume, for sorting and dense card display. */
   volumeUsd: number
-  /** Holders, from the indexer. 0 when unavailable. */
-  holderCount: number
+  /** Trades, from the indexer. Ranks the "most active" sort. */
+  swapCount: number
   /** Unix seconds the coin launched. For "newest" sorting and age. */
   createdAt: number
 }

@@ -50,6 +50,39 @@ launched yet". After any contract-event change, verify the signature against a
 real on-chain log (`cast keccak "TokenLaunched(...)"` vs the deployed factory's
 log topic0) before assuming it works.
 
+## The `factory()` bloom trap — never add an ERC20 Transfer source
+
+**Do not add a ponder `factory()` source whose event is ERC20 `Transfer`.** It
+cost this project a multi-day indexer outage and it fails in a way that looks
+like nothing is wrong.
+
+Ponder normally skips `eth_getLogs` for a block whose bloom filter cannot hold
+your events. A `factory()` source defeats that skip: the child addresses are
+unknown when the filter runs, so the address half of the match is forced true
+and matching collapses to **topic0 alone**. topic0 for `Transfer` is carried by
+nearly every block on a live chain, so the indexer pulls the logs of *every*
+block — the whole chain's ERC20 traffic, by everyone — to observe the handful of
+transfers our own tokens have had.
+
+On Arc that is not merely expensive, it is fatal:
+
+- The public RPC caps `eth_getLogs` at **~20 addresses** (measured: 20 passes, 24
+  fails). Every launch adds one child address, so past ~20 coins every log query
+  fails outright — a limit you grow into, not an outage.
+- It reports that address-count limit as `"requested range too large"`. Ponder
+  reads that as a *block* range problem and shrinks the range, which can never
+  help. It shrinks 500 → 25 → 1, still fails, and **stalls at a fixed percentage
+  forever with no error**.
+
+Holder data now comes from Arcscan (Blockscout) in `apps/web/lib/holders.ts`, not
+from the indexer. Keep it that way. The indexer keeps only what it is uniquely
+good at: launches, trades, and fees.
+
+**Related: there is no RPC request cap.** `maxRequestsPerSecond` is `@deprecated`
+in ponder 0.16 and does nothing — the `50` that used to sit in `ponder.config.ts`
+typechecked and was ignored. The only real lever is keeping the per-block
+workload small.
+
 ## Deploying a new contract version — checklist
 
 1. Bump addresses + `START_BLOCK` in `packages/contracts/src/index.ts`.

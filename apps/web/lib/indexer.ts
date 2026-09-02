@@ -47,7 +47,6 @@ type IndexedCoin = {
   lastTradeAt: string | null
   createdAt: string
   // Landing in the indexer separately — absent on older builds, see coinsQuery.
-  holderCount?: number | null
   change24h?: number | null
   /** 0-1 toward the USDC graduation threshold. From the factory, not from ticks. */
   curve?: number | null
@@ -55,8 +54,8 @@ type IndexedCoin = {
 }
 
 /**
- * Ponder rejects the *whole* query for one unknown field, so `holderCount` and
- * `change24h` (still being added indexer-side) are asked for optimistically and
+ * Ponder rejects the *whole* query for one unknown field, so `change24h`
+ * (still being added indexer-side) is asked for optimistically and
  * dropped on a retry. Costs one extra localhost POST per render until they
  * land, then zero — cheaper than a flag that needs a web restart to notice.
  */
@@ -66,7 +65,7 @@ const coinsQuery = (extended: boolean) => `{
       address creator tokenId pool name symbol metadataURI
       tickLower tickUpper tick curve graduated
       volumeNative swapCount lastTradeAt createdAt
-      ${extended ? "holderCount change24h" : ""}
+      ${extended ? "change24h" : ""}
     }
   }
 }`
@@ -74,12 +73,6 @@ const coinsQuery = (extended: boolean) => `{
 const SWAPS_QUERY = `query ($coin: String!) {
   swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "desc", limit: 20) {
     items { id isBuy amountNative timestamp txHash }
-  }
-}`
-
-const HOLDERS_QUERY = `query ($coin: String!) {
-  holders(where: { coin: $coin }, orderBy: "balance", orderDirection: "desc", limit: 12) {
-    items { address balance }
   }
 }`
 
@@ -175,7 +168,7 @@ export async function fetchCoinsByCreator(address: string): Promise<Coin[] | nul
           address creator tokenId pool name symbol metadataURI
           tickLower tickUpper tick curve graduated
           volumeNative swapCount lastTradeAt createdAt
-          holderCount change24h
+          change24h
         }
       }
     }`,
@@ -518,7 +511,7 @@ function toCoin(c: IndexedCoin): Coin {
     links: sanitizeLinks(meta),
     vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
     volumeUsd: volNative,
-    holderCount: c.holderCount ?? 0,
+    swapCount: c.swapCount,
     createdAt: Number(c.createdAt),
   }
 }
@@ -528,7 +521,7 @@ export async function fetchCoins(): Promise<Coin[] | null> {
   type Res = { coins: { items: IndexedCoin[] } }
 
   let data = await gql<Res>(coinsQuery(true))
-  // Either the indexer is down or it predates holderCount/change24h. Retry
+  // Either the indexer is down or it predates change24h. Retry
   // plain: if that works it was the latter, and those fields stay null.
   if (!data) data = await gql<Res>(coinsQuery(false))
 
@@ -660,63 +653,3 @@ export async function fetchPriceHistory(address: string): Promise<PricePoint[] |
   })
 }
 
-export type Holder = {
-  address: string
-  pct: number
-  /** The locked LP position — always the largest holder, by construction. */
-  locked: boolean
-}
-
-export type Holders = {
-  rows: Holder[]
-  /** Total distinct holders from the indexer; null until it indexes them. */
-  count: number | null
-}
-
-/**
- * Top holders for one coin. `null` = the indexer has no `holder` table yet, or
- * is unreachable — callers must render an honest empty state, never invent rows.
- */
-export async function fetchHolders(address: string): Promise<Holders | null> {
-  if (!isAddress(address)) return null
-  const coin = address.toLowerCase()
-
-  const [meta, data] = await Promise.all([
-    fetchCoinMeta(coin),
-    gql<{ holders: { items: { address: string; balance: string }[] } }>(HOLDERS_QUERY, { coin }),
-  ])
-
-  const items = data?.holders?.items
-  if (!items) return null
-
-  // The LP tokens sit in the pool; the position NFT is held by LpLocker. Either
-  // one showing up as a holder is the locked position, not a trader.
-  const locked = new Set(
-    [CONTRACTS.lpLocker, meta?.pool].filter((a) => !!a).map((a) => a!.toLowerCase()),
-  )
-
-  return {
-    rows: items.map((h) => ({
-      address: h.address,
-      // Holder balance is a launch token: 18dp, genuinely. (Not the 6dp quote asset.)
-      pct: (Number(formatUnits(BigInt(h.balance), 18)) / SUPPLY_TOKENS) * 100,
-      locked: locked.has(h.address.toLowerCase()),
-    })),
-    count: meta?.holderCount ?? null,
-  }
-}
-
-/** `pool` + `holderCount` for one coin — the bits `Coin` doesn't carry. */
-async function fetchCoinMeta(
-  coin: string,
-): Promise<{ pool: string; holderCount: number | null } | null> {
-  type Res = { coin: { pool: string; holderCount?: number | null } | null }
-  const q = (extended: boolean) =>
-    `query ($coin: String!) { coin(address: $coin) { pool ${extended ? "holderCount" : ""} } }`
-
-  let data = await gql<Res>(q(true), { coin })
-  if (!data) data = await gql<Res>(q(false), { coin })
-  if (!data?.coin) return null
-
-  return { pool: data.coin.pool, holderCount: data.coin.holderCount ?? null }
-}

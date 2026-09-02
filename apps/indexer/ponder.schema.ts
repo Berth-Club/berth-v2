@@ -74,8 +74,6 @@ export const coin = onchainTable(
     volumeNative: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),
     lastTradeAt: t.bigint(),
-    /** Addresses holding a non-zero balance. The locked LP pool is one of them. */
-    holderCount: t.integer().notNull().default(0),
     /**
      * Price change over the last 24h, in percent. NULLABLE on purpose: null means
      * "no trade older than 24h to compare against", which the UI must render as
@@ -115,26 +113,6 @@ export const swap = onchainTable(
     recipientIdx: index().on(t.recipient),
     // Serves the 24h lookback: newest swap for a coin at or before a cutoff.
     coinTsIdx: index().on(t.coin, t.timestamp),
-  }),
-);
-
-/**
- * Token balance per address, per coin. Rebuilt from ERC20 Transfer logs, so it
- * needs no chain reads. The zero address is never a holder (mint/burn endpoint).
- */
-export const holder = onchainTable(
-  "holder",
-  (t) => ({
-    id: t.text().primaryKey(), // `${coin}-${address}`, both lowercased
-    coin: t.hex().notNull(),
-    address: t.hex().notNull(),
-    balance: t.bigint().notNull().default(0n),
-  }),
-  (t) => ({
-    coinIdx: index().on(t.coin),
-    addressIdx: index().on(t.address),
-    // Serves "holders of this coin, biggest first" and the holderCount seed.
-    coinBalanceIdx: index().on(t.coin, t.balance),
   }),
 );
 
@@ -189,13 +167,8 @@ export const captain = onchainTable("captain", (t) => ({
 
 export const coinRelations = relations(coin, ({ many }) => ({
   swaps: many(swap),
-  holders: many(holder),
 }));
 
 export const swapRelations = relations(swap, ({ one }) => ({
   coinRef: one(coin, { fields: [swap.coin], references: [coin.address] }),
-}));
-
-export const holderRelations = relations(holder, ({ one }) => ({
-  coinRef: one(coin, { fields: [holder.coin], references: [coin.address] }),
 }));
