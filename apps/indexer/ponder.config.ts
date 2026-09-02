@@ -46,7 +46,18 @@ export default createConfig({
       // Deliberately NOT ponder's PONDER_RPC_URL_<chainId> convention: that bakes
       // the chain id into the key, so every chain change strands a dead variable
       // (this file previously carried PONDER_RPC_URL_4663). RPC_URL survives a move.
-      rpc: process.env.RPC_URL ?? CHAIN.defaultRpc,
+      //
+      // Two endpoints, both optional: RPC_URL is the free/public one, RPC_URL_PAID
+      // the Alchemy key. Ponder keeps a bucket per hostname and, on a 429 or a
+      // timeout, deactivates that endpoint, decays its rps limit, and reactivates
+      // it after a backoff -- so the free RPC dying fails over to the paid one
+      // with no redeploy. Note it POOLS rather than strictly prioritises: healthy
+      // endpoints share traffic by latency, so the paid key sees requests even
+      // while the public one is up.
+      rpc: [
+        process.env.RPC_URL ?? CHAIN.defaultRpc,
+        process.env.RPC_URL_PAID,
+      ].filter((url): url is string => Boolean(url)),
       // Arc's public RPC collapses under ponder's default backfill concurrency
       // -- it timed out at 73s and killed the process with an
       // unhandledRejection. But 15/s was too far the other way: Arc produces
