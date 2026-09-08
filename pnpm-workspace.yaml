@@ -3,6 +3,8 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  msw: false
   sharp: true
   unrs-resolver: true
-  msw: false
+patchedDependencies:
+  ponder@0.16.10: patches/ponder@0.16.10.patch

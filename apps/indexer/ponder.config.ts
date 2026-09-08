@@ -57,6 +57,21 @@ export default createConfig({
         process.env.RPC_URL ?? CHAIN.defaultRpc,
         process.env.RPC_URL_PAID,
       ].filter((url): url is string => Boolean(url)),
+      // The pool filter is a factory() source, so ponder sends every discovered
+      // pool address in one eth_getLogs. Arc's PUBLIC rpc caps that list at ~20
+      // addresses (measured: 20 passes, 24 fails) and rejects the request with
+      // "requested range too large" -- a message about the ADDRESS count that
+      // ponder reads as a BLOCK range problem, so it shrinks the range forever
+      // and never recovers.
+      //
+      // Ponder already has the escape: above `factoryAddressCountThreshold` it
+      // drops the address list and queries by topic0 alone, filtering child
+      // addresses client-side (sync-historical/index.ts:494). That threshold is
+      // hardcoded to 1000 in 0.16.10 AND 0.17.9, so we patch it to read
+      // PONDER_FACTORY_ADDRESS_THRESHOLD (patches/ponder@0.16.10.patch) and set
+      // it below the pool count. Measured on the public rpc: the topic-only
+      // query returns 996 logs for a 5000-block span in 1s, where the
+      // 44-address form fails at any span at all.
       // THERE IS NO REQUEST CAP ANY MORE. `maxRequestsPerSecond: 50` used to sit
       // here; in ponder 0.16 that option is @deprecated and does nothing — it
       // typechecked and was ignored (observed: the limiter self-settled to 3

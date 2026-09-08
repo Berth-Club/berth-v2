@@ -50,6 +50,31 @@ launched yet". After any contract-event change, verify the signature against a
 real on-chain log (`cast keccak "TokenLaunched(...)"` vs the deployed factory's
 log topic0) before assuming it works.
 
+## Arc's public RPC caps eth_getLogs at ~20 ADDRESSES
+
+The launchpad watches every pool a launch creates via a `factory()` source, so
+ponder sends the whole discovered address list in one `eth_getLogs`. Arc's public
+endpoint rejects a list longer than about 20 (measured: 20 passes, 24 fails) and
+every launch adds one, so this is a limit the project grows into.
+
+The failure is nasty because the error lies. Arc reports the address-count limit
+as `"requested range too large"`. Ponder reads that as a BLOCK range problem and
+halves the range, which can never help, so it shrinks 500 -> 25 -> 1 and stalls
+at a fixed percentage forever with no error.
+
+**The fix is `PONDER_FACTORY_ADDRESS_THRESHOLD`.** Above that many child
+addresses ponder drops the address list and queries by topic0 alone, filtering
+client-side (`sync-historical/index.ts:494`). Upstream hardcodes the threshold to
+`1000` in BOTH 0.16.10 and 0.17.9 with no env override, so
+`patches/ponder@0.16.10.patch` makes it configurable. Keep the value BELOW the
+number of launched pools or every log query fails again.
+
+Measured on the public RPC: topic-only returns 996 logs for a 5000-block span in
+1s; the 44-address form fails at any span, even a single block.
+
+**If you upgrade ponder, re-apply the patch** and re-check that
+`factoryAddressCountThreshold` still gates the same branch.
+
 ## The `factory()` bloom trap — never add an ERC20 Transfer source
 
 **Do not add a ponder `factory()` source whose event is ERC20 `Transfer`.** It
