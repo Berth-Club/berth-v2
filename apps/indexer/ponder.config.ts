@@ -72,6 +72,19 @@ export default createConfig({
       // it below the pool count. Measured on the public rpc: the topic-only
       // query returns 996 logs for a 5000-block span in 1s, where the
       // 44-address form fails at any span at all.
+      // Pin the eth_getLogs span. Ponder auto-tunes this from error messages,
+      // but the address-filtered era taught it a tiny range (observed: 50 blocks)
+      // and it never recovers -- `estimatedRange` only grows while
+      // `confirmedRange` is unset, and once set it is a one-way latch. 50-block
+      // spans meant ~17,000 requests for the remaining backfill instead of ~171.
+      //
+      // Measured on the public RPC, topic-only: 5000 blocks -> 2636 logs in 0.9s,
+      // 10000 -> 3874 in 2.0s, 20000 -> 6700 in 2.9s, 50000 -> rejected. 5000
+      // leaves a wide margin. NOTE this DISABLES ponder's retry-shrink for
+      // getLogs (sync-historical/index.ts:210), so a value the endpoint rejects
+      // becomes a hard error rather than a slow recovery -- do not raise it
+      // without re-measuring.
+      ethGetLogsBlockRange: 5_000,
       // THERE IS NO REQUEST CAP ANY MORE. `maxRequestsPerSecond: 50` used to sit
       // here; in ponder 0.16 that option is @deprecated and does nothing — it
       // typechecked and was ignored (observed: the limiter self-settled to 3
