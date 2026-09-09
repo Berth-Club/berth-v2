@@ -10,15 +10,16 @@ import { CoinAvatar } from "@/components/coin-avatar"
 import { fmtAmount } from "@/lib/format"
 import { useFx } from "@/components/fx-provider"
 import { useWallet } from "@/components/wallet-provider"
-import { useTrade, SLIPPAGE_CHOICES, DEFAULT_SLIPPAGE_BPS, type Side } from "@/lib/trade"
-import { explorerTx, USDC, COIN_DECIMALS } from "@/lib/chain"
+import {
+  useTrade,
+  NATIVE_DECIMALS,
+  SLIPPAGE_CHOICES,
+  DEFAULT_SLIPPAGE_BPS,
+  type Side,
+} from "@/lib/trade"
+import { explorerTx, COIN_DECIMALS } from "@/lib/chain"
 import type { Coin } from "@/lib/coin"
 
-// ~8,787 USDC buys through the whole range -- the graduation threshold read
-// from the deployed factory's curve preset 0 (getCurveConfig(0) => -439000,
-// 8787e6). Not a constant of the system: the factory admin can rewrite the
-// preset, so treat this as today's reading.
-const EXIT_NATIVE = 8787
 const PERCENTS = [25, 50, 75, 100] as const
 
 /** USDC amounts are small and precision matters — no compact notation. */
@@ -116,12 +117,24 @@ export function TradePanel({ coin, creatorName }: { coin: Coin; creatorName?: st
 
   const buying = side === "buy"
   const spend = parseFloat(amount) || 0
-  const remaining = (1 - coin.curve) * EXIT_NATIVE
-  const impact = spend ? Math.min(95, (spend / EXIT_NATIVE) * 100) : 0
-  const showImpact = buying && spend >= EXIT_NATIVE * 0.03
-  const overshoots = buying && spend > remaining && !coin.graduated
+  /**
+   * Real price impact: what this trade actually executes at, against the coin's
+   * current price. Both numbers are live — the quote is a simulation of the
+   * swap itself — so this replaces the old heuristic, which divided the spend by
+   * a hardcoded graduation threshold that v2 no longer has.
+   */
+  const execPrice =
+    trade.amountOutFloat > 0 && spend > 0
+      ? buying
+        ? spend / trade.amountOutFloat
+        : trade.amountOutFloat / spend
+      : null
+  const impact =
+    execPrice && coin.priceUsd ? Math.abs(execPrice / coin.priceUsd - 1) * 100 : 0
+  const showImpact = impact >= 1
 
-  const spendDecimals = buying ? USDC.decimals : COIN_DECIMALS
+  // A buy spends NATIVE USDC (18dp), not the 6dp ERC20 face.
+  const spendDecimals = buying ? NATIVE_DECIMALS : COIN_DECIMALS
   const balance =
     trade.balance !== undefined ? Number(formatUnits(trade.balance, spendDecimals)) : undefined
   // A held bag is worth saying out loud — it's the context for a sell.
@@ -134,7 +147,7 @@ export function TradePanel({ coin, creatorName }: { coin: Coin; creatorName?: st
   React.useEffect(() => {
     if (!success || !hash) return
     setLastTx(hash)
-    celebrate(side === "buy" ? "Loaded up, captain 🫡" : "Cashed out, captain 🌊")
+    celebrate(side === "buy" ? "Bought" : "Sold")
     setAmount("")
     reset()
   }, [success, hash, side, celebrate, reset])
@@ -328,9 +341,6 @@ export function TradePanel({ coin, creatorName }: { coin: Coin; creatorName?: st
           ⚠️ Price impact ~<span className="tabular">{impact.toFixed(0)}</span>% — this size moves the
           whole market.
         </Notice>
-      )}
-      {overshoots && (
-        <Notice tone="dashed">This buy overshoots the range — the extra USDC auto-refunds.</Notice>
       )}
       {holding && <Notice tone="quiet">⚓ {holding}</Notice>}
       {trade.disabledReason && <Notice tone="quiet">{trade.disabledReason}</Notice>}

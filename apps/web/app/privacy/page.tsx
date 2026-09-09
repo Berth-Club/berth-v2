@@ -14,7 +14,7 @@ const sections: Section[] = [
       <>
         <Para>
           This policy explains what Berth Labs, LLC (&ldquo;Berth,&rdquo; &ldquo;we&rdquo;) collects when you use
-          berth.club — browsing the harbor, connecting a wallet, launching or trading a ship, or posting in token
+          berth.club — browsing the app, connecting a wallet, launching or trading a ship, or posting in token
           chat — and what we do with it.
         </Para>
         <Para>
@@ -76,7 +76,7 @@ const sections: Section[] = [
     label: "How we disclose information",
     body: (
       <Para>
-        Berth does not sell personal information. We share it only with the vendors that keep the harbor running —
+        Berth does not sell personal information. We share it only with the vendors that keep the service running —
         hosting, RPC, indexing, IPFS gateways, market data — plus when the law requires it, during a business
         reorganization, or at your direction.
       </Para>
@@ -88,7 +88,7 @@ const sections: Section[] = [
     body: (
       <Para>
         Wallets, block explorers, Dexscreener, GeckoTerminal, and other linked services are independent from Berth.
-        Once you leave the harbor, their terms and privacy policies govern.
+        Once you leave berth.club, their terms and privacy policies govern.
       </Para>
     ),
   },

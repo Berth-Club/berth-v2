@@ -4,14 +4,15 @@ import { CoinAvatar } from "@/components/coin-avatar"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { ChangeChip } from "@/components/token-card"
 import { fmtMc } from "@/lib/format"
+import { fetchHolderPositions } from "@/lib/holders"
 import { fetchCoins, fetchDailySeries, fetchStats } from "@/lib/indexer"
-import { StatsPanel, type Cell, type Point } from "./stats-panel"
+import { StatsPanel, type Cell, type Point, type SubCell } from "./stats-panel"
 
 export const dynamic = "force-dynamic"
 
 export const metadata = {
   title: "Analytics — berth.club",
-  description: "Protocol-wide volume, launches and graduations across the harbor.",
+  description: "Protocol-wide volume, launches and trading across berth.club.",
 }
 
 const DAYS = 30
@@ -42,6 +43,7 @@ function dayLabel(unixSeconds: number): string {
  */
 export default async function StatsPage() {
   const [coins, stats, series] = await Promise.all([fetchCoins(), fetchStats(), fetchDailySeries(DAYS)])
+  const holders = coins ? await fetchHolderPositions(coins.map((c) => c.address)) : null
 
   if (!coins || !stats) {
     return (
@@ -81,10 +83,43 @@ export default async function StatsPage() {
     ],
     all: [
       { label: `Volume · ${DAYS}d`, value: fmtMc(windowVolume) },
-      { label: "Ships launched", value: stats.coins.toLocaleString() },
+      { label: "Tokens launched", value: stats.coins.toLocaleString() },
       tradesCell,
     ],
   }
+
+  // Second row: lifetime figures, each an indexed or explorer-read fact.
+  //
+  // The design's mock captions these "Creator earnings" and "Protocol buyback".
+  // Neither is readable: the fee locker exposes only UNCLAIMED fees per (owner,
+  // token), there is no lifetime total, and splitting the 1% by protocolFeeBps
+  // would be a guess at whether that bps is a cut of the fee or of the trade.
+  // Buybacks are not live at all. So the row keeps its shape and prints what is
+  // true — total swap fees, undivided, and the count of captains earning them.
+  const lifetimeVolume = coins.reduce((sum, c) => sum + c.volumeUsd, 0)
+
+  const subCells: SubCell[] = [
+    {
+      label: "Holders",
+      value: holders ? holders.positions.toLocaleString() : "—",
+      sub: holders
+        ? `positions across ${holders.counted.toLocaleString()} ${holders.counted === 1 ? "token" : "tokens"}`
+        : "explorer unreachable",
+    },
+    {
+      label: "Trading fees",
+      value: fmtMc(lifetimeVolume * 0.01),
+      sub: "1% of every swap · split creator / protocol",
+    },
+    {
+      // NOT stats.captains — the `captain` table is a per-ACCOUNT rollup that
+      // counts every trader too, so it reads far above the number of people who
+      // actually launched something. Count distinct creators off the coins.
+      label: "Creators earning",
+      value: new Set(coins.map((c) => c.creatorAddress)).size.toLocaleString(),
+      sub: "creators with a fee stream · claimable any time",
+    },
+  ]
 
   const volPoints: Point[] = pts.map((p) => ({ label: dayLabel(p.day), value: p.volumeUsd }))
   const launchPoints: Point[] = pts.map((p) => ({ label: dayLabel(p.day), value: p.launches }))
@@ -95,6 +130,15 @@ export default async function StatsPage() {
 
       <StatsPanel
         cells={cells}
+        subCells={subCells}
+        feeNote={
+          <>
+            Every pool charges 1% per swap, split between the creator and the protocol. The creator
+            claims their share from Portfolio whenever they like; it accrues whether or not they
+            ever look. The protocol&apos;s share funds buybacks. Liquidity is locked at launch, so
+            no fee stream can be switched off or redirected afterward.
+          </>
+        }
         volPoints={volPoints}
         launchPoints={launchPoints}
         volTotal={{ "24h": last ? fmtMc(last.volumeUsd) : "—", all: fmtMc(windowVolume) }}
@@ -106,7 +150,7 @@ export default async function StatsPage() {
 
       <div className="glass mt-4 p-6">
         <h2 className="text-faint mb-1.5 text-[11px] font-medium" style={{ letterSpacing: ".12em" }}>
-          TOP SHIPS · VOLUME
+          TOP TOKENS · VOLUME
         </h2>
         {top.length === 0 ? (
           <p className="text-mist py-10 text-center text-[13px]">Nothing has traded yet.</p>

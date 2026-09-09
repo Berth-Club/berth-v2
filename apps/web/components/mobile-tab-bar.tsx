@@ -5,15 +5,14 @@ import { usePathname } from "next/navigation"
 import { Plus } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { NAV_ITEMS, PORTFOLIO_ITEM, LAUNCH_HREF, isActive } from "@/lib/nav"
+import { NAV_ITEMS, LAUNCH_HREF, isActive } from "@/lib/nav"
 
 /** Bottom tab bar for mobile. Launch is the emphasized center action. */
 export function MobileTabBar() {
   const pathname = usePathname()
-  // Select by href, not position: this used to destructure NAV_ITEMS
-  // positionally and silently broke the moment an entry was removed —
-  // TypeScript won't flag destructuring past the end of an array.
-  const items = [...NAV_ITEMS, PORTFOLIO_ITEM]
+  // Harbormaster is desktop-only while it carries a SOON badge, which keeps
+  // this at exactly 3 tabs + the center launch action = grid-cols-4.
+  const items = NAV_ITEMS.filter((item) => !item.soon)
 
   return (
     <nav className="border-border/60 bg-background/90 fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t backdrop-blur-xl md:hidden">

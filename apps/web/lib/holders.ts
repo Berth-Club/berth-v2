@@ -46,8 +46,7 @@ export type Holders = {
 }
 
 const ROWS = 12
-/** Every launch mints exactly this. Mirrors SUPPLY_TOKENS in indexer.ts. */
-const SUPPLY_TOKENS = 100_000_000_000
+const SUPPLY_TOKENS = CONSTANTS.supplyTokens
 
 /**
  * `/holders` is the slow endpoint on this explorer; `/counters` answers fast.
@@ -149,7 +148,7 @@ export async function fetchHolders(address: string): Promise<Holders | null> {
   if (!items) return holderCount === null ? null : { rows: [], count: holderCount }
 
   const locked = new Set(
-    [CONTRACTS.lpLocker, pool].filter((a) => !!a).map((a) => a!.toLowerCase()),
+    [CONTRACTS.launchLocker, pool].filter((a) => !!a).map((a) => a!.toLowerCase()),
   )
 
   const rows: Holder[] = items.slice(0, ROWS).flatMap((h) => {
@@ -172,4 +171,36 @@ export async function fetchHolders(address: string): Promise<Holders | null> {
   })
 
   return { rows, count: holderCount }
+}
+
+/**
+ * Protocol-wide holder positions: the per-coin counts, summed.
+ *
+ * This is POSITIONS, not unique wallets — one wallet holding three coins counts
+ * three times, and the explorer offers no cross-token view that would let us say
+ * otherwise. Each read rides the same fast-endpoint memo as the token page, so a
+ * warm harbor costs nothing and a cold one degrades to `null` rather than
+ * holding the render.
+ *
+ * Returns `null` when every coin came back empty, so the caller can print an
+ * empty state instead of a wrong total. A partial answer is still returned:
+ * `counted` says how many coins are actually behind the number.
+ */
+export async function fetchHolderPositions(
+  addresses: string[],
+): Promise<{ positions: number; counted: number } | null> {
+  const counts = await Promise.all(
+    addresses.filter((a) => isAddress(a)).map(async (address) => {
+      const c = await blockscout<CountersResponse>(
+        `/tokens/${address.toLowerCase()}/counters`,
+        "fast",
+      )
+      const n = Number(c?.token_holders_count)
+      return Number.isFinite(n) ? n : null
+    }),
+  )
+
+  const known = counts.filter((n): n is number => n !== null)
+  if (known.length === 0) return null
+  return { positions: known.reduce((sum, n) => sum + n, 0), counted: known.length }
 }

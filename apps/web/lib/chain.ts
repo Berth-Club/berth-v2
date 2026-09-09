@@ -69,27 +69,32 @@ export const COIN_DECIMALS = CONSTANTS.coinDecimals
 /**
  * Dollar price of ONE WHOLE COIN, from a coin-space tick.
  *
- * `1.0001^tick` is USDC-6dp-units per token *wei*, so converting to dollars per
- * whole token is `× 1e18 / 1e6` = `× 1e12`. Skip that and every price is off by
- * twelve orders of magnitude — which looks like a plausible small number rather
- * than an obvious bug, so it is pinned by chain.selfcheck.ts.
+ * NO decimal adjustment, and that is the v2 change worth remembering. v1.4
+ * pooled an 18dp coin against the SIX-decimal USDC face, so `1.0001^tick` was
+ * USDC-6dp-units per token wei and needed `× 1e18 / 1e6` = `× 1e12`. v2 pools
+ * against NATIVE USDC, which is 18dp — the same as the coin — so the tick price
+ * is already whole-USDC per whole-coin.
+ *
+ * Leaving the 1e12 in reported a 5,000 USDC launch as a $5,001.4 TRILLION market
+ * cap. Pinned by chain.selfcheck.ts.
  */
 export function priceUsdFromTick(tick: number): number {
-  return Math.pow(1.0001, tick) * 1e12
+  return Math.pow(1.0001, tick)
 }
 
 /**
- * Token ordering is NOT guaranteed, and must never be assumed.
+ * Currency ordering for a NATIVE-quoted v2 pool.
  *
- * Uniswap sorts pool tokens by address. USDC sits at 0x3600…0000 — a low
- * address — so a launch token sorts BELOW it only about 21% of the time. Both
- * branches are live; the minority one is not rare enough to ignore.
+ * Native USDC is `address(0)`, which sorts below every possible token, so the
+ * coin is always currency1 and this is always false. It stays a function, and
+ * the coin row still carries its own `coinIsToken0`, because an ERC-20-quoted
+ * launch can go either way — prefer the stored column over calling this.
  *
- *  - coin is token0 -> price = 1.0001^tick,  buyers push the tick UP
- *  - coin is token1 -> price = 1.0001^-tick, buyers push the tick DOWN
+ *  - coin is currency0 -> price = 1.0001^tick,  buyers push the tick UP
+ *  - coin is currency1 -> price = 1.0001^-tick, buyers push the tick DOWN
  */
-export function coinIsToken0(coin: string): boolean {
-  return coin.toLowerCase() < USDC.address.toLowerCase()
+export function coinIsToken0(_coin: string): boolean {
+  return false
 }
 
 /** Coin-space tick from a raw pool tick, correct for either ordering. */
@@ -170,7 +175,7 @@ export const CONTRACTS_CONFIGURED = true
  * Do NOT look these addresses up by name on the explorer: Arc testnet lists
  * dozens of verified contracts with these exact names.
  */
-export const UNISWAP = SYSTEM.uniswap
+export const UNISWAP_V4 = SYSTEM.uniswapV4
 
 /** Where a visitor gets testnet USDC. Nothing works without it. */
 export const FAUCET_URL = "https://faucet.circle.com"

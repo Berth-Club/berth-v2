@@ -2,14 +2,12 @@
 
 import { CoinAvatar } from "@/components/coin-avatar"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { fmtMc } from "@/lib/format"
 import type { Coin } from "@/lib/coin"
 
 /** The snap-buy size, in USDC. Matches the design's "⚡ Snap buy 100 USDC". */
-export const SNAP_BUY_USDC = 100
 
 /**
  * 24h chip — tinted green/red per the spec. `change: null` means "no trades
@@ -59,7 +57,6 @@ export function ChangeChip({
  * in an anchor is invalid markup.
  */
 export function TokenCard({ coin }: { coin: Coin }) {
-  const router = useRouter()
 
   return (
     <Link
@@ -67,7 +64,7 @@ export function TokenCard({ coin }: { coin: Coin }) {
       className="group relative flex flex-col rounded-[20px] border p-3 pb-3.5 transition-transform duration-150 hover:-translate-y-1"
       style={{
         background: "rgba(13,24,39,.82)",
-        borderColor: coin.graduated ? "rgba(137,167,219,.55)" : "rgba(148,168,196,.2)",
+        borderColor: "rgba(148,168,196,.2)",
         boxShadow: "0 14px 30px -18px rgba(3,8,16,.7)",
       }}
     >
@@ -92,47 +89,6 @@ export function TokenCard({ coin }: { coin: Coin }) {
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
         />
 
-        {coin.graduated && (
-          <span
-            className="absolute left-2.5 top-2.5 text-[12px] font-semibold"
-            style={{
-              color: "#e9eef7",
-              background: "rgba(13,26,43,.5)",
-              border: "1px solid rgba(234,241,250,.22)",
-              borderRadius: 999,
-              padding: "5px 12px",
-              backdropFilter: "blur(6px)",
-            }}
-          >
-            Graduated
-          </span>
-        )}
-
-        {/* Opens the coin with 100 USDC pre-filled — it does NOT fire a trade.
-            A one-click swap off a grid card is not something to do before the
-            user has seen the quote and the price impact. */}
-        <button
-          type="button"
-          title="Snap buy 100 USDC"
-          aria-label={`Snap buy 100 USDC of $${coin.ticker}`}
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            router.push(`/coin/${coin.ticker}?buy=${SNAP_BUY_USDC}`)
-          }}
-          className="absolute right-2.5 top-2.5 leading-none transition-colors"
-          style={{
-            fontSize: 13,
-            color: "#d3e0f9",
-            background: "rgba(13,26,43,.72)",
-            border: "1px solid rgba(148,168,196,.35)",
-            borderRadius: 999,
-            padding: "6px 10px",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          ⚡
-        </button>
       </div>
 
       <div className="font-display mt-[11px] truncate text-[16.5px]">{coin.name}</div>

@@ -1,81 +1,12 @@
 import { ponder } from "ponder:registry";
-import { and, desc, eq, gt, lte } from "ponder";
-import { coin, swap, feeBalance, feeRecipient, captain } from "ponder:schema";
+import { and, desc, eq, gte, lte } from "ponder";
+import { coin, swap, feeCollection, captain } from "ponder:schema";
 
-// Tick-space math lives in lib/ so it can be unit-checked without Ponder's
-// virtual modules: `node lib/ticks.ts`. Read the comments there before touching
-// anything tick-related — the token ordering is NOT what it looks like.
-import {
-  WRAPPED_NATIVE,
-  MAX_USABLE_TICK,
-  isCoinToken0,
-  toCoinTick,
-  poolRange,
-  curveProgress,
-  pctChange,
-} from "../lib/ticks";
-import { CONTRACTS } from "@workspace/contracts";
+import { CONTRACTS, SYSTEM } from "@workspace/contracts";
+import { LauncherTokenAbi, LaunchFactoryAbi } from "../abis/berth";
+import { pctChange, toCoinTick } from "../lib/ticks";
 
-
-/**
- * Every launch mints exactly this. The v1.4 TokenLaunched event dropped the
- * per-launch `supply` word precisely because it is invariant — the factory's
- * `TOTAL_SUPPLY` constant (100_000_000_000e18). Mirrored here rather than read
- * per launch. Verified live: factory.TOTAL_SUPPLY() == 1e29.
- */
-const TOTAL_SUPPLY = 100_000_000_000n * 10n ** 18n;
-
-/**
- * Graduation, straight from the factory.
- *
- * Graduation is an owner-set USDC threshold on the position's paired principal
- * -- NOT a position within the tick range. The two are wildly different scales:
- * the shipped preset opens at tick -444600 and runs to MAX_USABLE_TICK 887200,
- * but $20,000 of principal is reached around tick -412,161, i.e. 2.4% along
- * that range. A tick-based progress bar would read 2% at the moment a coin
- * graduates and its `graduated` flag would never flip at all.
- *
- * One eth_call per swap rather than per coin per tick, so the cost scales with
- * trading activity, not with time. Worth it: progressBps is what the contract
- * itself reports, so the badge can never disagree with the chain.
- */
-const GRADUATION_STATUS_ABI = [
-  {
-    type: "function",
-    name: "graduationStatus",
-    stateMutability: "view",
-    inputs: [{ name: "token", type: "address" }],
-    outputs: [
-      { name: "pairedPrincipal", type: "uint256" },
-      { name: "threshold", type: "uint256" },
-      { name: "graduated", type: "bool" },
-      { name: "progressBps", type: "uint256" },
-    ],
-  },
-] as const;
-
-async function readGraduation(
-  client: { readContract: (args: {
-    abi: typeof GRADUATION_STATUS_ABI
-    address: `0x${string}`
-    functionName: "graduationStatus"
-    args: readonly [`0x${string}`]
-  }) => Promise<readonly [bigint, bigint, boolean, bigint]> },
-  factory: `0x${string}`,
-  token: `0x${string}`,
-) {
-  const [pairedPrincipal, , graduated, progressBps] = await client.readContract({
-    abi: GRADUATION_STATUS_ABI,
-    address: factory,
-    functionName: "graduationStatus",
-    args: [token],
-  });
-  return { pairedPrincipal, graduated, curve: Number(progressBps) / 10_000 };
-}
-
-/** The launch factory. Swap handlers fire on pools, so they cannot read it off the log. */
-const FACTORY_ADDRESS = CONTRACTS.launchFactory;
-
+const NATIVE = SYSTEM.native as `0x${string}`;
 const DAY = 86_400n;
 
 function abs(n: bigint): bigint {
@@ -85,14 +16,11 @@ function abs(n: bigint): bigint {
 /**
  * Real 24h price change, in percent, or null when there's nothing to compare to.
  *
- * Takes COIN-SPACE ticks (see toCoinTick), where price = 1.0001^tick is NATIVE per
- * whole coin for either token ordering — so this needs no ordering knowledge.
+ * We only ever need the RATIO of two prices, and 1.0001^a / 1.0001^b collapses
+ * to 1.0001^(a−b), so the huge exponentials are never evaluated.
  *
- * We only ever need the *ratio* of two prices, and 1.0001^a / 1.0001^b collapses
- * to 1.0001^(a-b), so we never evaluate the huge exponentials themselves.
- *
- * Returns null when no swap is older than 24h: a coin with no history to compare
- * against must show nothing, never a fabricated 0.
+ * Returns null when no swap is older than 24h: a coin with no history must show
+ * nothing, never a fabricated 0.
  */
 async function change24hFor(
   context: any,
@@ -100,12 +28,14 @@ async function change24hFor(
   tickNow: number,
   now: bigint,
 ): Promise<number | null> {
-  // The newest swap at or before the cutoff = the price as of 24h ago.
   const [prior] = await context.db.sql
     .select({ tick: swap.tick })
     .from(swap)
     .where(and(eq(swap.coin, coinAddr), lte(swap.timestamp, now - DAY)))
-    .orderBy(desc(swap.timestamp))
+    // Block, then timestamp: Arc's timestamps are non-decreasing rather than
+    // strictly increasing (sub-second blocks share one), so timestamp alone
+    // cannot order two swaps in the same second.
+    .orderBy(desc(swap.timestamp), desc(swap.block))
     .limit(1);
 
   if (!prior) return null;
@@ -140,247 +70,238 @@ async function bumpCaptain(
 // Launches
 // ---------------------------------------------------------------------------
 
+/**
+ * TokenLaunched carries only `(token, poolId, deployer, pairToken,
+ * launchConfigId, poolFee)` — identity and economics are NOT in the event any
+ * more. So this handler reads both: `getTokenInfo()` off the token (immutable,
+ * set in its constructor) and `getLaunchedToken()` off the factory.
+ *
+ * That is two extra RPC calls per launch, which is the right trade: the
+ * alternative is a `data:` metadata URI packed into the event, which is what
+ * v1.4 did and what made a stale ABI silently poison every coin row.
+ */
 ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
-  const a = event.args;
+  const token = event.args.token as `0x${string}`;
+  const pairToken = event.args.pairToken as `0x${string}`;
 
-  // v1.3 emits only `initialTick`. The range no longer has an emitted top: it
-  // always runs to MAX_USABLE_TICK, which is why "the cost to buy the whole
-  // float" is infinite and graduation became an owner-picked threshold instead.
-  // So the coin-space range is [initialTick, MAX_USABLE_TICK].
-  const tickLower = a.initialTick;
-  const tickUpper = MAX_USABLE_TICK;
+  const [info, record, name, symbol, supply] = await Promise.all([
+    context.client.readContract({
+      abi: LauncherTokenAbi,
+      address: token,
+      functionName: "getTokenInfo",
+    }),
+    context.client.readContract({
+      abi: LaunchFactoryAbi,
+      address: CONTRACTS.launchFactory,
+      functionName: "getLaunchedToken",
+      args: [token],
+    }),
+    context.client.readContract({ abi: LauncherTokenAbi, address: token, functionName: "name" }),
+    context.client.readContract({ abi: LauncherTokenAbi, address: token, functionName: "symbol" }),
+    context.client.readContract({
+      abi: LauncherTokenAbi,
+      address: token,
+      functionName: "totalSupply",
+    }),
+  ]);
 
-  // These are coin-space; the real pool/NFPM range is mirrored when the coin is
-  // token1. Verified for $SMOKE: event [-268600,-199400] vs the on-chain
-  // position [199400, 268600].
-  const coinIsToken0 = isCoinToken0(a.token);
-  const { poolTickLower, poolTickUpper } = poolRange(tickLower, tickUpper, coinIsToken0);
+  // Currency ordering: native is address(0) and sorts first, so the coin is
+  // currency1 on a native-quoted pool. Derived, never assumed.
+  const coinIsToken0 =
+    pairToken !== NATIVE && token.toLowerCase() < pairToken.toLowerCase();
+
+  /**
+   * getTokenInfo returns a POSITIONAL tuple, not a named object: viem only
+   * builds an object when a function has a single tuple output, and this one
+   * has four. Reading `info.logo` here silently yielded undefined and every
+   * coin landed with empty art and no description — caught against the real
+   * launch 0x251E…FCd3, not by the typechecker.
+   */
+  const [, logo, description, socials] = info as readonly [
+    `0x${string}`,
+    string,
+    string,
+    { twitter: string; telegram: string; discord: string; website: string; farcaster: string },
+  ];
 
   await context.db.insert(coin).values({
-    address: a.token,
-    creator: a.creator,
-    tokenId: a.tokenId,
-    pool: a.pool,
-    supply: TOTAL_SUPPLY,
-    tickLower,
-    tickUpper,
+    address: token,
+    creator: event.args.deployer as `0x${string}`,
+    poolId: event.args.poolId as `0x${string}`,
+    pairToken,
+    creatorFeeRecipient: (record as any).creatorFeeRecipient,
+    poolFee: Number(event.args.poolFee),
+    baseFeeBps: Number((record as any).baseFeeBps),
+    creatorTaxBps: Number((record as any).creatorTaxBps),
+    protocolFeeShareBps: Number((record as any).protocolFeeShareBps),
+    phantomQuote: (record as any).phantomQuote,
+    supply: supply as bigint,
+    positionId: (record as any).positionId,
+    tickLower: Number((record as any).tickLower),
+    tickUpper: Number((record as any).tickUpper),
+    liquidity: (record as any).liquidity,
     coinIsToken0,
-    poolTickLower,
-    poolTickUpper,
-    protocolFeeBps: a.protocolFeeBps,
-    devBuyNativeIn: a.devBuyNativeIn,
-    name: a.name,
-    symbol: a.symbol,
-    metadataURI: a.metadataURI,
+    name: name as string,
+    symbol: symbol as string,
+    logo,
+    description,
+    twitter: socials.twitter,
+    telegram: socials.telegram,
+    discord: socials.discord,
+    website: socials.website,
+    farcaster: socials.farcaster,
     createdAt: event.block.timestamp,
     createdBlock: event.block.number,
-    // In coin space a fresh pool always starts at tickLower => 0 progress. (In
-    // pool space that's poolTickUpper when the coin is token1 — the same point.)
-    tick: tickLower,
-    poolTick: coinIsToken0 ? poolTickLower : poolTickUpper,
-    curve: 0,
-    graduated: false,
-    // Frozen per launch: the factory copies the preset's threshold onto the
-    // token at deploy time, so a later preset change cannot re-target it.
-    graduationThreshold: a.graduationThreshold,
-    pairedPrincipal: 0n,
-    // No swaps yet => nothing to compare against => no 24h change.
-    change24h: null,
   });
 
-  // The dev buy is a real swap that this indexer structurally CANNOT see.
-  //
-  // deploy() runs _devBuy() before _emitLaunched(), so the pool's Swap log lands
-  // at a LOWER logIndex than the TokenLaunched log that reveals the pool address
-  // (verified on BARGE: Swap at 207, TokenLaunched at 209). Ponder's factory
-  // pattern only starts watching a child contract from the factory event that
-  // discovers it, so that first Swap is dropped -- silently, with no error.
-  //
-  // Left alone, a coin launched with a dev buy sits at tick=tickLower and curve=0
-  // forever until someone else trades, while the pool has actually moved. Read
-  // the pool's real tick instead of trusting the launch-time assumption.
-  //
-  // The clean fix is in the contract -- emit TokenLaunched BEFORE _devBuy -- but
-  // that needs a redeploy, and this has to be correct for what is already live.
-  if (a.devBuyNativeIn > 0n) {
-    const [, poolTickNow] = await context.client.readContract({
-      abi: [
-        {
-          type: "function",
-          name: "slot0",
-          stateMutability: "view",
-          inputs: [],
-          outputs: [
-            { name: "sqrtPriceX96", type: "uint160" },
-            { name: "tick", type: "int24" },
-            { name: "observationIndex", type: "uint16" },
-            { name: "observationCardinality", type: "uint16" },
-            { name: "observationCardinalityNext", type: "uint16" },
-            { name: "feeProtocol", type: "uint8" },
-            { name: "unlocked", type: "bool" },
-          ],
-        },
-      ] as const,
-      address: a.pool,
-      functionName: "slot0",
-    });
+  await bumpCaptain(
+    context,
+    event.args.deployer as `0x${string}`,
+    { coinsCreated: 1 },
+    event.block.timestamp,
+  );
+});
 
-    const devTick = toCoinTick(poolTickNow, coinIsToken0);
-    const grad = await readGraduation(context.client, event.log.address, a.token);
-    await context.db.update(coin, { address: a.token }).set({
-      tick: devTick,
-      poolTick: poolTickNow,
-      ...grad,
-    });
-  }
-
-  await bumpCaptain(context, a.creator, { coinsCreated: 1 }, event.block.timestamp);
+/** The fee mode is mutable through a 3-day timelock, so the cache must follow. */
+ponder.on("LaunchFactory:CreatorFeeRecipientUpdated", async ({ event, context }) => {
+  await context.db
+    .update(coin, { address: event.args.token as `0x${string}` })
+    .set({ creatorFeeRecipient: event.args.newRecipient as `0x${string}` })
+    .catch(() => {});
 });
 
 // ---------------------------------------------------------------------------
-// Trading — drives price, graduation progress and volume
+// Trades
 // ---------------------------------------------------------------------------
 
-ponder.on("LaunchPool:Swap", async ({ event, context }) => {
-  const { amount0, amount1, tick, sqrtPriceX96, sender, recipient } = event.args;
+/**
+ * Every swap on Arc passes through the V4 singleton, so this source sees pools
+ * that are none of ours. A coin lookup by pool id is the filter — no match, no
+ * row, no work.
+ */
+ponder.on("PoolManager:Swap", async ({ event, context }) => {
+  const poolId = event.args.id as `0x${string}`;
 
-  // Find the coin this pool belongs to.
-  const [c] = await context.db.sql
+  const [row] = await context.db.sql
     .select()
     .from(coin)
-    .where(eq(coin.pool, event.log.address))
+    .where(eq(coin.poolId, poolId))
     .limit(1);
-  if (!c) return; // not one of ours
+  if (!row) return;
 
-  // Which amount is NATIVE depends on the pool's token ordering — NOT fixed.
-  // A positive amount means that token went INTO the pool, so NATIVE in => a buy.
-  const nativeDelta = c.coinIsToken0 ? amount1 : amount0;
-  const tokenDelta = c.coinIsToken0 ? amount0 : amount1;
-  const isBuy = nativeDelta > 0n;
-  const amountNative = abs(nativeDelta);
-  const amountToken = abs(tokenDelta);
+  /**
+   * `amount0`/`amount1` are the SWAPPER's balance delta, not the pool's:
+   * negative = they paid it in, positive = they received it. On a native-quoted
+   * pool (currency0 = native) a buy is amount0 < 0.
+   */
+  const a0 = event.args.amount0 as bigint;
+  const a1 = event.args.amount1 as bigint;
+  const quoteIsCurrency0 = !row.coinIsToken0;
+  const quoteDelta = quoteIsCurrency0 ? a0 : a1;
+  const coinDelta = quoteIsCurrency0 ? a1 : a0;
 
-  // Normalise once, then all the range math below is ordering-agnostic.
-  const coinTick = toCoinTick(tick, c.coinIsToken0);
-  // Graduation comes from the factory, not from where the tick sits. See
-  // readGraduation for why the tick range is the wrong scale.
-  const grad = await readGraduation(context.client, FACTORY_ADDRESS, c.address);
+  // Quote paid in = a buy.
+  const isBuy = quoteDelta < 0n;
+  const amountNative = abs(quoteDelta);
+  const amountToken = abs(coinDelta);
 
-  await context.db.update(coin, { address: c.address }).set({
-    tick: coinTick,
-    poolTick: tick,
-    sqrtPriceX96,
-    ...grad,
-    volumeNative: c.volumeNative + amountNative,
-    swapCount: c.swapCount + 1,
-    lastTradeAt: event.block.timestamp,
-    // This swap is at `now`, so it can never be its own 24h-ago comparison point.
-    change24h: await change24hFor(context, c.address, coinTick, event.block.timestamp),
-  });
+  // The LP fee is taken from the INPUT, in pips.
+  const amountIn = isBuy ? amountNative : amountToken;
+  const feePaid = (amountIn * BigInt(event.args.fee)) / 1_000_000n;
+
+  const poolTick = Number(event.args.tick);
+  const tick = toCoinTick(poolTick, row.coinIsToken0);
 
   await context.db.insert(swap).values({
     id: `${event.transaction.hash}-${event.log.logIndex}`,
-    coin: c.address,
-    sender,
-    recipient,
+    coin: row.address,
+    sender: event.args.sender as `0x${string}`,
     isBuy,
     amountToken,
     amountNative,
-    tick: coinTick,
+    feePaid,
+    tick,
     timestamp: event.block.timestamp,
     block: event.block.number,
     txHash: event.transaction.hash,
   });
 
+  await context.db.update(coin, { address: row.address }).set((c: any) => ({
+    tick,
+    poolTick,
+    sqrtPriceX96: event.args.sqrtPriceX96,
+    volumeNative: c.volumeNative + amountNative,
+    swapCount: c.swapCount + 1,
+    lastTradeAt: event.block.timestamp,
+  }));
+
+  const change = await change24hFor(context, row.address, tick, event.block.timestamp);
+  if (change !== null) {
+    await context.db.update(coin, { address: row.address }).set({ change24h: change });
+  }
+
+  // `sender` is whatever contract called swap — the router for our own trades —
+  // so the trader is the transaction's `from`, not the event's sender.
   await bumpCaptain(
     context,
-    recipient,
-    isBuy ? { buys: 1, volumeNative: amountNative } : { sells: 1, volumeNative: amountNative },
+    event.transaction.from as `0x${string}`,
+    { buys: isBuy ? 1 : 0, sells: isBuy ? 0 : 1, volumeNative: amountNative },
     event.block.timestamp,
   );
 });
 
 // ---------------------------------------------------------------------------
-// Clock — keeps the rolling 24h window honest between trades
+// Fees
 // ---------------------------------------------------------------------------
 
+/**
+ * The backbone of fee accounting AND of holder-reward attribution: the holder
+ * vault is shared across every opted-in launch, so summing these per
+ * (token, asset) since the last harvest is the ONLY way to know whose fees a
+ * pooled payout came from.
+ */
+ponder.on("LaunchLocker:FeesCollected", async ({ event, context }) => {
+  const token = event.args.token as `0x${string}`;
+  const [row] = await context.db.sql.select().from(coin).where(eq(coin.address, token)).limit(1);
+
+  await context.db.insert(feeCollection).values({
+    id: `${event.transaction.hash}-${event.log.logIndex}`,
+    coin: token,
+    currency0: event.args.currency0 as `0x${string}`,
+    currency1: event.args.currency1 as `0x${string}`,
+    protocolAmount0: event.args.protocolAmount0,
+    protocolAmount1: event.args.protocolAmount1,
+    creatorAmount0: event.args.creatorAmount0,
+    creatorAmount1: event.args.creatorAmount1,
+    creatorFeeRecipient: row?.creatorFeeRecipient ?? NATIVE,
+    timestamp: event.block.timestamp,
+    block: event.block.number,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clock
+// ---------------------------------------------------------------------------
+
+/**
+ * change24h is a MOVING window, so it has to be recomputed as time passes and
+ * not only when a swap fires — otherwise a coin that pumped and then went quiet
+ * would keep showing its old number forever.
+ */
 ponder.on("Clock:block", async ({ event, context }) => {
-  // Recompute change24h for traded coins. Without this the value would freeze at
-  // whatever the last swap computed: a coin that pumped and then went quiet for
-  // days would advertise that pump forever, instead of decaying to 0%.
-  //
-  // ponytail: full scan of traded coins each interval. Fine at launchpad scale
-  // (tens–hundreds of coins); if it reaches thousands, narrow the filter to coins
-  // whose lastTradeAt is within ~48h — older ones have already settled at 0.
-  const coins = await context.db.sql.select().from(coin).where(gt(coin.swapCount, 0));
+  // Only coins that traded in the last 48h can have a change24h that MOVES as
+  // the window slides: past that, the figure is already null and stays null.
+  // Scanning every coin here was the one query in this file whose cost grew
+  // with the size of the harbor rather than with activity.
+  const cutoff = event.block.timestamp - 2n * DAY;
+  const rows = await context.db.sql
+    .select({ address: coin.address, tick: coin.tick })
+    .from(coin)
+    .where(gte(coin.lastTradeAt, cutoff));
 
-  for (const c of coins) {
-    if (c.tick === null) continue;
-    const next = await change24hFor(context, c.address, c.tick, event.block.timestamp);
-    if (next === c.change24h) continue; // no write if nothing moved
-    await context.db.update(coin, { address: c.address }).set({ change24h: next });
+  for (const row of rows) {
+    if (row.tick === null) continue;
+    const change = await change24hFor(context, row.address, row.tick, event.block.timestamp);
+    await context.db.update(coin, { address: row.address }).set({ change24h: change });
   }
 });
-
-// ---------------------------------------------------------------------------
-// Fees: the split, then collect (position -> escrow), then claim (escrow -> wallet)
-// ---------------------------------------------------------------------------
-
-ponder.on("LpLocker:PositionRegistered", async ({ event, context }) => {
-  const { tokenId, recipients } = event.args;
-  for (const [i, r] of recipients.entries()) {
-    await context.db.insert(feeRecipient).values({
-      id: `${tokenId}-${i}`,
-      tokenId,
-      addr: r.addr,
-      bps: r.bps,
-    });
-  }
-});
-
-/** Deposited into escrow => claimable goes UP. This is `collect`'s effect. */
-ponder.on("FeeLocker:FeesDeposited", async ({ event, context }) => {
-  const { feeOwner, token, amount } = event.args;
-  if (amount === 0n) return;
-
-  await context.db
-    .insert(feeBalance)
-    .values({
-      id: `${feeOwner}-${token}`,
-      owner: feeOwner,
-      token,
-      claimable: amount,
-      lifetimeEarned: amount,
-      lifetimeClaimed: 0n,
-      updatedAt: event.block.timestamp,
-    })
-    .onConflictDoUpdate((row: any) => ({
-      claimable: row.claimable + amount,
-      lifetimeEarned: row.lifetimeEarned + amount,
-      updatedAt: event.block.timestamp,
-    }));
-});
-
-/** Withdrawn to wallet => claimable goes to zero. This is `claim`'s effect. */
-ponder.on("FeeLocker:FeesClaimed", async ({ event, context }) => {
-  const { feeOwner, token, amount } = event.args;
-
-  await context.db
-    .insert(feeBalance)
-    .values({
-      id: `${feeOwner}-${token}`,
-      owner: feeOwner,
-      token,
-      claimable: 0n,
-      lifetimeEarned: amount,
-      lifetimeClaimed: amount,
-      updatedAt: event.block.timestamp,
-    })
-    .onConflictDoUpdate((row: any) => ({
-      claimable: row.claimable > amount ? row.claimable - amount : 0n,
-      lifetimeClaimed: row.lifetimeClaimed + amount,
-      updatedAt: event.block.timestamp,
-    }));
-});
-
-export { WRAPPED_NATIVE };

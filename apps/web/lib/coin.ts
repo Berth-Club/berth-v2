@@ -34,9 +34,6 @@ export type Coin = {
    * whenever Coinbase is unreachable.
    */
   marketCapNative: number
-  /** 0–1 progress along the v3 range toward graduation (~6.9 NATIVE). */
-  curve: number
-  graduated: boolean
   lore: string
   /** Creator social links (https-only, sanitized). Absent keys are omitted. */
   links: { twitter?: string; telegram?: string; website?: string }

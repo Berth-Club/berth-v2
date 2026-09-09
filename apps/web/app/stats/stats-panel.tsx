@@ -13,11 +13,21 @@ export type Cell = {
   accent?: boolean
 }
 
+/** Second-row stat: one figure with a plain sub-line instead of a delta. */
+export type SubCell = {
+  label: string
+  value: string
+  sub: string
+}
+
 /** One day of the series. `label` is a pre-formatted UTC day ("Jul 21"). */
 export type Point = { label: string; value: number }
 
 type Props = {
   cells: Record<Range, Cell[]>
+  /** Range-independent — these are lifetime figures. */
+  subCells: SubCell[]
+  feeNote: React.ReactNode
   volPoints: Point[]
   launchPoints: Point[]
   /** Header figure per range — real, never a fabricated total. */
@@ -25,7 +35,15 @@ type Props = {
   launchTotal: Record<Range, string>
 }
 
-export function StatsPanel({ cells, volPoints, launchPoints, volTotal, launchTotal }: Props) {
+export function StatsPanel({
+  cells,
+  subCells,
+  feeNote,
+  volPoints,
+  launchPoints,
+  volTotal,
+  launchTotal,
+}: Props) {
   const [range, setRange] = useState<Range>("24h")
 
   return (
@@ -70,6 +88,28 @@ export function StatsPanel({ cells, volPoints, launchPoints, volTotal, launchTot
             </div>
           ))}
         </section>
+
+        <section
+          className="cell-grid mt-3"
+          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}
+        >
+          {subCells.map((c) => (
+            <div key={c.label} className="cell px-6 py-[18px]">
+              <div className="text-mist text-[13px]">{c.label}</div>
+              <div className="tabular mt-1.5 text-[26px] leading-none" style={{ letterSpacing: "-.02em" }}>
+                {c.value}
+              </div>
+              <div className="text-faint mt-2 text-[12px]">{c.sub}</div>
+            </div>
+          ))}
+        </section>
+
+        <div className="mt-3 rounded-[14px] border border-[rgba(148,168,196,.12)] bg-[rgba(8,15,26,.72)] px-4 py-3.5">
+          <div className="text-[16px] font-semibold" style={{ letterSpacing: "-.01em" }}>
+            Where fees go
+          </div>
+          <p className="text-mist mt-1.5 text-[13px] leading-[1.7] text-pretty">{feeNote}</p>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap items-stretch gap-4">

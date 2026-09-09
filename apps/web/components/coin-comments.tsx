@@ -86,7 +86,7 @@ export function CoinComments({ coin, symbol }: { coin: string; symbol: string })
         setError(data.message ?? "Couldn't post.")
       }
     } catch {
-      setError("Couldn't reach the harbor.")
+      setError("Couldn't reach the server.")
     } finally {
       setPosting(false)
     }
@@ -191,7 +191,7 @@ export function CoinComments({ coin, symbol }: { coin: string; symbol: string })
                 }
               }}
               rows={2}
-              placeholder="Signal the fleet…"
+              placeholder="Write a comment…"
               className="well min-w-0 flex-1 resize-none rounded-xl p-3 text-[13.5px] outline-none"
             />
           </div>

@@ -1,4 +1,5 @@
 import { formatUnits, isAddress } from "viem"
+import { CONSTANTS } from "@workspace/contracts"
 
 import { CONTRACTS, USDC, priceUsdFromTick } from "@/lib/chain"
 
@@ -10,8 +11,17 @@ import { CONTRACTS, USDC, priceUsdFromTick } from "@/lib/chain"
  * divided a ~7 USDC swap down to 0.000000000007, which rounded to "0 USDC" in
  * the trade feed and the volume figures. There is no ether on this chain.
  */
+/**
+ * A NATIVE amount (wei) to whole USDC.
+ *
+ * 18 decimals, NOT `USDC.decimals`. Native and the 6dp ERC20 face are the same
+ * money with different decimals, and every amount the indexer stores — volume,
+ * swap sizes, fees — is native. Formatting one at 6 overstates it by 1e12: a
+ * 2.49 USDC volume rendered as $2,490,099,001,128 before this was fixed. The v2
+ * docs call it the single most likely integration bug, and they are right.
+ */
 function nativeToUsdc(base: bigint | string): number {
-  return Number(formatUnits(BigInt(base), USDC.decimals))
+  return Number(formatUnits(BigInt(base), CONSTANTS.nativeDecimals))
 }
 import { FACE_OPTIONS, type Coin } from "@/lib/coin"
 
@@ -27,30 +37,33 @@ const INDEXER_URL = process.env.INDEXER_URL ?? "http://localhost:42069"
 const INDEXER_TIMEOUT_MS = 6000
 
 /** Every launched coin has 18 decimals and 100B supply. */
-const SUPPLY_TOKENS = 100_000_000_000
+const SUPPLY_TOKENS = CONSTANTS.supplyTokens
 
 type IndexedCoin = {
   address: string
   creator: string
-  tokenId: string
-  pool: string
+  /** keccak of the V4 PoolKey. There is no pool ADDRESS in v2. */
+  poolId: string
+  pairToken: string
   name: string
   symbol: string
-  metadataURI: string
-  /** Launch-event bounds. Always coin-space, both orderings. */
+  /** Identity is on the token contract now, not packed into a metadata URI. */
+  logo: string
+  description: string
+  twitter: string
+  telegram: string
+  website: string
+  /** Launch bounds. Always coin-space, both orderings. */
   tickLower: number
   tickUpper: number
   /** Coin-space at launch, raw pool tick once swapCount > 0. See coinSpaceTick. */
   tick: number | null
+  coinIsToken0: boolean
   volumeNative: string
   swapCount: number
   lastTradeAt: string | null
   createdAt: string
-  // Landing in the indexer separately — absent on older builds, see coinsQuery.
   change24h?: number | null
-  /** 0-1 toward the USDC graduation threshold. From the factory, not from ticks. */
-  curve?: number | null
-  graduated?: boolean | null
 }
 
 /**
@@ -60,10 +73,11 @@ type IndexedCoin = {
  * land, then zero — cheaper than a flag that needs a web restart to notice.
  */
 const coinsQuery = (extended: boolean) => `{
-  coins(orderBy: "createdAt", orderDirection: "desc", limit: 100) {
+  coins(orderBy: "createdBlock", orderDirection: "desc", limit: 100) {
     items {
-      address creator tokenId pool name symbol metadataURI
-      tickLower tickUpper tick curve graduated
+      address creator poolId pairToken name symbol
+      logo description twitter telegram website
+      tickLower tickUpper tick coinIsToken0
       volumeNative swapCount lastTradeAt createdAt
       ${extended ? "change24h" : ""}
     }
@@ -71,7 +85,7 @@ const coinsQuery = (extended: boolean) => `{
 }`
 
 const SWAPS_QUERY = `query ($coin: String!) {
-  swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "desc", limit: 20) {
+  swaps(where: { coin: $coin }, orderBy: "block", orderDirection: "desc", limit: 20) {
     items { id isBuy amountNative timestamp txHash }
   }
 }`
@@ -163,10 +177,11 @@ export async function fetchCaptain(address: string): Promise<Captain | null> {
 export async function fetchCoinsByCreator(address: string): Promise<Coin[] | null> {
   const data = await gql<{ coins: { items: IndexedCoin[] } }>(
     `query ($creator: String!) {
-      coins(where: { creator: $creator }, orderBy: "createdAt", orderDirection: "desc", limit: 50) {
+      coins(where: { creator: $creator }, orderBy: "createdBlock", orderDirection: "desc", limit: 50) {
         items {
-          address creator tokenId pool name symbol metadataURI
-          tickLower tickUpper tick curve graduated
+          address creator poolId pairToken name symbol
+          logo description twitter telegram website
+          tickLower tickUpper tick coinIsToken0
           volumeNative swapCount lastTradeAt createdAt
           change24h
         }
@@ -247,10 +262,10 @@ export async function fetchDailySeries(
     swaps: { items: { amountNative: string; timestamp: string }[] }
     coins: { items: { createdAt: string }[] }
   }>(`{
-    swaps(orderBy: "timestamp", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
+    swaps(orderBy: "block", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
       items { amountNative timestamp }
     }
-    coins(orderBy: "createdAt", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
+    coins(orderBy: "createdBlock", orderDirection: "desc", limit: ${PONDER_MAX_LIMIT}) {
       items { createdAt }
     }
   }`)
@@ -369,8 +384,11 @@ export function tickToPriceNative(tick: number): number {
  *   slot0.tick = +268600, position range +199400/+268600
  *   but TokenLaunched emitted tickLower -268600 / tickUpper -199400.
  */
-export function coinIsToken0(coinAddress: string): boolean {
-  return BigInt(coinAddress) < BigInt(USDC.address)
+export function coinIsToken0(_coinAddress: string): boolean {
+  // Native USDC is address(0) and sorts below everything, so a native-quoted
+  // coin is always currency1. Prefer the coin row's own `coinIsToken0` column,
+  // which is correct for an ERC-20-quoted launch too.
+  return false
 }
 
 /** The fields of a coin row needed to place its price on the curve. */
@@ -439,17 +457,6 @@ function sanitizeLinks(m: { twitter?: string; telegram?: string; website?: strin
 
 export type CoinLinks = { twitter?: string; telegram?: string; website?: string }
 
-export function parseMetadata(uri: string | null | undefined): CoinMeta {
-  if (!uri?.startsWith("data:application/json,")) return {}
-  try {
-    const json = decodeURIComponent(uri.slice("data:application/json,".length))
-    const m = JSON.parse(json) as CoinMeta
-    return typeof m === "object" && m !== null ? m : {}
-  } catch {
-    return {} // malformed metadata is a bad coin, not a broken harbor
-  }
-}
-
 function ago(unixSeconds: number): string {
   const s = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds)
   if (s < 60) return `${s}s`
@@ -473,27 +480,16 @@ function toCoin(c: IndexedCoin): Coin {
   const priceNative = tickToPriceNative(tick)
   const marketCapNative = priceNative * SUPPLY_TOKENS
   const volNative = nativeToUsdc(c.volumeNative)
-  // The creator's face + lore, read back out of the launch event. Falls back to
-  // a derived face for coins launched before metadata was inlined (e.g. $SMOKE,
-  // whose URI is literally "ipfs://placeholder").
-  const meta = parseMetadata(c.metadataURI)
-
-  // curve/graduated are taken from the indexer, NOT recomputed here.
-  //
-  // They used to be re-derived from tick position within [tickLower, tickUpper],
-  // which is simply the wrong measure: graduation is an owner-set USDC threshold
-  // on the position's paired principal, and the range runs to MAX_USABLE_TICK.
-  // A coin that has genuinely graduated sits ~2.4% along its tick range, so that
-  // bar would read 2% at the finish line and `graduated` would never flip.
-  // The indexer now reads progressBps from the factory's own graduationStatus().
+  // Identity comes off the token contract in v2 — the indexer reads logo(),
+  // description() and socials() at launch and stores them as columns. There is
+  // no metadata URI left to parse.
 
   return {
     address: c.address,
-    emoji: meta.emoji ?? emojiFor(c.address),
-    // The gate: only an uploaded ipfs:// image counts. The DiceBear https
-    // placeholder every pre-upload coin carries is NOT an upload, so it stays
-    // null and the emoji face wins.
-    image: meta.image?.startsWith("ipfs://") ? meta.image : null,
+    emoji: emojiFor(c.address),
+    // The gate: only an uploaded ipfs:// logo counts. A coin launched without
+    // art carries "" and falls back to the derived emoji face.
+    image: c.logo.startsWith("ipfs://") ? c.logo : null,
     name: c.name,
     ticker: c.symbol,
     creator: short(c.creator),
@@ -505,10 +501,8 @@ function toCoin(c: IndexedCoin): Coin {
     change24h: c.change24h ?? null,
     marketCapUsd: marketCapNative,
     marketCapNative,
-    curve: c.curve ?? 0,
-    graduated: c.graduated ?? false,
-    lore: meta.description ?? "",
-    links: sanitizeLinks(meta),
+    lore: c.description,
+    links: sanitizeLinks({ twitter: c.twitter, telegram: c.telegram, website: c.website }),
     vol: volNative > 0 ? `$${Math.round(volNative).toLocaleString()}` : "$0",
     volumeUsd: volNative,
     swapCount: c.swapCount,
@@ -636,7 +630,7 @@ export async function fetchPriceHistory(address: string): Promise<PricePoint[] |
 
   const data = await gql<{ swaps: { items: { tick: number; timestamp: string }[] } }>(
     `query ($coin: String!) {
-      swaps(where: { coin: $coin }, orderBy: "timestamp", orderDirection: "asc", limit: 500) {
+      swaps(where: { coin: $coin }, orderBy: "block", orderDirection: "asc", limit: 500) {
         items { tick timestamp }
       }
     }`,

@@ -1,20 +1,31 @@
-import { Anchor, BarChart3, Wallet, type LucideIcon } from "lucide-react"
+import { Anchor, BarChart3, Compass, Wallet, type LucideIcon } from "lucide-react"
 
 export type NavItem = {
   href: string
   label: string
   icon: LucideIcon
+  /** Renders a SOON badge in the desktop capsule; hidden from the mobile bar. */
+  soon?: boolean
 }
 
-// v3 FINAL desktop nav capsule: Harbor + Analytics ONLY. Portfolio is reached
-// from the wallet dropdown (and the mobile tab bar), never the top nav.
+// Portfolio — also reachable from the wallet dropdown.
+export const PORTFOLIO_ITEM: NavItem = { href: "/hold", label: "Portfolio", icon: Wallet }
+
+export const HARBORMASTER_ITEM: NavItem = {
+  href: "/harbormaster",
+  label: "Harbormaster",
+  icon: Compass,
+  soon: true,
+}
+
+// v4 desktop capsule: Harbor / Analytics / Portfolio / Harbormaster·SOON,
+// centered between the brand and the wallet.
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Harbor", icon: Anchor },
   { href: "/stats", label: "Analytics", icon: BarChart3 },
+  PORTFOLIO_ITEM,
+  HARBORMASTER_ITEM,
 ]
-
-// Portfolio — surfaced by the wallet dropdown + mobile tab bar, not the capsule.
-export const PORTFOLIO_ITEM: NavItem = { href: "/hold", label: "Portfolio", icon: Wallet }
 
 export const LAUNCH_HREF = "/create"
 

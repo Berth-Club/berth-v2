@@ -78,7 +78,7 @@ const sections: Section[] = [
     body: (
       <>
         <Para>
-          You are solely responsible for the ships you launch and the names, tickers, artwork, links, and messages you
+          You are solely responsible for the tokens you launch and the names, tickers, artwork, links, and messages you
           submit — and you must hold the rights to them. Artwork is moderated before it reaches public IPFS. Berth may
           hide offchain content that creates legal or security risk, but cannot remove anything recorded onchain.
         </Para>
@@ -105,7 +105,7 @@ const sections: Section[] = [
     label: "Fees and taxes",
     body: (
       <Para>
-        Launching costs 1 USDC. Every trade pays a 1% pool fee, split with the ship&rsquo;s creator. Network gas is set
+        Launching costs 1 USDC. Every trade pays a 1% pool fee, split with the token&rsquo;s creator. Network gas is set
         by Arc, not Berth. All taxes arising from your activity are your responsibility.
       </Para>
     ),
@@ -121,7 +121,7 @@ const sections: Section[] = [
           "No market manipulation, wash trading, or coordinated deception.",
           "No interfering with the interface, bypassing controls, or overloading infrastructure.",
           "No exploiting bugs — report them to security@berth.club instead.",
-          "No using the harbor to launder funds or finance unlawful activity.",
+          "No using the platform to launder funds or finance unlawful activity.",
         ]}
       />
     ),

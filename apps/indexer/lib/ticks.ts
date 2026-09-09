@@ -1,87 +1,36 @@
-// Tick-space math for berth.club pools.
+// Tick-space math for berth.club pools on contracts v2.
 //
-// Pure + dependency-free on purpose: this is the logic that a wrong assumption
-// already burned us on once, and no live coin has traded yet to exercise it, so
-// it carries its own self-check. Run it with:  node lib/ticks.ts
+// Pure + dependency-free on purpose: this is the logic a wrong assumption
+// already burned us on once, so it carries its own self-check. Run it with:
+//   node lib/ticks.ts
 //
 // Lives outside src/ because Ponder executes every file under src/ as an
 // indexing module (except src/api/). This is a library, not a handler.
+//
+// WHAT V2 DELETED FROM THIS FILE:
+//   - `MAX_USABLE_TICK` / `poolRange`: v1.4 emitted only `initialTick` and ran
+//     the position to a bound the indexer had to supply. v2 emits tickLower AND
+//     tickUpper on LaunchPositionMinted, so there is nothing to reconstruct.
+//   - `curveProgress`: there is no graduation in v2. The position IS the curve
+//     and it never migrates, so there is no finish line to measure against.
+//   - `isCoinToken0` by address comparison against a wrapped-native constant:
+//     v2's quote asset is NATIVE (`address(0)`), which sorts below every token,
+//     so the coin is currency1 on every native-quoted pool. Ordering now comes
+//     off the launch record rather than being re-derived from addresses.
 
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 
-import { SYSTEM, CONSTANTS } from "@workspace/contracts";
-
 /**
- * USDC on Arc Testnet — the predeploy, 6 decimals, the quote asset of every
- * pool. Sourced from @workspace/contracts (SYSTEM.usdc), the same module the
- * web app reads, so it can't drift out of lockstep. Arc has no wrapped native;
- * this predeploy IS the quote asset, 6 decimals here / 18 in the native view.
+ * Coin-space tick: `1.0001^tick` = quote per whole coin, for either ordering.
  *
- * Lowercase: {isCoinToken0} compares raw strings.
- */
-export const WRAPPED_NATIVE = SYSTEM.usdc;
-
-/**
- * The top of every launch range. The factory emits only `initialTick` and runs
- * the position to this bound, so there is no emitted tickUpper — the indexer
- * supplies it. From @workspace/contracts (CONSTANTS.maxUsableTick): TickMath's
- * MAX_TICK rounded inward to the 200 tick spacing.
- */
-export const MAX_USABLE_TICK = CONSTANTS.maxUsableTick;
-
-/**
- * Which side of the pool the coin landed on.
- *
- * Uniswap sorts pool tokens by address, and the DEPLOYED factory does NOT
- * salt-mine the coin below the quote asset (whatever the contracts repo does) —
- * when the coin sorts above it, it mirrors the tick range instead.
- *
- * On Robinhood this was lopsided: WETH9 was 0x0Bd7…, so the coin was token0
- * only ~5% of the time. Arc's WUSDC is mid-range (0x911b…), so it is close to a
- * coin flip. The minority branch is no longer the minority — never assume it,
- * always ask.
- */
-export function isCoinToken0(token: string): boolean {
-  // Equal-length lowercase hex compares lexicographically the same as by uint160.
-  return token.toLowerCase() < WRAPPED_NATIVE;
-}
-
-/**
- * Pool-space tick -> COIN-SPACE tick. THE ONE PLACE ordering is normalised.
- *
- * Pool space measures token1 per token0. When the coin is token1 that reads
- * "coin per NATIVE", which runs BACKWARDS: buying the coin makes it dearer, so
- * fewer coin per NATIVE, so the tick goes DOWN — such a pool starts at its upper
- * tick and graduates at its lower one.
- *
- * Negating flips it back to "NATIVE per whole coin" (both tokens are 18 decimals,
- * so no decimal shift). In coin space the TokenLaunched ticks apply verbatim for
- * BOTH orderings: price rises with tick, graduation is always tick >= tickUpper.
+ * The pool reports token1-per-token0. On a native-quoted pool currency0 is
+ * native USDC and the coin is currency1, so the raw tick reads coins-per-USDC
+ * and has to be negated. Getting this backwards once produced a price of ~$843
+ * trillion per token, so it is derived from the stored ordering, never assumed.
  */
 export function toCoinTick(poolTick: number, coinIsToken0: boolean): number {
   return coinIsToken0 ? poolTick : -poolTick;
-}
-
-/**
- * Coin-space launch range -> the REAL pool/NFPM range.
- * Negate AND swap: negation reverses the ordering, so lower/upper trade places.
- */
-export function poolRange(
-  tickLower: number,
-  tickUpper: number,
-  coinIsToken0: boolean,
-): { poolTickLower: number; poolTickUpper: number } {
-  return coinIsToken0
-    ? { poolTickLower: tickLower, poolTickUpper: tickUpper }
-    : { poolTickLower: -tickUpper, poolTickUpper: -tickLower };
-}
-
-/** 0–1 progress of a COIN-SPACE `tick` through [lower, upper]. Clamped. */
-export function curveProgress(tick: number, lower: number, upper: number): number {
-  if (upper <= lower) return 0;
-  const p = (tick - lower) / (upper - lower);
-  return Math.min(1, Math.max(0, p));
 }
 
 /**
@@ -94,74 +43,22 @@ export function pctChange(tickNow: number, tickThen: number): number {
   return (Math.pow(1.0001, tickNow - tickThen) - 1) * 100;
 }
 
-/**
- * Self-check. The tick-space assertions below are ground truth read off chain
- * 4663 on 2026-07-16 for $SMOKE (pool 0x12ff275AE94AD8b7BD8c10C4d466394Db40101D1,
- * NFPM position 163160). That maths is chain-independent — only the ORDERING
- * fixtures had to change for Arc, because ordering is the one thing that depends
- * on the quote asset's address.
- */
 function main(): void {
-  // Ordering, against Arc's WUSDC (0x911b…). Synthetic addresses that straddle
-  // it, rather than a real coin: no berth.club coin exists on Arc yet, and
-  // pinning to one would re-break this the next time the chain moves.
-  assert.equal(isCoinToken0("0x0000000000000000000000000000000000000001"), true, "far below => token0");
-  assert.equal(isCoinToken0("0xffffffffffffffffffffffffffffffffffffffff"), false, "far above => token1");
-  assert.equal(isCoinToken0(WRAPPED_NATIVE.toUpperCase()), false, "case-insensitive, equal is not below");
+  // A coin as currency1 (the native-quoted case) reads inverted.
+  assert.equal(toCoinTick(-268600, false), 268600, "currency1 coin negates");
+  assert.equal(toCoinTick(268600, true), 268600, "currency0 coin passes through");
+  assert.equal(toCoinTick(0, false), -0, "zero is zero either way");
 
-  // The boundary is the quote asset itself: one below sorts token0, one above
-  // token1. This is what actually breaks if WRAPPED_NATIVE is left stale.
-  assert.equal(isCoinToken0("0x35ffffffffffffffffffffffffffffffffffffff"), true, "one below => token0");
-  assert.equal(isCoinToken0("0x3600000000000000000000000000000000000001"), false, "one above => token1");
+  // Ratio maths, independent of ordering.
+  assert.equal(Math.round(pctChange(0, 0)), 0, "no move is 0%");
+  assert.ok(pctChange(100, 0) > 0, "up is positive");
+  assert.ok(pctChange(0, 100) < 0, "down is negative");
+  // 1.0001^6931 ≈ 2, i.e. a double.
+  assert.ok(Math.abs(pctChange(6931, 0) - 100) < 1, "+6931 ticks ≈ +100%");
+  // Symmetry: a doubling then a halving returns to the start.
+  assert.ok(Math.abs(pctChange(6931, 6931)) < 1e-9, "same tick, no change");
 
-  // USDC sits at a LOW address, so a launch token sorts below it only ~21% of
-  // the time. The minority branch is live and must never be assumed away.
-  assert.equal(
-    isCoinToken0("0x4cfc207c7c5407848d18a1e75fb7d7020fef8787"),
-    false,
-    "a real launched coin sorts above the USDC predeploy => token1",
-  );
-
-  // TokenLaunched emitted [-268600, -199400]; positions() reports [199400, 268600].
-  const { poolTickLower, poolTickUpper } = poolRange(-268600, -199400, false);
-  assert.equal(poolTickLower, 199400);
-  assert.equal(poolTickUpper, 268600);
-
-  // A coin-as-token0 launch keeps its range verbatim.
-  assert.deepEqual(poolRange(-268600, -199400, true), {
-    poolTickLower: -268600,
-    poolTickUpper: -199400,
-  });
-
-  // slot0.tick was +268600: a fresh pool sitting at 0 progress, not graduated.
-  const start = toCoinTick(268600, false);
-  assert.equal(start, -268600);
-  assert.equal(curveProgress(start, -268600, -199400), 0);
-  assert.equal(start >= -199400, false, "fresh launch has not graduated");
-
-  // Graduation is the pool's LOWER tick when the coin is token1.
-  const end = toCoinTick(199400, false);
-  assert.equal(curveProgress(end, -268600, -199400), 1);
-  assert.equal(end >= -199400, true, "reaching poolTickLower graduates");
-
-  // Halfway, and clamping past either edge.
-  assert.equal(curveProgress(toCoinTick(234000, false), -268600, -199400), 0.5);
-  assert.equal(curveProgress(toCoinTick(300000, false), -268600, -199400), 0);
-  assert.equal(curveProgress(toCoinTick(150000, false), -268600, -199400), 1);
-
-  // Buying a token1 coin pushes the pool tick DOWN, which must read as a price RISE.
-  assert.ok(pctChange(toCoinTick(268000, false), toCoinTick(268600, false)) > 0);
-  // ...and the mirrored token0 case rises when the pool tick goes UP.
-  assert.ok(pctChange(toCoinTick(268600, true), toCoinTick(268000, true)) > 0);
-
-  // Both orderings must price identically for the same real move: one tick of
-  // NATIVE-per-coin is +0.01% either way.
-  assert.ok(Math.abs(pctChange(1, 0) - 0.01) < 1e-6);
-  assert.equal(pctChange(0, 0), 0, "no move, no change");
-
-  console.log("ticks.ts: all checks passed");
+  console.log("ticks.ts self-check passed");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
-}
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main();

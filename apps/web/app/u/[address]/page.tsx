@@ -121,7 +121,7 @@ export default async function UserPage({
         <h2 className="font-display mb-3 text-xl">Coins created</h2>
         {!created || created.length === 0 ? (
           <p className="glass text-mist p-8 text-center text-sm">
-            Nothing out of the shipyard yet.
+            No launches yet.
           </p>
         ) : (
           <div

@@ -120,7 +120,7 @@ export async function POST(request: Request) {
 
   if ((await recentCommentCount(author, RATE_WINDOW_SEC)) >= RATE_MAX) {
     return NextResponse.json(
-      { code: "rate_limited", message: "Slow down, captain — a few seconds between messages." },
+      { code: "rate_limited", message: "Slow down — a few seconds between messages." },
       { status: 429 }
     )
   }

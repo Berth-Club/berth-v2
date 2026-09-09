@@ -1,81 +1,85 @@
 import { onchainTable, index, relations } from "ponder";
 
 /**
- * A launched coin. One TokenLaunched event fully populates a discovery row —
- * no extra chain reads needed for the harbor grid.
+ * A launched coin on contracts v2.
+ *
+ * `TokenLaunched` no longer carries identity — it is
+ * `(token, poolId, deployer, pairToken, launchConfigId, poolFee)` and nothing
+ * else. Name, symbol, logo, description and socials are read off the TOKEN
+ * (immutable, set at launch); the economics come from
+ * `factory.getLaunchedToken`; the position's range and liquidity arrive in the
+ * same transaction on `LaunchPositionMinted`.
+ *
+ * There is no graduation column set here because v2 has no graduation: the
+ * position IS the curve, it never migrates, and there is no threshold to cross.
  */
 export const coin = onchainTable(
   "coin",
   (t) => ({
     address: t.hex().primaryKey(),
+    /** `deployer` on the event — who signed the launch. */
     creator: t.hex().notNull(),
-    tokenId: t.bigint().notNull(),
-    pool: t.hex().notNull(),
+    /** keccak of the PoolKey. V4 pools have no address. */
+    poolId: t.hex().notNull(),
+    /** Quote asset. `0x0` = native USDC, which is the common case. */
+    pairToken: t.hex().notNull(),
+    /** Where the creator's fee share goes — the holder vault and the burn vault
+     *  are the two non-default values. Mutable through a 3-day timelock, so it
+     *  is maintained from CreatorFeeRecipientUpdated, not frozen at launch. */
+    creatorFeeRecipient: t.hex().notNull(),
+    /** LP fee in pips = (baseFeeBps + creatorTaxBps) * 100. */
+    poolFee: t.integer().notNull(),
+    /** All three frozen at launch; they drive the fee split. */
+    baseFeeBps: t.integer().notNull().default(0),
+    creatorTaxBps: t.integer().notNull().default(0),
+    protocolFeeShareBps: t.integer().notNull().default(0),
+    /** Opening reserve in the quote's own decimals. Opening FDV == this. */
+    phantomQuote: t.bigint().notNull().default(0n),
     supply: t.bigint().notNull(),
+
+    // --- the locked position, from LaunchPositionMinted ---
+    positionId: t.bigint().notNull().default(0n),
+    tickLower: t.integer().notNull().default(0),
+    tickUpper: t.integer().notNull().default(0),
+    liquidity: t.bigint().notNull().default(0n),
     /**
-     * COIN-SPACE range, exactly as TokenLaunched emits it: ticks of "NATIVE per
-     * whole coin", so higher = coin more expensive, and graduation is at
-     * tickUpper. Compare these ONLY against `coin.tick`/`swap.tick`, which are
-     * normalised into the same space. See src/index.ts `toCoinTick`.
+     * Uniswap currency ordering. Native USDC is `address(0)`, so on a
+     * native-quoted pool it always sorts first and the coin is currency1 —
+     * i.e. this is false for the common case. Stored rather than assumed so an
+     * ERC-20-quoted launch doesn't silently invert every price.
      */
-    tickLower: t.integer().notNull(),
-    tickUpper: t.integer().notNull(),
-    /**
-     * Uniswap token ordering for this pool. The deployed factory does NOT force
-     * the coin to token0 — it mirrors the tick range when the coin sorts above
-     * WRAPPED_NATIVE instead. Verified on chain for $SMOKE: pool.token0() = WRAPPED_NATIVE.
-     */
-    coinIsToken0: t.boolean().notNull(),
-    /**
-     * The REAL pool/NFPM-space range (what slot0.tick and positions() report).
-     * Equals [tickLower, tickUpper] when coinIsToken0, else the mirrored
-     * [-tickUpper, -tickLower]. Stored so the web app never has to re-derive it.
-     */
-    poolTickLower: t.integer().notNull(),
-    poolTickUpper: t.integer().notNull(),
-    protocolFeeBps: t.integer().notNull(),
-    /** Native (18dp) the creator spent on their atomic first buy. */
-    devBuyNativeIn: t.bigint().notNull(),
+    coinIsToken0: t.boolean().notNull().default(false),
+
+    // --- identity, read off the token contract ---
     name: t.text().notNull(),
     symbol: t.text().notNull(),
-    metadataURI: t.text().notNull(),
+    /** ipfs:// URI, or "" when the creator launched without art. */
+    logo: t.text().notNull().default(""),
+    description: t.text().notNull().default(""),
+    twitter: t.text().notNull().default(""),
+    telegram: t.text().notNull().default(""),
+    discord: t.text().notNull().default(""),
+    website: t.text().notNull().default(""),
+    farcaster: t.text().notNull().default(""),
+
     createdAt: t.bigint().notNull(),
     createdBlock: t.bigint().notNull(),
 
-    // --- market state, maintained from pool Swap events ---
+    // --- market state, maintained from PoolManager Swap events ---
     /**
-     * Latest tick in COIN SPACE (negated when the coin is token1), so
-     * `1.0001^tick` is always NATIVE per whole coin regardless of pool ordering.
-     * NOT the raw slot0 tick — use poolTick for that.
+     * Latest tick in COIN SPACE (negated when the coin is currency1), so
+     * `1.0001^tick` is always quote-per-whole-coin regardless of ordering.
+     * NOT the raw pool tick — use poolTick for that.
      */
     tick: t.integer(),
-    /** Raw slot0-space tick, as the pool itself reports it. */
     poolTick: t.integer(),
-    /** Raw slot0 sqrtPriceX96 — pool space, i.e. token1 per token0. */
     sqrtPriceX96: t.bigint(),
-    /**
-     * 0-1 progress toward graduation.
-     *
-     * NOT a position within the tick range. Graduation is an owner-set USDC
-     * threshold on the position's paired principal, and the range runs to
-     * MAX_USABLE_TICK, so tick position is the wrong scale entirely: a coin
-     * that has genuinely graduated sits ~2.4% along its tick range and would
-     * never cross a tick-based finish line. Derived from progressBps returned
-     * by the factory's own graduationStatus(), so the UI and the contract can
-     * never disagree.
-     */
-    curve: t.real().notNull().default(0),
-    graduated: t.boolean().notNull().default(false),
-    /** USDC (6dp) of principal currently in the position. From graduationStatus. */
-    pairedPrincipal: t.bigint().notNull().default(0n),
-    /** USDC (6dp) needed to graduate. Frozen per launch, off the TokenLaunched event. */
-    graduationThreshold: t.bigint().notNull().default(0n),
-    /** Cumulative NATIVE volume, wei. */
+    /** Cumulative quote-side volume, wei. */
     volumeNative: t.bigint().notNull().default(0n),
     swapCount: t.integer().notNull().default(0),
     lastTradeAt: t.bigint(),
     /**
-     * Price change over the last 24h, in percent. NULLABLE on purpose: null means
+     * Price change over the last 24h, percent. NULLABLE on purpose: null means
      * "no trade older than 24h to compare against", which the UI must render as
      * nothing rather than a fake 0.
      */
@@ -83,8 +87,10 @@ export const coin = onchainTable(
   }),
   (t) => ({
     creatorIdx: index().on(t.creator),
-    poolIdx: index().on(t.pool),
+    poolIdIdx: index().on(t.poolId),
     createdIdx: index().on(t.createdAt),
+    createdBlockIdx: index().on(t.createdBlock),
+    recipientIdx: index().on(t.creatorFeeRecipient),
   }),
 );
 
@@ -94,13 +100,19 @@ export const swap = onchainTable(
   (t) => ({
     id: t.text().primaryKey(), // `${txHash}-${logIndex}`
     coin: t.hex().notNull(),
+    /**
+     * The address that called `swap` on the PoolManager. For a trade through
+     * BerthClubRouter that is the ROUTER, not the trader — v2 exposes the user
+     * only via the router's own Zap events or the tx `from`.
+     */
     sender: t.hex().notNull(),
-    recipient: t.hex().notNull(),
-    /** true = someone bought the coin (NATIVE in). */
+    /** true = someone bought the coin (quote in). */
     isBuy: t.boolean().notNull(),
     /** Absolute amounts, wei. */
     amountToken: t.bigint().notNull(),
     amountNative: t.bigint().notNull(),
+    /** LP fee paid, in the INPUT currency: amountIn * fee / 1e6. */
+    feePaid: t.bigint().notNull().default(0n),
     /** COIN-SPACE tick after the swap — see coin.tick. Drives the 24h change. */
     tick: t.integer().notNull(),
     timestamp: t.bigint().notNull(),
@@ -110,48 +122,40 @@ export const swap = onchainTable(
   (t) => ({
     coinIdx: index().on(t.coin),
     tsIdx: index().on(t.timestamp),
-    recipientIdx: index().on(t.recipient),
     // Serves the 24h lookback: newest swap for a coin at or before a cutoff.
     coinTsIdx: index().on(t.coin, t.timestamp),
+    // Every trade LIST orders by block, not timestamp — Arc's timestamps are
+    // non-decreasing, so two swaps in one second cannot be ordered by time.
+    blockIdx: index().on(t.block),
+    coinBlockIdx: index().on(t.coin, t.block),
   }),
 );
 
 /**
- * Fees owed to an account, per token — mirrors FeeLocker.availableFees.
- * `collect` (LpLocker) moves fees position -> escrow; `claim` (FeeLocker)
- * moves escrow -> wallet. Kept as separate numbers on purpose.
+ * One row per `FeesCollected`. This is the backbone of fee accounting AND of
+ * holder-reward attribution: the vault is shared across every opted-in launch,
+ * so the only way to know which launch a pooled payout came from is to sum
+ * these per (token, asset) since the last harvest.
  */
-export const feeBalance = onchainTable(
-  "fee_balance",
+export const feeCollection = onchainTable(
+  "fee_collection",
   (t) => ({
-    id: t.text().primaryKey(), // `${owner}-${token}`
-    owner: t.hex().notNull(),
-    token: t.hex().notNull(),
-    /** Currently sitting in escrow, withdrawable via claim(). */
-    claimable: t.bigint().notNull().default(0n),
-    /** Lifetime total ever deposited to escrow for this owner/token. */
-    lifetimeEarned: t.bigint().notNull().default(0n),
-    /** Lifetime total ever withdrawn to wallet. */
-    lifetimeClaimed: t.bigint().notNull().default(0n),
-    updatedAt: t.bigint().notNull(),
+    id: t.text().primaryKey(), // `${txHash}-${logIndex}`
+    coin: t.hex().notNull(),
+    currency0: t.hex().notNull(),
+    currency1: t.hex().notNull(),
+    protocolAmount0: t.bigint().notNull(),
+    protocolAmount1: t.bigint().notNull(),
+    creatorAmount0: t.bigint().notNull(),
+    creatorAmount1: t.bigint().notNull(),
+    /** Who the creator side was credited to when this fired. */
+    creatorFeeRecipient: t.hex().notNull(),
+    timestamp: t.bigint().notNull(),
+    block: t.bigint().notNull(),
   }),
   (t) => ({
-    ownerIdx: index().on(t.owner),
-  }),
-);
-
-/** The immutable bps split registered for each locked position. */
-export const feeRecipient = onchainTable(
-  "fee_recipient",
-  (t) => ({
-    id: t.text().primaryKey(), // `${tokenId}-${index}`
-    tokenId: t.bigint().notNull(),
-    addr: t.hex().notNull(),
-    bps: t.integer().notNull(),
-  }),
-  (t) => ({
-    tokenIdIdx: index().on(t.tokenId),
-    addrIdx: index().on(t.addr),
+    coinIdx: index().on(t.coin),
+    tsIdx: index().on(t.timestamp),
   }),
 );
 

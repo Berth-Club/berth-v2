@@ -16,7 +16,6 @@ import type { Coin } from "@/lib/coin"
  * data ever fills a gap.
  */
 
-type Tab = "water" | "grad"
 type Sort = "trending" | "buys" | "new" | "old" | "top" | "vol"
 type Range = "all" | "24h" | "7d"
 
@@ -97,13 +96,9 @@ function pageList(total: number, page: number): (number | "…")[] {
 
 export function HarborGrid({ coins }: { coins: Coin[] }) {
   const [query, setQuery] = React.useState("")
-  const [tab, setTab] = React.useState<Tab>("water")
   const [sort, setSort] = React.useState<Sort>("trending")
   const [range, setRange] = React.useState<Range>("all")
   const [page, setPage] = React.useState(1)
-
-  const gradCount = React.useMemo(() => coins.filter((c) => c.graduated).length, [coins])
-  const waterCount = coins.length - gradCount
 
   const shown = React.useMemo(() => {
     // Launch-recency window. The indexer exposes no windowed trade activity to
@@ -112,14 +107,9 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
     const now = Math.floor(Date.now() / 1000)
     const floor = range === "24h" ? now - DAY : range === "7d" ? now - 7 * DAY : 0
 
-    const filtered = coins.filter(
-      (c) =>
-        c.graduated === (tab === "grad") &&
-        c.createdAt >= floor &&
-        matches(c, query),
-    )
+    const filtered = coins.filter((c) => c.createdAt >= floor && matches(c, query))
     return sortCoins(filtered, sort)
-  }, [coins, tab, range, query, sort])
+  }, [coins, range, query, sort])
 
   const totalPages = Math.max(1, Math.ceil(shown.length / PER_PAGE))
   const pg = Math.min(page, totalPages)
@@ -136,10 +126,8 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
-  const TABS: { key: Tab; label: string; count: number }[] = [
-    { key: "water", label: "On the berth", count: waterCount },
-    { key: "grad", label: "Graduated", count: gradCount },
-  ]
+  // v2 has no graduation, so the On-the-berth / Graduated split is gone: every
+  // coin lives in one pool from block one and never migrates out of it.
 
   return (
     <div className="flex flex-col">
@@ -158,14 +146,6 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
           <span className="tabular">{coins.length.toLocaleString("en-US")}</span> launched
         </span>
 
-        <Segmented>
-          {TABS.map((t) => (
-            <Pill key={t.key} on={tab === t.key} onClick={() => reset(setTab)(t.key)}>
-              {t.label} · <span className="tabular">{t.count.toLocaleString("en-US")}</span>
-            </Pill>
-          ))}
-        </Segmented>
-
         <div className="well flex w-full items-center gap-2 rounded-full px-3.5 md:ml-auto md:w-auto md:min-w-[200px]">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#93a8c4" strokeWidth={2} strokeLinecap="round" className="shrink-0" aria-hidden>
             <circle cx="11" cy="11" r="7" />
@@ -174,7 +154,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
           <input
             value={query}
             onChange={(e) => reset(setQuery)(e.target.value)}
-            placeholder="Search ships or tickers"
+            placeholder="Search tokens or tickers"
             aria-label="Search coins"
             className="text-foam min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none"
           />
@@ -240,11 +220,7 @@ export function HarborGrid({ coins }: { coins: Coin[] }) {
           className="text-mist rounded-[14px] px-5 py-10 text-center text-sm"
           style={{ background: "rgba(11,20,33,.6)", border: "1px dashed rgba(148,168,196,.3)" }}
         >
-          {query
-            ? `No ships match "${query}".`
-            : tab === "grad"
-              ? "No ships have graduated yet."
-              : "The berth's quiet — go launch something."}
+          {query ? "No tokens match that. Try another name." : "Nothing launched yet."}
         </div>
       )}
 

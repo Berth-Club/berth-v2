@@ -78,7 +78,7 @@ export function ProfileForm({
         setError(data.message ?? "Couldn't save your profile.")
       }
     } catch {
-      setError("Couldn't reach the harbor.")
+      setError("Couldn't reach the server.")
     } finally {
       setSaving(false)
     }
@@ -140,7 +140,7 @@ export function ProfileForm({
           value={name}
           maxLength={NAME_MAX}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Captain Nemo"
+          placeholder="Your name"
           className="well text-foam w-full rounded-xl px-3.5 py-2.5 text-sm outline-none"
         />
       </Field>

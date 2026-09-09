@@ -63,8 +63,11 @@ export function WalletMenu() {
 
   if (wallet.wrongNetwork) {
     return (
-      <button onClick={wallet.switchToArc} className="btn-glossy px-4 py-2.5 text-[14.5px]">
-        Wrong network — switch
+      <button
+        onClick={wallet.switchToArc}
+        className="btn-glossy shrink-0 whitespace-nowrap px-4 py-2.5 text-[14.5px]"
+      >
+        Switch network
       </button>
     )
   }
@@ -74,7 +77,7 @@ export function WalletMenu() {
       <button
         onClick={wallet.connect}
         disabled={!wallet.ready}
-        className="btn-frost text-body2 px-4 py-2.5 text-[13.5px] font-semibold disabled:opacity-50"
+        className="btn-frost text-body2 shrink-0 whitespace-nowrap px-4 py-2.5 text-[13.5px] font-semibold disabled:opacity-50"
       >
         Connect wallet
       </button>
@@ -87,7 +90,7 @@ export function WalletMenu() {
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="btn-frost flex items-center gap-2 py-2 pl-2 pr-3.5"
+        className="btn-frost flex shrink-0 items-center gap-2 whitespace-nowrap py-2 pl-2 pr-3.5"
       >
         <span aria-hidden className="size-6 shrink-0 rounded-full" style={identicon(wallet.address)} />
         <span className="tabular text-body2 text-[13px]">{short(wallet.address)}</span>

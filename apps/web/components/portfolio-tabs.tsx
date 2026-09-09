@@ -103,11 +103,11 @@ export function PortfolioTabs() {
   // get separate hooks, separate receipts and separate toasts. Never merged.
   const onCollected = React.useCallback(() => {
     refetch()
-    celebrate("Swept into escrow, captain")
+    celebrate("Swept into escrow")
   }, [refetch, celebrate])
   const onClaimed = React.useCallback(() => {
     refetch()
-    celebrate("Paid out, captain")
+    celebrate("Paid out")
   }, [refetch, celebrate])
 
   const collector = useCollect(onCollected)
@@ -174,7 +174,6 @@ export function PortfolioTabs() {
   const coinBucket = (token?: string) =>
     token ? balances.find((b) => !b.isNative && b.token === token) : undefined
   const claimableBalances = balances.filter((b) => (b.claimable ?? 0n) > 0n)
-  const claimedBalances = balances.filter((b) => (b.lifetimeClaimed ?? 0n) > 0n)
 
   return (
     <>
@@ -207,9 +206,9 @@ export function PortfolioTabs() {
         (holdings.length === 0 ? (
           <Panel>
             <EmptyMark />
-            <p className="text-lg font-semibold">Nothing in the hold yet</p>
+            <p className="text-lg font-semibold">Nothing here yet</p>
             <p className="text-mist -mt-2 text-[15px]">
-              Load up on something in the harbor and it shows here.
+              Buy something and it shows up here.
             </p>
             <Link href="/" className="btn-frost text-body2 px-5 py-2.5 text-[13.5px] font-semibold">
               Browse the harbor
@@ -233,7 +232,7 @@ export function PortfolioTabs() {
                 accent
               />
               <SummaryCell label="USDC balance" value={wallet.balance ? `${wallet.balance}` : "—"} />
-              <SummaryCell label="Ships held" value={String(holdings.length)} />
+              <SummaryCell label="Tokens held" value={String(holdings.length)} />
             </div>
 
             <div className="glass glass-sm mt-4 overflow-hidden">
@@ -309,18 +308,18 @@ export function PortfolioTabs() {
                   borderBottom: "1px solid rgba(148,168,196,0.14)",
                 }}
               >
-                <span>Ship</span>
+                <span>Token</span>
                 <span />
                 <span className="text-right">Rewards</span>
               </div>
 
               {positions.map((p) => {
-                const busy = collector.tokenId === p.tokenId
+                const busy = collector.token === p.token
                 const nothing = p.earnedToken === 0n && p.earnedNative === 0n
                 const escrow = coinBucket(p.token)
                 return (
                   <div
-                    key={p.tokenId.toString()}
+                    key={p.token}
                     className="grid items-center"
                     style={{
                       gridTemplateColumns: "1fr auto 120px",
@@ -358,7 +357,7 @@ export function PortfolioTabs() {
                         (below) then pays escrow to the wallet. Two on-chain steps,
                         kept honest — no arrows in the label, per the design. */}
                     <button
-                      onClick={() => collector.collect(p.tokenId)}
+                      onClick={() => collector.collect(p.token)}
                       disabled={collector.pending || nothing}
                       className="btn-frost text-body2 justify-self-end px-4 py-2 text-[13px] font-semibold disabled:opacity-40"
                     >
@@ -398,29 +397,33 @@ export function PortfolioTabs() {
                     ))}
                 </div>
 
+                {/* v2's escrow keeps no lifetime total and emits no rollup we
+                    index yet, so this shows what is claimable NOW — the number
+                    the button acts on — rather than a history we can't source. */}
                 <div>
                   <div className="text-faint font-mono text-[10px] uppercase" style={{ letterSpacing: ".12em" }}>
-                    Lifetime claimed
+                    Claimable now
                   </div>
                   <div className="tabular text-foam mt-1 text-xl font-semibold">
-                    {fmtFee(nativeBucket?.lifetimeClaimed ?? 0n)} USDC
+                    {fmtFee(nativeBucket?.claimable ?? 0n)} USDC
                   </div>
-                  {claimedBalances
+                  {claimableBalances
                     .filter((b) => !b.isNative)
                     .map((b) => (
                       <div key={b.token} className="text-mist text-xs">
-                        + {fmtBalance(b.lifetimeClaimed!)} ${b.symbol}
+                        + {fmtBalance(b.claimable!)} ${b.symbol}
                       </div>
                     ))}
                 </div>
 
                 <TxLink hash={claimer.hash} />
 
-                {/* claimMany skips zero balances rather than reverting — we filter
-                    to match, and stay disabled rather than send a no-op tx. */}
+                {/* One button, the native bucket — that is where every launch's
+                    USDC fees pool. A coin-side balance claims from its own row.
+                    Disabled rather than sending a no-op tx. */}
                 <button
-                  onClick={() => claimer.claimMany(owner, balances)}
-                  disabled={claimer.pending || claimableBalances.length === 0}
+                  onClick={() => nativeBucket && claimer.claim(nativeBucket)}
+                  disabled={claimer.pending || (nativeBucket?.claimable ?? 0n) === 0n}
                   className="btn-glossy ml-auto px-[22px] py-3 text-base disabled:opacity-40"
                 >
                   {claimer.pending ? "Paying out…" : "Claim all"}

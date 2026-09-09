@@ -5,7 +5,13 @@
  * bugs before). Env is reserved for secrets and per-deployment URLs only.
  *
  * Exports: CHAIN (metadata), SYSTEM (fixed on-chain addresses we don't own),
- * CONSTANTS (decimals/tick math), CONTRACTS + START_BLOCK (our v1.4 deployment).
+ * CONSTANTS (decimals/economics), CONTRACTS + START_BLOCK (our v2 deployment).
+ *
+ * v2 — github.com/Berth-Club/launchpad-contracts-v2, deployments/5042002.json.
+ * This is a different system from v1.4, not a redeploy of it: Uniswap V4
+ * instead of V3, a phantom-reserve position instead of a bonding curve, and
+ * NO GRADUATION — the pool that exists in second one is the pool the token
+ * lives in forever.
  */
 
 /** Arc testnet chain metadata. RPC endpoint itself is env (carries a key); this
@@ -21,41 +27,125 @@ export const CHAIN = {
 } as const
 
 /** Addresses fixed on Arc that we consume but don't deploy: the USDC predeploy
- *  (quote asset + native gas token) and the Uniswap v3 periphery. */
+ *  and the Uniswap V4 singleton. */
 export const SYSTEM = {
-  /** USDC predeploy — 6-decimal ERC20 view; the quote asset of every pool. Same
-   *  money as the native balance, two interfaces. Getting this wrong inverts
-   *  token ordering and prices — do not copy it, import it. */
+  /**
+   * USDC predeploy — the 6-decimal ERC20 FACE of the native balance.
+   *
+   * v2 refuses this address anywhere an asset can be named (quote asset,
+   * market, pricing anchor, route hop) and reverts with `NativeAliasNotAllowed`:
+   * a launch quoted in it would be a second order book over the same balances,
+   * priced 1e12 away from the first. Native is `address(0)` / `msg.value` at 18
+   * decimals. Keep using this ONLY for `balanceOf` reads of the ERC20 face.
+   */
   usdc: "0x3600000000000000000000000000000000000000",
-  uniswap: {
-    factory: "0x065b21b296F56186452B4482f62f56EE7D11a010",
-    nfpm: "0x78e21fff6711a81b8b2E02Cef063f7852d2f5fC2",
-    swapRouter: "0xB5D2f3Aae27dd5F4682B059A20c47f0a5B831c7f",
-    quoterV2: "0xb1A5136826aDE2C39aBA4800442dCc223A2A7604",
-    feeTier: 10_000,
-    tickSpacing: 200,
+  /** The native asset as v2 names it. Not a token — `address(0)`, 18 decimals. */
+  native: "0x0000000000000000000000000000000000000000",
+  /** Uniswap V4. Pools are a PoolKey/poolId pair, never an address. */
+  uniswapV4: {
+    poolManager: "0x6d0d1461D20054326b1697EA21ccdA774aFf7156",
+    positionManager: "0xE2c1A1342E10688A8D682ea94095fB6a899baFc1",
+    permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    /** Launch pools are hookless with tick spacing 10; the LP fee is dynamic
+     *  per launch — `(baseFeeBps + creatorTaxBps) * 100` pips. */
+    hooks: "0x0000000000000000000000000000000000000000",
+    tickSpacing: 10,
   },
 } as const satisfies {
   usdc: `0x${string}`
-  uniswap: { factory: `0x${string}`; nfpm: `0x${string}`; swapRouter: `0x${string}`; quoterV2: `0x${string}`; feeTier: number; tickSpacing: number }
+  native: `0x${string}`
+  uniswapV4: {
+    poolManager: `0x${string}`
+    positionManager: `0x${string}`
+    permit2: `0x${string}`
+    hooks: `0x${string}`
+    tickSpacing: number
+  }
 }
 
-/** Decimal + tick-math constants of the system. */
+/** Decimal + economic constants of the system. */
 export const CONSTANTS = {
   /** Native (18dp) units per ERC20 USDC (6dp) unit. */
   nativePerUsdc: 1_000_000_000_000n,
-  /** TickMath.MAX_TICK rounded inward to tickSpacing 200. Mirrors the factory. */
-  maxUsableTick: 887_200,
+  /** ERC20-face decimals. NEVER format a native amount with this — the v2 docs
+   *  call `formatUnits(nativeAmount, 6)` the single most likely integration bug;
+   *  it overstates by 1e12. Native amounts are 18dp. */
   usdcDecimals: 6,
+  /** Native + launched-token decimals. */
+  nativeDecimals: 18,
   coinDecimals: 18,
+  /** Every launch mints exactly this, and the token has no mint function. */
+  supplyTokens: 1_000_000_000,
+  /** LAUNCH_SUPPLY, in wei. */
+  supplyWei: 1_000_000_000_000_000_000_000_000_000n,
+  /**
+   * The quote the curve behaves as if the pool already held, in NATIVE wei.
+   * `openingPrice = phantomQuote / supply`, so `openingFDV = phantomQuote` —
+   * every launch opens at a 5,000 USDC fully-diluted valuation.
+   */
+  phantomQuoteNative: 5_000_000_000_000_000_000_000n,
+  /** LAUNCH_FEE, native wei. 0.1 USDC. */
+  launchFeeNative: 100_000_000_000_000_000n,
+  /** Splitter's cut to the buyback wallet; the rest goes to treasury. */
+  buybackBps: 6000,
 } as const
 
-/** Block the current LaunchFactory was deployed in — the indexer's backfill start. */
-export const START_BLOCK = 53500852 as const
+/** Block BerthClubFeeEscrow (the first v2 contract) was deployed in — the
+ *  indexer's backfill start. */
+export const START_BLOCK = 61245603 as const
 
-/** v1.4 deployment — github.com/Arcane-build/arc-launchpad. */
+/**
+ * v2 deployment on 5042002.
+ *
+ * The two stacks are exclusive: a token belongs to `launchFactory` (one pool)
+ * OR `multiLaunchFactory` (up to five pools, one per quote asset), never both.
+ *
+ * `holderVault` and `burnVault` are not just plumbing — they are the two
+ * non-default values of a launch's `creatorFeeRecipient`, i.e. the "to holders"
+ * and "buyback & burn" choices on the launch form, and the labels the app reads
+ * an existing launch's fee mode back out of.
+ */
 export const CONTRACTS = {
-  launchFactory: "0x82A613C19787D88d648C04F8Ad7Bd6825193e317",
-  lpLocker: "0xA592aDF3Cb55741619d09E50E6502f40F3883cc9",
-  feeLocker: "0xC3a15f812901205Fc4406Cd0dC08Fe266bF45a1E",
+  // single-market stack
+  launchFactory: "0xe9CaE120d765E773fFa07550b42aC2A8E0cdB22E",
+  launchLocker: "0xF54AeB7EcE61b7ddDB2680F5C682e91D36Db3029",
+  launchDeployer: "0x8a9E18d824546F628AB38eD22dbFC2c02807Ae60",
+  positionMinter: "0xDbbF07799953207D8E1aE2AfEeE6f61A06aBb733",
+  router: "0xb7F2fe66b9796d3100bc08a9b9d36CCAa03783df",
+  referenceRegistry: "0x30129240EF04bCE14C8ba8BB9436C95c20d64879",
+
+  // multi-market stack
+  multiLaunchFactory: "0xb1aB15CFF490187ee3EcFC7BaB207b53AF01c4E3",
+  multiLaunchLocker: "0x371fce159F2aD5732aEC3fBc2a7c7Cb64845Ea7f",
+  multiLaunchDeployer: "0x19f691F8bEF0afBc9DA02E8ee67f8e15f2a7c878",
+  multiPositionMinter: "0x2E7aA851B77851CF848235010c267E0e480214D1",
+  multiRouter: "0xBDEA4b48da563912237F5101909E612d0C7646Bd",
+  multiReferenceRegistry: "0xE7ab3ec6E0A57411957d5D64995Add298F0eD069",
+
+  // shared
+  feeEscrow: "0xa3f8F9c5Fe873183Bd118c752AeFd61642Da656e",
+  quotePricer: "0x533A1A9203333bf3e63E53b7c5e9F3603583e528",
+
+  // fee routing — no owners, nothing configurable
+  feeSplitter: "0x6aAda3fc879086ebF3C523aC458156cD519b38E6",
+  holderVault: "0x01936EdC4c0067d79272126D3AB0cc78E654DAEC",
+  burnVault: "0x72c22032a43A6E41b812B55020fFd9Ef6BAF8f37",
+  disperseV2: "0x6F587068755dc9793793234A3C5528c31E8c4C06",
 } as const satisfies Record<string, `0x${string}`>
+
+/** Wallets the deployment nominates. Display/labelling only — the app never
+ *  writes to them. */
+export const WALLETS = {
+  protocolFeeRecipient: "0x5830323De0E4424ECC54746808F6b3e27e74C2f8",
+  treasury: "0x20269CB2985C0B62308A9963Fd15719b205890D6",
+  buyback: "0xA78376C8deB924931924271F8ef00CbC0E56DA8F",
+  distributor: "0x0dF97157e29DE5fdf32670003D04BfB147e83518",
+} as const satisfies Record<string, `0x${string}`>
+
+/** The three values `creatorFeeRecipient` can take, and what each one means.
+ *  The choice is permanent for the two vault modes. */
+export const FEE_MODES = {
+  keep: null,
+  holders: CONTRACTS.holderVault,
+  burn: CONTRACTS.burnVault,
+} as const

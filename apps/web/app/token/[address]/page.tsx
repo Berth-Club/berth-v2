@@ -105,8 +105,6 @@ export default async function TokenPage({
   // Batch-resolve holder identities in one query (see origin plan R9, R10).
   const holderProfiles = await getProfiles(holders?.rows.map((h) => h.address) ?? [])
 
-  const pct = Math.round(Math.min(1, Math.max(0, coin.graduated ? 1 : coin.curve)) * 100)
-
   // Inline social links for the meta line — only the keys the creator supplied.
   const socials = [
     coin.links.twitter && { label: "𝕏", href: coin.links.twitter },
@@ -150,6 +148,21 @@ export default async function TokenPage({
             </p>
           </div>
           <div className="min-w-0 shrink text-right">
+            {/* What this token trades against, above the address. USDC is the
+                only quote asset the factory ships, so it is not read per-coin. */}
+            <div className="mb-2 flex items-center justify-end gap-2">
+              <span
+                className="text-faint text-[10.5px] font-medium"
+                style={{ letterSpacing: ".12em" }}
+              >
+                PAIRED WITH
+              </span>
+              <span className="text-body2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/usdc.png" alt="" width="15" height="15" className="block shrink-0" aria-hidden />
+                USDC
+              </span>
+            </div>
             <div className="text-faint mb-[5px] text-[10.5px] font-medium" style={{ letterSpacing: ".12em" }}>
               CONTRACT ADDRESS
             </div>
@@ -171,14 +184,6 @@ export default async function TokenPage({
             </span>
             <span style={{ color: "rgba(148,168,196,.4)" }}>·</span>
             <span>launched {coin.age} ago</span>
-            {coin.graduated && (
-              <span
-                className="text-gold rounded-full px-[9px] py-[2px] text-[11px] font-semibold"
-                style={{ border: "1px solid rgba(137,167,219,.4)" }}
-              >
-                🎓 graduated
-              </span>
-            )}
             {socials.map((s) => (
               <a
                 key={s.label}
@@ -255,36 +260,6 @@ export default async function TokenPage({
             <PriceChart points={history ?? []} volume={coin.vol} />
           </div>
 
-          <div className="px-5 pb-5 pt-9">
-            <div className="text-mist mb-5 flex justify-between text-xs">
-              <span>Graduation</span>
-              <span className="tabular text-foam font-semibold">{pct}%</span>
-            </div>
-            <div
-              className="relative h-2.5 rounded-lg"
-              style={{
-                background: "rgba(3,8,16,.85)",
-                border: "1px solid rgba(148,168,196,.1)",
-                boxShadow: "inset 0 1px 3px rgba(0,0,0,.55)",
-              }}
-            >
-              <div
-                className="animate-flow shadow-meter-glow h-full rounded-lg"
-                style={{
-                  width: `${pct}%`,
-                  backgroundImage: "linear-gradient(90deg,#4f74a8,#d3e0f9,#89a7db,#4f74a8)",
-                  backgroundSize: "200% 100%",
-                }}
-              />
-              <span
-                aria-hidden
-                className="absolute text-2xl leading-none"
-                style={{ top: -13, left: `${pct}%`, transform: "translateX(-60%)" }}
-              >
-                ⛵
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* chat card — flex-col so CoinComments can grow the thread and pin the
