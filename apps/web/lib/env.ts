@@ -19,8 +19,15 @@ export const env = {
   rpcUrl: process.env.NEXT_PUBLIC_RPC_URL ?? CHAIN.defaultRpc,
   /** IPFS gateway host that renders uploaded coin art (trailing slash trimmed). */
   ipfsGateway: (process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://gateway.pinata.cloud").replace(/\/+$/, ""),
-  /** Canonical site origin for OpenGraph / canonical URLs. */
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+  /** Canonical site origin for OpenGraph / canonical URLs.
+   *
+   *  Deliberately NOT an env var. It was NEXT_PUBLIC_SITE_URL, and prod had it
+   *  set to the Railway hostname, so `metadataBase` resolved every og:image and
+   *  twitter:image to https://bridgedotclub-web-production.up.railway.app —
+   *  every link shared anywhere pulled its card from the wrong host, and nothing
+   *  caught it. The site has exactly one public origin, so this is a constant:
+   *  a value that never legitimately varies should not be a knob that can drift. */
+  siteUrl: "https://berth.club",
   /** Public base URL that serves R2 avatars (trailing slash trimmed). MUST be a
    *  cookie-less host (r2.dev or a dedicated subdomain, never the app origin) so
    *  a served image can't run as same-origin script. Empty => avatars off. */

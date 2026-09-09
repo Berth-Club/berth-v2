@@ -86,6 +86,17 @@ flowchart TB
   at build time** — for a Dockerfile build they must be `ARG`s). `lib/server-env.ts` =
   secrets (`server-only`; a client import is a build error). New secret → `server-env.ts`;
   new public value → `env.ts` **and** the Dockerfile ARG + compose build.arg.
+  **A value that never legitimately varies is a constant, not an env var.** The
+  canonical origin (`env.siteUrl`) used to be `NEXT_PUBLIC_SITE_URL`; prod had it
+  pointed at the Railway hostname, so `metadataBase` resolved every og:image and
+  twitter:image to `up.railway.app` and every shared link pulled its card from
+  the wrong host. Same failure shape as a stray `*_LAUNCH_FACTORY` env var.
+- **The app answers on more than one hostname** — `berth.club`,
+  `www.berth.club`, and the public Railway domain, all serving identical
+  content. `app/robots.ts` reads the request Host and disallows crawling on
+  anything that isn't the real domain (`lib/canonical-host.ts`, which fails
+  OPEN: no readable host means allow, since the opposite would deindex the
+  site).
 - **Auth pattern** (copy it for any authed route): `Bearer` header →
   `PrivyClient.verifyAuthToken` → `getUser` → resolve the linked wallet (lowercased).
   Routes write **only the token's wallet**, never an address from the body. See
