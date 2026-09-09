@@ -12,7 +12,7 @@
 
 import { PrivyClient } from "@privy-io/server-auth"
 
-import { env } from "@/lib/env"
+import { PROFILE_EDITING_ENABLED, env } from "@/lib/env"
 import { MAX_BYTES, PinImageError, validateAndReencode } from "@/lib/pin-image"
 import { R2_ENABLED, putAvatar } from "@/lib/r2"
 import { serverEnv } from "@/lib/server-env"
@@ -52,6 +52,9 @@ function privy(): PrivyClient | null {
 }
 
 export async function POST(request: Request) {
+  // Two separate 503s on purpose: an operator debugging a dead upload needs
+  // to tell "someone flipped the flag" from "R2 creds are missing".
+  if (!PROFILE_EDITING_ENABLED) return fail(503, "not_configured", "Profile editing is turned off.")
   if (!R2_ENABLED) return fail(503, "not_configured", "Avatar uploads aren't configured yet.")
 
   // 1. Authenticate (a verified Privy token, not a spoofable address).

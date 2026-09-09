@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { OnboardingProfile } from "@/components/onboarding-profile"
 import { arc } from "@/lib/chain"
 import { wagmiConfig } from "@/lib/wagmi"
-import { env } from "@/lib/env"
+import { env, PROFILE_EDITING_ENABLED } from "@/lib/env"
 
 const appId = env.privyAppId
 
@@ -54,7 +54,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <WagmiProvider config={wagmiConfig}>
           {children}
-          <OnboardingProfile />
+          {PROFILE_EDITING_ENABLED && <OnboardingProfile />}
         </WagmiProvider>
       </QueryClientProvider>
     </PrivyProvider>

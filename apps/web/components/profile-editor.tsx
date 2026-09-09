@@ -4,15 +4,21 @@ import * as React from "react"
 
 import { ProfileForm, type ProfileInitial } from "@/components/profile-form"
 import { useWallet } from "@/components/wallet-provider"
+import { PROFILE_EDITING_ENABLED } from "@/lib/env"
 
 /**
  * The "Edit profile" affordance on /u. Renders nothing unless the connected
  * wallet IS this page's wallet — so only the owner can open the form. (The API
  * enforces ownership too; this is just UI gating.)
+ *
+ * NEXT_PUBLIC_PROFILE_EDITING gates the whole thing: with the flag off the page
+ * stays read-only for everyone, owner included. /api/profile POST refuses too.
  */
 export function ProfileEditor({ address, initial }: { address: string; initial: ProfileInitial | null }) {
   const { connected, address: mine } = useWallet()
   const [editing, setEditing] = React.useState(false)
+
+  if (!PROFILE_EDITING_ENABLED) return null
 
   const isOwner = connected && mine?.toLowerCase() === address.toLowerCase()
   if (!isOwner) return null

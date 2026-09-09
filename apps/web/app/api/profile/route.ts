@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { PrivyClient } from "@privy-io/server-auth"
 
-import { env } from "@/lib/env"
+import { PROFILE_EDITING_ENABLED, env } from "@/lib/env"
 import { parseProfileInput } from "@/lib/profile-input"
 import { PROFILES_ENABLED, getProfile, getProfiles, upsertProfile } from "@/lib/profiles"
 import { deleteAvatarByUrl, keyFromUrl } from "@/lib/r2"
@@ -47,6 +47,12 @@ export async function GET(request: Request) {
  * else's row).
  */
 export async function POST(request: Request) {
+  // NEXT_PUBLIC_PROFILE_EDITING gates WRITES only — GET above keeps answering,
+  // so existing names and avatars still render with editing off. A stale client
+  // that still posts gets a clean refusal instead of a write.
+  if (!PROFILE_EDITING_ENABLED) {
+    return NextResponse.json({ code: "not_configured", message: "Profile editing is turned off." }, { status: 503 })
+  }
   if (!PROFILES_ENABLED) {
     return NextResponse.json({ code: "not_configured", message: "Profiles aren't set up yet." }, { status: 503 })
   }

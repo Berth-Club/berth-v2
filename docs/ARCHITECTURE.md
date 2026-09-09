@@ -42,7 +42,7 @@ flowchart TB
   web -->|comments + profiles| appdb[(app Postgres)]
   indexer -->|its own tables| idxdb[(indexer Postgres)]
   web -->|coin art| pinata[Pinata / IPFS]
-  web -->|avatars| r2[Cloudflare R2]
+  web -->|avatars, when editing is on| r2[Cloudflare R2]
   web -->|wallet auth| privy[Privy]
 ```
 
@@ -73,6 +73,12 @@ flowchart TB
   owner-only write). Avatars upload to **Cloudflare R2** via `/api/avatar` (`lib/r2.ts`);
   coin images stay on Pinata. Identity renders via `UserAvatar` + `avatarSrc()` which
   branches `ipfs://`→proxy, R2 `https`→direct.
+  **Editing is behind a flag and off by default.** `NEXT_PUBLIC_PROFILE_EDITING=1`
+  (→ `PROFILE_EDITING_ENABLED` in `lib/env.ts`) turns on the onboarding prompt,
+  the "Edit profile" button on `/u`, and both write routes; unset, `POST
+  /api/profile` and `POST /api/avatar` return 503. Reading is never gated —
+  existing names and avatars still render everywhere, and the R2 objects stay
+  put, so flipping the flag back on restores the feature with no migration.
 
 ## Cross-cutting conventions
 

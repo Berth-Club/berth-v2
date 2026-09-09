@@ -25,7 +25,14 @@ export const env = {
    *  cookie-less host (r2.dev or a dedicated subdomain, never the app origin) so
    *  a served image can't run as same-origin script. Empty => avatars off. */
   r2PublicBase: (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE || "").replace(/\/+$/, ""),
+  /** "1" turns profile EDITING on (onboarding prompt, edit form, avatar
+   *  upload). Anything else, including unset, leaves it off. Reading is never
+   *  gated: existing names and avatars still render everywhere. */
+  profileEditing: process.env.NEXT_PUBLIC_PROFILE_EDITING === "1",
 } as const
 
 /** Whether wallet features can work at all (Privy configured). */
 export const WALLET_ENABLED = env.privyAppId !== "" && env.privyAppId !== "your-privy-app-id"
+
+/** Whether a user can create or change their own profile. Off by default. */
+export const PROFILE_EDITING_ENABLED = env.profileEditing

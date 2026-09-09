@@ -75,6 +75,7 @@ services:
         NEXT_PUBLIC_IPFS_GATEWAY: ${NEXT_PUBLIC_IPFS_GATEWAY:-}
         NEXT_PUBLIC_SITE_URL: http://localhost:3000
         NEXT_PUBLIC_R2_PUBLIC_BASE: ${NEXT_PUBLIC_R2_PUBLIC_BASE:-}
+        NEXT_PUBLIC_PROFILE_EDITING: ${NEXT_PUBLIC_PROFILE_EDITING:-}
     environment:
       # server-side (read at runtime)
       INDEXER_URL: http://indexer:42069
