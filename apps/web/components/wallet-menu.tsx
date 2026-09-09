@@ -5,18 +5,45 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { useWallet } from "@/components/wallet-provider"
+import { UserAvatar } from "@/components/user-avatar"
 
 function short(a?: string) {
   return a ? `${a.slice(0, 6)}…${a.slice(-4)}` : ""
 }
 
-/** A deterministic conic-gradient identicon disc from the address. */
-function identicon(addr?: string): React.CSSProperties {
-  let h = 0
-  for (const c of addr ?? "berth") h = (h * 31 + c.charCodeAt(0)) >>> 0
-  const a = h % 360
-  const b = (a + 60 + (h % 80)) % 360
-  return { background: `conic-gradient(from ${h % 360}deg, hsl(${a} 62% 64%), hsl(${b} 55% 46%), hsl(${a} 62% 64%))` }
+/**
+ * The connected wallet's own profile image, so the nav shows the face the user
+ * picked rather than a generated disc. Everywhere else that renders a wallet
+ * (token page, profile, comments) already used UserAvatar; this control was the
+ * one that never read the profile at all.
+ *
+ * Failures stay silent: UserAvatar falls back to its per-address glyph, which
+ * is what a wallet with no profile shows anyway.
+ */
+function useOwnAvatar(address?: string): string | null {
+  const [image, setImage] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    if (!address) {
+      setImage(null)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/profile?address=${address}`, { cache: "no-store" })
+        const data = (await res.json()) as { profile?: { image?: string | null } }
+        if (!cancelled) setImage(data.profile?.image ?? null)
+      } catch {
+        if (!cancelled) setImage(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [address])
+
+  return image
 }
 
 /**
@@ -28,6 +55,7 @@ function identicon(addr?: string): React.CSSProperties {
  */
 export function WalletMenu() {
   const wallet = useWallet()
+  const avatar = useOwnAvatar(wallet.address)
   const pathname = usePathname()
   const [open, setOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
@@ -92,7 +120,7 @@ export function WalletMenu() {
         aria-haspopup="menu"
         className="btn-frost flex shrink-0 items-center gap-2 whitespace-nowrap py-2 pl-2 pr-3.5"
       >
-        <span aria-hidden className="size-6 shrink-0 rounded-full" style={identicon(wallet.address)} />
+        <UserAvatar address={wallet.address ?? ""} image={avatar} size={24} />
         <span className="tabular text-body2 text-[13px]">{short(wallet.address)}</span>
       </button>
 
@@ -111,7 +139,7 @@ export function WalletMenu() {
           {/* identity + copy */}
           <div className="flex items-start justify-between gap-2">
             <span className="flex items-center gap-2.5">
-              <span aria-hidden className="size-9 shrink-0 rounded-full" style={identicon(wallet.address)} />
+              <UserAvatar address={wallet.address ?? ""} image={avatar} size={36} />
               <span className="flex flex-col">
                 <span className="tabular text-foam text-[13.5px]">{short(wallet.address)}</span>
                 <span className="text-faint mt-0.5 flex items-center gap-1.5 text-[11.5px]">
