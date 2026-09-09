@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { createPublicClient, http } from "viem"
+import { createPublicClient } from "viem"
 
 import { TradePanel } from "@/components/trade-panel"
 import { PriceChart } from "@/components/price-chart"
@@ -11,8 +11,7 @@ import { CopyPill } from "@/components/copy-pill"
 import { AutoRefresh } from "@/components/auto-refresh"
 import { PendingCoin } from "@/components/pending-coin"
 import { UserAvatar } from "@/components/user-avatar"
-import { arc, explorerAddress, explorerTx, ipfsToGateway } from "@/lib/chain"
-import { env } from "@/lib/env"
+import { arc, explorerAddress, explorerTx, ipfsToGateway, rpcTransport } from "@/lib/chain"
 import { fmtMc, fmtPrice } from "@/lib/format"
 import {
   fetchCoin,
@@ -27,7 +26,7 @@ import { getProfile, getProfiles } from "@/lib/profiles"
  *  on-chain before the indexer logs it — that's a poll-and-wait, not a 404. */
 async function hasContract(address: string): Promise<boolean> {
   try {
-    const client = createPublicClient({ chain: arc, transport: http(env.rpcUrl) })
+    const client = createPublicClient({ chain: arc, transport: rpcTransport })
     const code = await client.getCode({ address: address as `0x${string}` })
     return !!code && code !== "0x"
   } catch {

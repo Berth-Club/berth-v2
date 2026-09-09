@@ -4,7 +4,7 @@ import { coin, swap, feeCollection, captain } from "ponder:schema";
 
 import { CONTRACTS, SYSTEM } from "@workspace/contracts";
 import { LauncherTokenAbi, LaunchFactoryAbi } from "../abis/berth";
-import { pctChange, toCoinTick } from "../lib/ticks";
+import { launchTick, pctChange, toCoinTick } from "../lib/ticks";
 
 const NATIVE = SYSTEM.native as `0x${string}`;
 const DAY = 86_400n;
@@ -141,6 +141,14 @@ ponder.on("LaunchFactory:TokenLaunched", async ({ event, context }) => {
     tickUpper: Number((record as any).tickUpper),
     liquidity: (record as any).liquidity,
     coinIsToken0,
+    // The pool sits at the coin-only bound until the first swap. Seeding it here
+    // means `tick` is never null and readers need no fallback.
+    tick: launchTick(
+      Number((record as any).tickLower),
+      Number((record as any).tickUpper),
+      coinIsToken0,
+    ),
+    poolTick: coinIsToken0 ? Number((record as any).tickLower) : Number((record as any).tickUpper),
     name: name as string,
     symbol: symbol as string,
     logo,

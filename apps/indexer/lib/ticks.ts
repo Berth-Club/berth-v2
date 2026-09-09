@@ -34,6 +34,22 @@ export function toCoinTick(poolTick: number, coinIsToken0: boolean): number {
 }
 
 /**
+ * Coin-space tick the pool sits at the moment it is minted, before any swap.
+ *
+ * The launch position is single-sided in the coin, and Uniswap parks a
+ * single-sided position at the bound where it holds only that asset: at
+ * tickLower when the coin is currency0, at tickUpper when it is currency1.
+ * Both bounds are RAW pool ticks, so the currency1 case negates.
+ *
+ * Reading `tickLower` as the coin-space floor instead put a currency1 coin at
+ * 1.0001^-887270 ≈ 3e-39 USDC, and the trade panel reported a 1.7e35% price
+ * impact against it on the first buy.
+ */
+export function launchTick(tickLower: number, tickUpper: number, coinIsToken0: boolean): number {
+  return toCoinTick(coinIsToken0 ? tickLower : tickUpper, coinIsToken0);
+}
+
+/**
  * Percent change between two COIN-SPACE ticks.
  *
  * price = 1.0001^tick, and we only need the ratio of two prices, which collapses
@@ -48,6 +64,12 @@ function main(): void {
   assert.equal(toCoinTick(-268600, false), 268600, "currency1 coin negates");
   assert.equal(toCoinTick(268600, true), 268600, "currency0 coin passes through");
   assert.equal(toCoinTick(0, false), -0, "zero is zero either way");
+
+  // A native-quoted launch: raw range [-887270, 122070], coin is currency1, so
+  // the pool starts at raw 122070 and coin-space -122070. The first buy on
+  // $TOOK landed at coin-space -122066, four ticks up — consistent.
+  assert.equal(launchTick(-887270, 122070, false), -122070, "currency1 launch tick");
+  assert.equal(launchTick(-122070, 887270, true), -122070, "currency0 launch tick");
 
   // Ratio maths, independent of ordering.
   assert.equal(Math.round(pctChange(0, 0)), 0, "no move is 0%");

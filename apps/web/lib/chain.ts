@@ -1,4 +1,4 @@
-import { defineChain } from "viem"
+import { defineChain, fallback, http } from "viem"
 
 // Relative + .ts (not "@/lib/env"): chain.ts is imported by chain.selfcheck.ts,
 // which runs on raw node — node can't resolve the "@/" alias and needs the
@@ -26,16 +26,17 @@ import { env } from "./env.ts"
  * yourself reaching for IWETH.deposit, the model is wrong.
  */
 /**
- * The RPC endpoint, used directly by both server and browser.
- *
- * NOTE: this is NEXT_PUBLIC_, so whatever is set here is inlined into the JS
- * bundle and visible to anyone who opens devtools. That is a deliberate choice
- * — the free public endpoint drops connections often enough to blank the
- * portfolio, and a keyed endpoint is what makes the app usable. Restrict the
- * key by domain at the provider if that exposure ever matters.
+ * RPC endpoints, used by both server and browser. The primary is
+ * NEXT_PUBLIC_RPC_URL (inlined into the bundle, so it must be one that allows
+ * the berth.club origin — a keyed Alchemy URL does NOT and blanks every page);
+ * the rest are public fallbacks viem rotates to when the primary errors or
+ * times out.
  */
-const RPC_URL = env.rpcUrl
+const RPC_URLS = [env.rpcUrl, ...CHAIN.fallbackRpcs.filter((u) => u !== env.rpcUrl)]
 const EXPLORER_URL = CHAIN.explorerUrl
+
+/** The one transport every viem/wagmi client in the app should use. */
+export const rpcTransport = fallback(RPC_URLS.map((u) => http(u)))
 
 export const arc = defineChain({
   id: CHAIN.id,
@@ -43,7 +44,7 @@ export const arc = defineChain({
   // The NATIVE view — correct for msg.value, gas and balances, which is all
   // viem/wagmi use this for. The 6-decimal ERC20 view lives in USDC below.
   nativeCurrency: CHAIN.nativeCurrency,
-  rpcUrls: { default: { http: [RPC_URL] } },
+  rpcUrls: { default: { http: RPC_URLS } },
   blockExplorers: { default: { name: "Arcscan", url: EXPLORER_URL } },
   testnet: true,
   contracts: {

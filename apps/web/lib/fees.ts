@@ -87,6 +87,8 @@ type RawCoin = {
   image?: string | null
   tick: number | null
   tickLower: number
+  tickUpper: number
+  coinIsToken0: boolean
   swapCount: number
 }
 
@@ -94,7 +96,7 @@ type RawCoin = {
 // creator-filtered query if the harbor outgrows one page.
 const PORTFOLIO_QUERY = `query {
   coins(limit: 100) {
-    items { address name symbol image tick tickLower swapCount }
+    items { address name symbol image tick tickLower tickUpper coinIsToken0 swapCount }
   }
 }`
 

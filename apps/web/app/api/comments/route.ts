@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { PrivyClient } from "@privy-io/server-auth"
-import { createPublicClient, erc20Abi, formatUnits, http, isAddress as isAddr } from "viem"
+import { createPublicClient, erc20Abi, formatUnits, isAddress as isAddr } from "viem"
 
-import { arc, COIN_DECIMALS } from "@/lib/chain"
+import { arc, COIN_DECIMALS, rpcTransport } from "@/lib/chain"
 import { COMMENTS_ENABLED, addComment, listComments, recentCommentCount } from "@/lib/comments"
 import { env } from "@/lib/env"
 import { fmtAmount } from "@/lib/format"
@@ -15,7 +15,7 @@ export const runtime = "nodejs"
 async function balanceLabel(coin: string, author: string): Promise<string | null> {
   if (!isAddr(author)) return null // did:privy fallback isn't an address
   try {
-    const client = createPublicClient({ chain: arc, transport: http(env.rpcUrl) })
+    const client = createPublicClient({ chain: arc, transport: rpcTransport })
     const raw = await client.readContract({
       address: coin as `0x${string}`,
       abi: erc20Abi,

@@ -53,10 +53,11 @@ type IndexedCoin = {
   twitter: string
   telegram: string
   website: string
-  /** Launch bounds. Always coin-space, both orderings. */
+  /** Launch bounds, RAW pool ticks (currency1-per-currency0). */
   tickLower: number
   tickUpper: number
-  /** Coin-space at launch, raw pool tick once swapCount > 0. See coinSpaceTick. */
+  /** Coin-space tick, seeded at launch and updated on every swap. Null only on
+   *  rows written before the indexer seeded it. See coinSpaceTick. */
   tick: number | null
   coinIsToken0: boolean
   volumeNative: string
@@ -396,31 +397,29 @@ type TickSource = {
   address: string
   tick: number | null
   tickLower: number
-  swapCount: number
+  tickUpper: number
+  coinIsToken0: boolean
 }
 
 /**
  * The tick as if the coin were token0 — the space where 1.0001^tick is NATIVE per
- * coin and the launch event's tickLower/tickUpper already live.
+ * coin.
  *
- * The indexer's `tick` column changes meaning: at launch it's seeded from the
- * (coin-space) event tickLower, but a Swap overwrites it with the raw pool tick.
- * `swapCount` is what distinguishes the two — before any trade the pool simply
- * sits at the range floor.
+ * `coin.tick` is ALREADY coin-space — the indexer normalises it on write
+ * (toCoinTick), seeding it at launch and updating it from the pool tick on
+ * every swap. The raw pool tick lives in `poolTick`. Do NOT negate it here: a
+ * double negation once priced a coin at ~$843 trillion.
+ *
+ * The fallback covers rows the indexer wrote before it seeded `tick`, and
+ * mirrors apps/indexer/lib/ticks.ts `launchTick`: a single-sided launch
+ * position parks at the bound that holds only the coin — the RAW tickLower
+ * when the coin is currency0, the RAW tickUpper when it is currency1. Using
+ * tickLower for a currency1 coin priced $TOOK at 3e-39 USDC and reported a
+ * 1.7e35% price impact on its first buy.
  */
 export function coinSpaceTick(c: TickSource): number {
-  // `coin.tick` is ALREADY coin-space — the indexer normalises it on write
-  // (toCoinTick), seeding it from the event's tickLower at launch and updating
-  // it from the pool tick on every swap. The raw pool tick lives in `poolTick`.
-  //
-  // Do NOT negate it here for token1 coins. This function used to, back when the
-  // column held a raw pool tick, and the two fixes composed into a double
-  // negation: -(-268591) = +268591, so 1.0001^tick returned ~$843 TRILLION per
-  // token and curve clamped to 1, badging a coin "GRADUATED" off a 0.0001 USDC buy.
-  //
-  // It hid because swapCount === 0 short-circuited to tickLower — every coin had
-  // zero trades, so the wrong branch was unreachable until the first real swap.
-  return c.tick ?? c.tickLower
+  if (c.tick !== null) return c.tick
+  return c.coinIsToken0 ? c.tickLower : -c.tickUpper
 }
 
 /** Deterministic face, used only when the coin carries no readable metadata. */

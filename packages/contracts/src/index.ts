@@ -23,6 +23,10 @@ export const CHAIN = {
   nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
   explorerUrl: "https://testnet.arcscan.app",
   defaultRpc: "https://rpc.testnet.arc.network",
+  /** Public endpoints viem falls back to when the primary errors or times out.
+   *  Both answer chain id 5042002 and send `Access-Control-Allow-Origin: *`,
+   *  so they work from the browser. Ordered by preference. */
+  fallbackRpcs: ["https://arc-testnet.drpc.org", "https://5042002.rpc.thirdweb.com"],
   multicall3: "0xcA11bde05977b3631167028862bE2a173976CA11",
 } as const
 
