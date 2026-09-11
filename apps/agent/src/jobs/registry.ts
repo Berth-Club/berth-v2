@@ -1,4 +1,7 @@
+import { epochStart } from "./epochStart.js"
 import { laneRead } from "./laneRead.js"
+import { publish } from "./publish.js"
+import { scoreBatch } from "./scoreBatch.js"
 import type { JobHandler } from "./types.js"
 
 /**
@@ -7,8 +10,11 @@ import type { JobHandler } from "./types.js"
  * A type with no entry here is parked rather than retried: an unrecognised job
  * means a deploy is missing code, and spinning on it would hide that.
  *
- * Handlers land here as the units that own them are built. The epoch clock, the
- * readers, the scorer and the keeper each register their own.
+ * There is no dependency graph. Each handler waits on its own preconditions, so
+ * the types below can all be queued the moment a week opens and sort themselves
+ * out: the scorer waits for lanes to report, the publisher waits for every item
+ * to be judged. A job that runs too early costs one cheap poll. A graph that
+ * gets the order wrong costs a stuck week nobody notices.
  */
 export const handlers: Record<string, JobHandler> = {
   /**
@@ -18,8 +24,17 @@ export const handlers: Record<string, JobHandler> = {
    */
   noop: async ({ job }) => ({ kind: "done", note: `noop ${job.id}` }),
 
+  /** Open the week that just closed and queue its work. Global, not per coin. */
+  epoch_start: epochStart,
+
   /** Read one lane for one coin for one week. `key` is the lane name. */
   lane_read: laneRead,
+
+  /** Score the week's unjudged items, resumably, in batches. */
+  score_batch: scoreBatch,
+
+  /** Turn the scores into the list of who is owed what. */
+  publish,
 }
 
 /**
@@ -30,4 +45,9 @@ export const leaseSeconds: Record<string, number> = {
   // Paging several repositories, with a rate limit in the way, takes longer
   // than the two-minute default before it is genuinely stuck.
   lane_read: 10 * 60,
+
+  // Twenty-five items, each a model call that can take tens of seconds. A
+  // shorter lease would let a second worker start scoring items the first is
+  // already paying for.
+  score_batch: 20 * 60,
 }
