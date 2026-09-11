@@ -8,6 +8,7 @@ import {
   hmLeaves,
   hmRuleVersions,
   hmScores,
+  hmWalletClaims,
 } from "@workspace/db/schema"
 import { and, desc, eq, inArray } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/postgres-js"
@@ -63,6 +64,12 @@ export interface RecordLine {
   /** Null when the author never bound a wallet, which is why they are unpaid. */
   wallet: string | null
   strippedBytes: number
+  /**
+   * Why an address they wrote was not used, when one was written and refused.
+   * A contributor who is unpaid deserves the reason on the same line as the
+   * score, not in a log only we can read.
+   */
+  claimNote: string | null
 }
 
 export interface RecordPayout {
@@ -95,6 +102,8 @@ export interface WeekRecord {
   payouts: RecordPayout[]
   /** Authors who were judged but have no wallet, so nothing could be sent. */
   unpaidCount: number
+  /** Scored contributions kept off the list because nobody could be paid. */
+  unlistedCount: number
 }
 
 /** The most recently published weeks, newest first. */
@@ -183,7 +192,20 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
       : []
   const walletOf = new Map(bindings.map((b) => [`${b.platform}:${b.subject}`, b.wallet]))
 
-  const lines: RecordLine[] = scored.map((s) => ({
+  // Claims that were NOT honoured, so an unpaid line can say why. The ones
+  // that bound successfully need no explanation: the wallet is right there.
+  const refused = await d
+    .select({ subject: hmWalletClaims.subject, status: hmWalletClaims.status, note: hmWalletClaims.note })
+    .from(hmWalletClaims)
+    .where(and(eq(hmWalletClaims.coin, week.coin), eq(hmWalletClaims.epoch, epoch)))
+    .orderBy(desc(hmWalletClaims.id))
+  const noteFor = new Map<string, string>()
+  for (const c of refused) {
+    if (c.status === "bound" || c.status === "already_bound_same") continue
+    if (c.note && !noteFor.has(c.subject)) noteFor.set(c.subject, c.note)
+  }
+
+  const allLines: RecordLine[] = scored.map((s) => ({
     handle: s.handle,
     link: s.link,
     score: s.score ?? 0,
@@ -191,7 +213,15 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     status: s.status ?? "pending",
     wallet: walletOf.get(`${s.platform}:${s.subject}`) ?? null,
     strippedBytes: s.strippedBytes,
+    claimNote: noteFor.get(s.subject) ?? null,
   }))
+
+  // Only payable work is listed. A contribution whose author has no wallet
+  // bound is still scored, still stored, and still counted below, but it is
+  // not a line on the record: a list where most rows say "unpaid" reads as a
+  // list of failures rather than a payout.
+  const lines = allLines.filter((l) => l.wallet !== null)
+  const unlistedCount = allLines.length - lines.length
 
   const payouts = await d
     .select({
@@ -227,7 +257,8 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     lanes,
     lines,
     payouts,
-    unpaidCount: lines.filter((l) => l.wallet === null && l.score > 0).length,
+    unpaidCount: unlistedCount,
+    unlistedCount,
   }
 }
 

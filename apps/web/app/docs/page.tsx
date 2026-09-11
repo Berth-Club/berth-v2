@@ -225,7 +225,7 @@ const sections: Section[] = [
     // Rendered last but listed under PROTOCOL, matching the v4 mock's TOC.
     id: "dx-harbormaster",
     group: "PROTOCOL",
-    label: "The Harbormaster (coming soon)",
+    label: "The Harbormaster",
     body: (
       <>
         <Para>
@@ -263,7 +263,7 @@ const sections: Section[] = [
           ]}
         />
         <Para>
-          Shipping soon. Read the{" "}
+          Read the{" "}
           <Link href="/harbormaster" className="text-lime">
             full walkthrough
           </Link>

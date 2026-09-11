@@ -29,6 +29,13 @@
       "when": 1789114820724,
       "tag": "0003_harbormaster_freeze",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789129524113,
+      "tag": "0004_fat_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

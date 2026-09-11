@@ -12,7 +12,7 @@ import {
   TABLE_NAMES,
   assertThrowaway,
 } from "@workspace/db"
-import { and, desc, eq, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 
 import { epochBounds, lastClosedEpoch } from "../clock.js"
 import { env } from "../env.js"
@@ -49,7 +49,7 @@ const DEPLOYER = "0x00000000000000000000000000000000000000de"
 const COIN_POT = BigInt(process.env.HM_COIN_POT ?? "1000000000000000000000") // 1,000 tokens
 const USDC_POT = BigInt(process.env.HM_USDC_POT ?? "500000000") // 500 USDC at 6dp
 
-const repoArg = process.argv[2] ?? "vercel/next.js"
+const repoArg = process.argv[2] ?? "Berth-Club/berth-v2"
 
 // Before anything is created or truncated.
 assertThrowaway(process.env.DATABASE_URL)
@@ -111,30 +111,23 @@ function ctxFor(key = "", epoch = 0): JobContext {
 }
 
 /**
- * Give every author in this week a wallet derived from their GitHub id.
+ * How many authors this week ended up with a wallet.
  *
- * Derived, not invented: the address is a function of the numeric id, so the
- * same contributor lands on the same address every run and two of them can
- * never collide. Nothing here claims a real person controls it.
+ * Nothing is invented any more. A contributor is bound when they wrote an
+ * address in their own pull request, which is the real mechanism, so a demo run
+ * against a repository where nobody has done that correctly pays nobody.
  */
-async function bindAuthors(): Promise<number> {
+async function boundAuthors(): Promise<{ bound: number; total: number }> {
   const authors = await db!
-    .selectDistinct({ subject: hmItems.platformUserId, handle: hmItems.platformHandle })
+    .selectDistinct({ subject: hmItems.platformUserId })
     .from(hmItems)
     .where(eq(hmItems.coin, COIN))
-  if (authors.length === 0) return 0
-  await db!
-    .insert(hmBindings)
-    .values(
-      authors.map((a) => ({
-        platform: "github",
-        subject: a.subject,
-        handle: a.handle,
-        wallet: `0x${BigInt(a.subject).toString(16).padStart(40, "0")}`,
-      }))
-    )
-    .onConflictDoNothing()
-  return authors.length
+  if (authors.length === 0) return { bound: 0, total: 0 }
+  const rows = await db!
+    .select({ subject: hmBindings.subject })
+    .from(hmBindings)
+    .where(inArray(hmBindings.subject, authors.map((a) => a.subject)))
+  return { bound: rows.length, total: authors.length }
 }
 
 async function main() {
@@ -206,8 +199,10 @@ async function main() {
   // seeding it first is also the more honest simulation.
   await epochStart(ctxFor("", epoch))
   await laneRead(ctxFor("github", epoch))
-  const boundCount = await bindAuthors()
-  console.log(`  bound ${boundCount} author wallet(s) before scoring`)
+  const b = await boundAuthors()
+  console.log(
+    `  ${b.bound} of ${b.total} author(s) wrote a wallet address in their pull request`
+  )
 
 
   const controller = new AbortController()
