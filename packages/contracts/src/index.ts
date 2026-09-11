@@ -153,3 +153,29 @@ export const FEE_MODES = {
   holders: CONTRACTS.holderVault,
   burn: CONTRACTS.burnVault,
 } as const
+
+/* ────────────────────────────── harbormaster ─────────────────────────────── */
+
+/**
+ * The epoch clock, shared by the agent and the vault.
+ *
+ * `epoch = floor((now - HM_GENESIS) / HM_EPOCH_SECONDS)`. The vault derives the
+ * same index from `block.timestamp`, so both sides MUST read these two numbers
+ * from here. A worker that computed weeks differently from the contract would
+ * post a root for an epoch the vault thinks is still open, and the revert would
+ * be the first anyone heard of it.
+ *
+ * Genesis is a Monday 00:00:00 UTC so epoch boundaries land on Monday midnight.
+ */
+export const HM_GENESIS = 1_767_571_200 as const // 2026-01-05T00:00:00Z, a Monday
+export const HM_EPOCH_SECONDS = 604_800 as const // 7 days
+
+/**
+ * Wallets excluded from earning on berth's own coin.
+ *
+ * The vault exists to pay people other than the people who built the thing, so
+ * the agent scores these zero with the reason stated on the line. Addresses have
+ * one home, and this is it — never an env var, or the web app and the agent
+ * could disagree about who counts as the team.
+ */
+export const TEAM_WALLETS = [] as const satisfies readonly `0x${string}`[]
