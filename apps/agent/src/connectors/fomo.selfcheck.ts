@@ -89,6 +89,18 @@ async function main() {
     assert.deepEqual(a.asked[0]!.tokens, [TOKEN], "or a real week would look empty")
   }
 
+  {
+    // A Solana address is case-sensitive base58. Lowercasing is only safe here
+    // because the column is lowercased too; the check pins that both sides
+    // move together, since matching one side only looks like a quiet week.
+    const SOL = "Ab1sTFNv2tV5DX1XpriwNehXgiJhdq2RQ5LtD5BXpump"
+    const a = fakeArchive([])
+    await makeFomoReader({ query: a.query })(
+      ctx({ sources: { fomo: [{ tokenAddress: SOL, networkId: 1399811149 }] } })
+    )
+    assert.deepEqual(a.asked[0]!.tokens, [SOL.toLowerCase()])
+  }
+
   /* ── the author is the immutable id, because handles get renamed ────────── */
 
   {

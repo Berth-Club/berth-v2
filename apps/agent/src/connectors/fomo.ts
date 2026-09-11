@@ -113,6 +113,11 @@ export function makeFomoReader(opts: FomoReaderOptions = {}) {
       }
     }
 
+    // Lowercased on BOTH sides, here and in the SQL. That is safe even for
+    // Solana's case-sensitive base58, because this value is only ever compared
+    // against a column that is lowercased the same way; it is never used to
+    // build a URL. The endpoint that hands addresses to the callout bot must
+    // NOT do this, and does not.
     const tokens = sources.map((s) => s.tokenAddress.toLowerCase())
 
     let rows: FomoRow[]
