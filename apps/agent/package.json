@@ -1,0 +1,33 @@
+{
+  "name": "agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx --watch src/index.ts",
+    "start": "node --import tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "check:clock": "node --import tsx src/clock.selfcheck.ts",
+    "check:loop": "node --import tsx src/jobs/loop.check.ts",
+    "check:migrations": "node --import tsx src/migrations.check.ts",
+    "check:hygiene": "node --import tsx src/connectors/hygiene.selfcheck.ts",
+    "check:github": "node --import tsx src/connectors/github.check.ts",
+    "check:lane": "GITHUB_TOKEN=test-token node --import tsx src/jobs/laneRead.check.ts"
+  },
+  "dependencies": {
+    "@workspace/contracts": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.1",
+    "viem": "^2.55.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@workspace/typescript-config": "workspace:*",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
