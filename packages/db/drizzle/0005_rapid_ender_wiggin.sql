@@ -1,0 +1,2 @@
+ALTER TABLE "hm_items" DROP CONSTRAINT "hm_items_status";--> statement-breakpoint
+ALTER TABLE "hm_items" ADD CONSTRAINT "hm_items_status" CHECK ("hm_items"."status" in ('open','pending','scored','unbound','unscored_cap','removed'));

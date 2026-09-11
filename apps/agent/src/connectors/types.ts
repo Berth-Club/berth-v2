@@ -22,6 +22,8 @@ export interface LaneItem {
   content?: string
   /** When the work counted as done: a merge time, a post time. */
   createdAt: Date
+  /** True for work still in flight. Stored and shown, never scored. */
+  open?: boolean
   /** Anything the scorer's prompt uses that does not fit above. */
   meta?: Record<string, unknown>
 }
@@ -64,6 +66,14 @@ export interface ReaderContext {
   sources: LaneSources
   /** Stop paging once this many items are held, and report `partial`. */
   cap: number
+  /**
+   * Also return work still in flight, marked `open`.
+   *
+   * Off by default, because everything downstream treats an item as something
+   * that happened. Open work is read so the record can show a contributor they
+   * were noticed; it is never scored and never paid.
+   */
+  includeOpen?: boolean
   signal?: AbortSignal
 }
 

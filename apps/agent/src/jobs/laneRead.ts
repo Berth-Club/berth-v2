@@ -80,6 +80,7 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
       window: { start: epoch.windowStart, end: epoch.windowEnd },
       sources,
       cap: CAP_PER_LANE,
+      includeOpen: true,
     })
   } catch (error) {
     // An unexpected throw is a retry, not a verdict: the lane may be fine in
@@ -108,12 +109,30 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
         content: cleaned.text || null,
         contentHash: contentHash(cleaned.text),
         strippedBytes: cleaned.strippedBytes,
-        status: "pending",
+        status: item.open ? "open" : "pending",
         createdAt: item.createdAt,
       })
       // The natural key is (coin, epoch, lane, externalId): a second run of the
       // same read is a no-op rather than a doubled payout.
-      .onConflictDoNothing()
+      //
+      // The one exception is work that was open and has now merged. Without
+      // this, a pull request first seen while open stays `open` forever: the
+      // insert conflicts, nothing updates, and it is never scored or paid. The
+      // `setWhere` is what keeps it an exception. An item that has already been
+      // judged is frozen, because its content hash is what the score was
+      // computed over and a later edit must not move it.
+      .onConflictDoUpdate({
+        target: [hmItems.coin, hmItems.epoch, hmItems.lane, hmItems.externalId],
+        set: {
+          status: item.open ? "open" : "pending",
+          content: cleaned.text || null,
+          contentHash: contentHash(cleaned.text),
+          strippedBytes: cleaned.strippedBytes,
+          // The merge time, which is the moment the work counted.
+          createdAt: item.createdAt,
+        },
+        setWhere: eq(hmItems.status, "open"),
+      })
       .returning({ id: hmItems.id })
 
     if (inserted.length > 0) stored++

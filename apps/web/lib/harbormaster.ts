@@ -100,6 +100,8 @@ export interface WeekRecord {
   lanes: RecordLane[]
   lines: RecordLine[]
   payouts: RecordPayout[]
+  /** Work still open. Read and shown, never scored, never paid. */
+  inFlight: RecordLine[]
   /** Authors who were judged but have no wallet, so nothing could be sent. */
   unpaidCount: number
   /** Scored contributions kept off the list because nobody could be paid. */
@@ -169,6 +171,7 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
       platform: hmItems.platform,
       subject: hmItems.platformUserId,
       strippedBytes: hmItems.strippedBytes,
+      itemStatus: hmItems.status,
       score: hmScores.median,
       reason: hmScores.reason,
       status: hmScores.status,
@@ -210,18 +213,24 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     link: s.link,
     score: s.score ?? 0,
     reason: s.reason ?? "Not yet judged.",
-    status: s.status ?? "pending",
+    status: s.itemStatus === "open" ? "open" : (s.status ?? "pending"),
     wallet: walletOf.get(`${s.platform}:${s.subject}`) ?? null,
     strippedBytes: s.strippedBytes,
     claimNote: noteFor.get(s.subject) ?? null,
   }))
 
+  // Work still in flight is shown apart from the scores, because it has not
+  // happened yet. A contributor seeing their open pull request here knows it
+  // was noticed; seeing it scored would be a promise nobody can keep, since a
+  // pull request can still be closed without merging.
+  const inFlight = allLines.filter((l) => l.status === "open")
+
   // Only payable work is listed. A contribution whose author has no wallet
   // bound is still scored, still stored, and still counted below, but it is
   // not a line on the record: a list where most rows say "unpaid" reads as a
   // list of failures rather than a payout.
-  const lines = allLines.filter((l) => l.wallet !== null)
-  const unlistedCount = allLines.length - lines.length
+  const lines = allLines.filter((l) => l.wallet !== null && l.status !== "open")
+  const unlistedCount = allLines.length - lines.length - inFlight.length
 
   const payouts = await d
     .select({
@@ -257,6 +266,7 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     lanes,
     lines,
     payouts,
+    inFlight,
     unpaidCount: unlistedCount,
     unlistedCount,
   }

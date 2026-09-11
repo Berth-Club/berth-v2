@@ -311,7 +311,11 @@ export const hmItems = pgTable(
     index("hm_items_author_idx").on(t.platform, t.platformUserId),
     check(
       "hm_items_status",
-      sql`${t.status} in ('pending','scored','unbound','unscored_cap','removed')`
+      // `open` is work in flight: read and shown so a contributor can see it
+      // was noticed, but never scored and never paid. A proposal can still be
+      // closed without merging, and paying for it would pay for work that
+      // never landed.
+      sql`${t.status} in ('open','pending','scored','unbound','unscored_cap','removed')`
     ),
   ]
 )

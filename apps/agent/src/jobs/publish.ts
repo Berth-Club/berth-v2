@@ -85,7 +85,10 @@ export function makePublish(deps: { pot?: PotSource } = {}) {
       .leftJoin(hmScores, and(eq(hmScores.itemId, hmItems.id), eq(hmScores.round, 0)))
       .where(and(eq(hmItems.coin, coin), eq(hmItems.epoch, job.epoch)))
 
-    const unjudged = rows.filter((r) => r.median == null)
+    // Open work has no score by design, so it is not "unjudged" and must not
+    // hold the week. Without this, one open pull request would block every
+    // publish forever.
+    const unjudged = rows.filter((r) => r.median == null && r.status !== "open")
     if (unjudged.length > 0) {
       return waitFor(30, `${unjudged.length} item(s) are still unscored`)
     }
@@ -110,6 +113,7 @@ export function makePublish(deps: { pot?: PotSource } = {}) {
     const contributions: Contribution[] = []
     const unbound: string[] = []
     for (const r of rows) {
+      if (r.status === "open") continue // in flight, not yet work
       if (!r.median || r.median <= 0) continue
       const wallet = walletOf.get(`${r.platform}:${r.subject}`)
       if (!wallet) {

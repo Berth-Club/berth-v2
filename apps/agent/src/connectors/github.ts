@@ -77,6 +77,36 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
     return (await res.json()) as GithubPull[]
   }
 
+  /**
+   * Pull requests still open on a repository.
+   *
+   * One page, newest first, and deliberately not windowed: work in flight has
+   * not happened yet, so "which week does it belong to" has no answer until it
+   * merges. It is shown so a contributor can see they were noticed.
+   */
+  async function readOpen(repoId: number, ctx: ReaderContext): Promise<LaneItem[]> {
+    const pulls = await get(
+      `/repositories/${repoId}/pulls?state=open&sort=updated&direction=desc&per_page=30`,
+      ctx.signal
+    )
+    const items: LaneItem[] = []
+    for (const pr of pulls) {
+      if (!pr.user) continue
+      items.push({
+        platform: "github",
+        platformUserId: String(pr.user.id),
+        platformHandle: pr.user.login,
+        externalId: pr.node_id,
+        link: pr.html_url,
+        content: `${pr.title}\n\n${pr.body ?? ""}`,
+        createdAt: new Date(pr.updated_at),
+        open: true,
+        meta: { repoId, number: pr.number },
+      })
+    }
+    return items
+  }
+
   return async function readGithub(ctx: ReaderContext): Promise<LaneResult> {
     const repos = ctx.sources.github ?? []
     if (repos.length === 0) {
@@ -116,6 +146,15 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
       if (items.length >= ctx.cap) {
         partials.push(`stopped at the ${ctx.cap} item cap`)
         break
+      }
+
+      if (ctx.includeOpen) {
+        try {
+          items.push(...(await readOpen(repo.repoId, ctx)))
+        } catch {
+          // Work in flight is a courtesy on the record, not part of the
+          // payout. Failing to read it must never fail the week.
+        }
       }
     }
 

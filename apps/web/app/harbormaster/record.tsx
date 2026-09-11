@@ -183,6 +183,40 @@ export default async function Record() {
         </Block>
       ) : null}
 
+      {week.inFlight.length > 0 ? (
+        <Block title="IN FLIGHT">
+          <div className="flex flex-col gap-1.5">
+            {week.inFlight.map((l, i) => (
+              <div
+                key={`${l.link ?? l.handle}-${i}`}
+                className={`${ROW} flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5`}
+              >
+                <span className="text-foam text-[13px] font-semibold">
+                  {l.handle ?? "unknown"}
+                </span>
+                {l.link ? (
+                  <a
+                    href={l.link}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-faint hover:text-body2 min-w-0 flex-1 truncate font-mono text-[11.5px] underline underline-offset-2"
+                  >
+                    {l.reason !== "Not yet judged." ? l.reason : l.link}
+                  </a>
+                ) : null}
+                <span className="text-faint shrink-0 font-mono text-[11px]">
+                  {l.wallet ? "wallet ready" : "no wallet yet"}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="text-faint mt-2 text-[12px] leading-[1.6]">
+            Open work, seen but not judged. A pull request is scored when it merges, because
+            one that is closed without merging was never work anyone can be paid for.
+          </div>
+        </Block>
+      ) : null}
+
       {week.payouts.length > 0 ? (
         <Block title="WHO IS OWED WHAT">
           <div className="flex flex-col gap-1.5">
