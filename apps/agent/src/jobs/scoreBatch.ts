@@ -11,7 +11,7 @@ import { TEAM_WALLETS } from "@workspace/contracts"
 import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { env } from "../env.js"
-import { DEFAULT_MODEL_ID, makeAnthropicClient, type ModelClient } from "../scoring/model.js"
+import { DEFAULT_MODEL_ID, pickClient, type ModelClient } from "../scoring/model.js"
 import { promptHash } from "../scoring/prompt.js"
 import { SCHEMA_HASH } from "../scoring/schema.js"
 import { excludedReason, scoreItem } from "../scoring/score.js"
@@ -44,7 +44,13 @@ export interface ScoreBatchDeps {
 export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
   const makeClient =
     deps.makeClient ??
-    (() => (env.anthropicApiKey ? makeAnthropicClient({ apiKey: env.anthropicApiKey }) : null))
+    (() =>
+      pickClient({
+        provider: env.scorerProvider,
+        anthropicApiKey: env.anthropicApiKey,
+        deepseekApiKey: env.deepseekApiKey,
+        modelId: env.scorerModelId,
+      }))
 
   return async function scoreBatch(ctx: JobContext): Promise<JobOutcome> {
     const { db, job } = ctx
@@ -83,7 +89,10 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
     if (!client) {
       // Degrade the handler, never the boot. The week waits for a key rather
       // than publishing a list of zeroes that looks like a judgement.
-      return waitFor(300, "ANTHROPIC_API_KEY is not set, scoring cannot run")
+      return waitFor(
+        300,
+        "no scoring model is configured; set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY"
+      )
     }
 
     // Pin the model and prompt for the epoch on first entry, so every item in

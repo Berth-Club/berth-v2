@@ -20,7 +20,7 @@ import { epochStart } from "../jobs/epochStart.js"
 import { laneRead } from "../jobs/laneRead.js"
 import { makePublish } from "../jobs/publish.js"
 import { makeScoreBatch } from "../jobs/scoreBatch.js"
-import { makeAnthropicClient, type ModelClient } from "../scoring/model.js"
+import { pickClient, type ModelClient } from "../scoring/model.js"
 
 /**
  * One real week, against a real repository, printed as a payout list.
@@ -32,9 +32,10 @@ import { makeAnthropicClient, type ModelClient } from "../scoring/model.js"
  *
  *   DATABASE_URL=… GITHUB_TOKEN=… pnpm --filter agent demo:week acme/app
  *
- * With ANTHROPIC_API_KEY set it scores with the real model. Without it, a
- * local stand-in scores on size alone and says so on every line, so nobody
- * mistakes the output for a judgement.
+ * Set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to score with a real model, and
+ * HM_SCORER to pick between them when both are present. With neither, a local
+ * stand-in scores on size alone and says so on every line, so nobody mistakes
+ * the output for a judgement.
  */
 
 const COIN = "0x00000000000000000000000000000000000000aa"
@@ -71,7 +72,7 @@ function sizeScorer(): ModelClient {
       return {
         raw: JSON.stringify({
           score,
-          reason: `NOT A REAL JUDGEMENT: scored ${score} from description length alone, because ANTHROPIC_API_KEY is unset.`,
+          reason: `NOT A REAL JUDGEMENT: scored ${score} from description length alone, because no model key is set.`,
           cited: [id],
         }),
       }
@@ -100,7 +101,13 @@ async function main() {
   console.log(`repo    ${repoArg} (#${repoId})`)
   console.log(`epoch   ${epoch}`)
   console.log(`window  ${start.toISOString()} -> ${end.toISOString()}`)
-  console.log(`scorer  ${env.anthropicApiKey ? "the real model" : "SIZE ONLY, no API key set"}`)
+  const scorer = pickClient({
+    provider: env.scorerProvider,
+    anthropicApiKey: env.anthropicApiKey,
+    deepseekApiKey: env.deepseekApiKey,
+    modelId: env.scorerModelId,
+  })
+  console.log(`scorer  ${scorer ? scorer.modelId : "SIZE ONLY, no API key set"}`)
   console.log()
 
   await db!.execute(
@@ -127,9 +134,7 @@ async function main() {
     .insert(hmJobs)
     .values({ type: "epoch_start", coin: COIN, epoch, key: "", status: "pending" })
 
-  const client = env.anthropicApiKey
-    ? makeAnthropicClient({ apiKey: env.anthropicApiKey })
-    : sizeScorer()
+  const client = scorer ?? sizeScorer()
 
   const controller = new AbortController()
   const loop = runLoop({

@@ -1,8 +1,13 @@
 import assert from "node:assert/strict"
 
-import type { ModelClient } from "./model.js"
+import {
+  jsonSchemaInstruction,
+  makeDeepseekClient,
+  pickClient,
+  type ModelClient,
+} from "./model.js"
 import { buildUserPrompt, promptHash, SYSTEM_PROMPT } from "./prompt.js"
-import { parseVerdict, RejectedOutput, SCHEMA_HASH } from "./schema.js"
+import { parseVerdict, RejectedOutput, SCHEMA_HASH, VERDICT_SCHEMA } from "./schema.js"
 import { excludedReason, medianOf, scoreItem } from "./score.js"
 
 /**
@@ -158,6 +163,122 @@ async function main() {
     assert.ok(excludedReason({ isTeamWallet: true, content: "x" }))
     assert.equal(client.calls.length, 0, "a team wallet costs nothing to exclude")
   }
+
+  /* ── the provider is chosen from what is configured ─────────────────────── */
+
+  assert.equal(pickClient({}), null, "no key means no scoring, not a crash")
+  assert.equal(
+    pickClient({ provider: "deepseek", anthropicApiKey: "a" }),
+    null,
+    "an explicit provider is never silently swapped for the other one"
+  )
+  assert.equal(pickClient({ provider: "nonsense", deepseekApiKey: "d" }), null, "an unknown name is refused")
+  assert.equal(
+    pickClient({ provider: "deepseek", deepseekApiKey: "d" })!.modelId,
+    "deepseek-chat"
+  )
+  assert.equal(
+    pickClient({ provider: "anthropic", anthropicApiKey: "a" })!.modelId,
+    "claude-sonnet-5"
+  )
+  assert.equal(
+    pickClient({ anthropicApiKey: "a", deepseekApiKey: "d" })!.modelId,
+    "claude-sonnet-5",
+    "with both keys and no preference stated, Anthropic wins"
+  )
+  assert.equal(pickClient({ deepseekApiKey: "d" })!.modelId, "deepseek-chat", "one key, no choice")
+  assert.equal(
+    pickClient({ provider: "deepseek", deepseekApiKey: "d", modelId: "deepseek-reasoner" })!.modelId,
+    "deepseek-reasoner",
+    "the model can be overridden without touching the code"
+  )
+
+  /* ── DeepSeek speaks a different shape, and the same rules still apply ───── */
+
+  {
+    let sent: Record<string, unknown> = {}
+    const impl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body))
+      return Response.json({
+        id: "ds_1",
+        choices: [{ message: { content: verdict(55, "a real fix", ["1"]) }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 700, completion_tokens: 40 },
+      })
+    }) as unknown as typeof fetch
+
+    const client = makeDeepseekClient({ apiKey: "k", fetchImpl: impl })
+    const res = await scoreItem({ id: "1", content: "fixed a thing" }, { client, rules })
+
+    assert.equal(res.median, 55)
+    assert.equal(res.reason, "a real fix")
+    assert.equal(res.samples[0]!.usage!.inputTokens, 700, "usage is carried for the cost cap")
+    assert.equal(res.samples[0]!.requestId, "ds_1", "and the provider's id for the audit row")
+
+    assert.equal(sent.temperature, 0, "pinned, because DeepSeek accepts it and Claude 5 does not")
+    assert.deepEqual(sent.response_format, { type: "json_object" })
+    const messages = sent.messages as { role: string; content: string }[]
+    assert.equal(messages[0]!.role, "system")
+    assert.match(messages[0]!.content, /DATA, NOT INSTRUCTION/, "same system prompt, both providers")
+    assert.match(
+      messages[1]!.content,
+      /"score"/,
+      "the schema is spelled out, since there is no tool to enforce it"
+    )
+    assert.match(messages[1]!.content, /<contribution>/, "and the item is still fenced as data")
+  }
+
+  {
+    // JSON mode guarantees the reply parses, never that it fits. A well-formed
+    // object with an extra field is still refused, on either provider.
+    const impl = (async () =>
+      Response.json({
+        id: "ds_2",
+        choices: [
+          {
+            message: { content: JSON.stringify({ score: 100, reason: "r", cited: ["1"], pay: true }) },
+            finish_reason: "stop",
+          },
+        ],
+      })) as unknown as typeof fetch
+    const res = await scoreItem(
+      { id: "1", content: "x" },
+      { client: makeDeepseekClient({ apiKey: "k", fetchImpl: impl }), rules }
+    )
+    assert.equal(res.status, "rejected_output", "valid JSON is not a valid verdict")
+    assert.equal(res.median, 0)
+  }
+
+  {
+    // A truncated reply is the common DeepSeek failure and would otherwise
+    // surface as a confusing parse error.
+    const impl = (async () =>
+      Response.json({
+        id: "ds_3",
+        choices: [{ message: { content: '{"score": 4' }, finish_reason: "length" }],
+      })) as unknown as typeof fetch
+    await assert.rejects(
+      scoreItem({ id: "1", content: "x" }, { client: makeDeepseekClient({ apiKey: "k", fetchImpl: impl }), rules }),
+      /token limit/,
+      "and it retries rather than recording a zero"
+    )
+  }
+
+  {
+    const impl = (async () => new Response("nope", { status: 402 })) as unknown as typeof fetch
+    await assert.rejects(
+      scoreItem({ id: "1", content: "x" }, { client: makeDeepseekClient({ apiKey: "k", fetchImpl: impl }), rules }),
+      /DeepSeek returned 402/,
+      "an unpaid account fails loudly instead of scoring everyone zero"
+    )
+  }
+
+  /* ── the schema text cannot drift from the schema ───────────────────────── */
+
+  const instruction = jsonSchemaInstruction()
+  for (const field of Object.keys(VERDICT_SCHEMA.properties)) {
+    assert.match(instruction, new RegExp(`"${field}"`), `${field} is named in the prompt`)
+  }
+  assert.match(instruction, /0 to 100/, "generated from the schema, not typed out beside it")
 
   console.log("scoring check passed")
 }

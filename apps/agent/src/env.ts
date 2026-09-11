@@ -27,6 +27,11 @@ export const env = {
   keeperPrivateKey: required("KEEPER_PRIVATE_KEY"),
 
   anthropicApiKey: required("ANTHROPIC_API_KEY"),
+  deepseekApiKey: required("DEEPSEEK_API_KEY"),
+  /** `anthropic` | `deepseek`. Unset means whichever key is present. */
+  scorerProvider: required("HM_SCORER"),
+  /** Overrides the provider's default model, e.g. `deepseek-reasoner`. */
+  scorerModelId: required("HM_SCORER_MODEL"),
   /** Fine-grained, read-only. Public repo reads need no write scope. */
   githubToken: required("GITHUB_TOKEN"),
   fomoApiKey: required("FOMO_API_KEY"),
@@ -48,7 +53,7 @@ export const env = {
 export function capabilities() {
   return {
     database: Boolean(env.databaseUrl),
-    scoring: Boolean(env.anthropicApiKey),
+    scoring: Boolean(env.anthropicApiKey || env.deepseekApiKey),
     github: Boolean(env.githubToken),
     fomo: Boolean(env.fomoApiKey),
     payouts: Boolean(env.keeperPrivateKey),
