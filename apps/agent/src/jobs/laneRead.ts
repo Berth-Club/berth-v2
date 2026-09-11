@@ -1,6 +1,8 @@
 import { hmEpochs, hmItems, hmLaneReads, hmRuleVersions } from "@workspace/db"
 import { and, eq, ne } from "drizzle-orm"
 
+import { bindFromItem } from "./bindFromItem.js"
+
 import { makeGithubReader } from "../connectors/github.js"
 import { clean, contentHash, looksLikeInjection } from "../connectors/hygiene.js"
 import type { LaneReader, LaneResult, LaneSources } from "../connectors/types.js"
@@ -87,6 +89,7 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
   }
 
   let stored = 0
+  let bound = 0
   for (const item of result.items) {
     const cleaned = clean(item.content)
     const flagged = looksLikeInjection(cleaned.text)
@@ -114,6 +117,36 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
       .returning({ id: hmItems.id })
 
     if (inserted.length > 0) stored++
+
+    // Bind the author's wallet from what they wrote, if they wrote one. Done
+    // here rather than in a later job because the cleaned text is already in
+    // hand, and because a contributor who mentions an address in the same
+    // pull request that earns should be paid for that week, not the next one.
+    const itemId = inserted[0]?.id ?? (await existingItemId(ctx, lane, item.externalId))
+    if (itemId != null) {
+      const claim = await bindFromItem(ctx, {
+        id: itemId,
+        platform: item.platform,
+        platformUserId: item.platformUserId,
+        platformHandle: item.platformHandle ?? null,
+        content: cleaned.text,
+        coin,
+        epoch: job.epoch,
+      })
+      if (claim.status === "bound") bound++
+      else if (claim.status.startsWith("rejected") || claim.status === "ignored_locked") {
+        console.warn(
+          JSON.stringify({
+            level: "warn",
+            msg: "wallet claim not honoured",
+            coin,
+            epoch: job.epoch,
+            externalId: item.externalId,
+            status: claim.status,
+          })
+        )
+      }
+    }
     if (flagged) {
       console.warn(
         JSON.stringify({
@@ -129,7 +162,10 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
   }
 
   await recordRead(ctx, lane, result.status, result.reason, result.items.length)
-  return done(`${lane}: ${result.status}, ${stored} new of ${result.items.length}`)
+  return done(
+      `${lane}: ${result.status}, ${stored} new of ${result.items.length}` +
+        (bound > 0 ? `, ${bound} wallet(s) bound` : "")
+    )
 }
 
 /** The sources the epoch froze, so a rerun reads the same repositories. */
@@ -176,4 +212,31 @@ async function recordRead(
       // automatic retry must not quietly undo it.
       setWhere: ne(hmLaneReads.status, "skipped"),
     })
+}
+
+/**
+ * The id of an item that was already stored.
+ *
+ * `onConflictDoNothing` returns nothing on a repeat, so a re-read would have no
+ * id to attach a wallet claim to. Someone who adds their address to a pull
+ * request AFTER the first read still gets bound on the next one, which is the
+ * common case for anyone who did not know to include it.
+ */
+async function existingItemId(
+  ctx: JobContext,
+  lane: string,
+  externalId: string
+): Promise<bigint | null> {
+  const [row] = await ctx.db
+    .select({ id: hmItems.id })
+    .from(hmItems)
+    .where(
+      and(
+        eq(hmItems.coin, ctx.job.coin),
+        eq(hmItems.epoch, ctx.job.epoch),
+        eq(hmItems.lane, lane),
+        eq(hmItems.externalId, externalId)
+      )
+    )
+  return row?.id ?? null
 }

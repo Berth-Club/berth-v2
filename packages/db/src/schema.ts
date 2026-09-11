@@ -575,6 +575,52 @@ export const hmJobs = pgTable(
   ]
 )
 
+/**
+ * Every wallet address a contributor has ever written in their own work.
+ *
+ * The binding itself is one row in `hm_bindings` and is permanent. This table
+ * is the evidence behind it and, more importantly, the evidence behind every
+ * address that was NOT honoured: a checksum that failed, a second address that
+ * appeared after the account was already bound, a wallet another account had
+ * claimed first.
+ *
+ * Without this, "why was I not paid" has no answer anyone can check. The first
+ * claim that succeeds says `bound`; everything after it says why not, and both
+ * the contributor and an operator can read it.
+ */
+export const hmWalletClaims = pgTable(
+  "hm_wallet_claims",
+  {
+    id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+    platform: text("platform").notNull(),
+    /** The platform's immutable id for the author, same key as `hm_bindings`. */
+    subject: text("subject").notNull(),
+    /** Lowercased. NULL when the text carried no usable address. */
+    wallet: text("wallet"),
+    /** The item the claim was read from, so it can be pointed at. */
+    itemId: bigint("item_id", { mode: "bigint" }),
+    coin: text("coin"),
+    epoch: integer("epoch"),
+    status: text("status").notNull(),
+    /** Printable: what was seen and why it was or was not used. */
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One row per (item, wallet), not per item. A lane re-read of an unchanged
+    // body must not pile up duplicates, but a body EDITED to name a different
+    // address has to leave a row: that edit is the attack this table exists to
+    // make visible, and keying on the item alone would swallow it.
+    uniqueIndex("hm_wallet_claims_item_wallet").on(t.itemId, t.wallet),
+    index("hm_wallet_claims_subject").on(t.platform, t.subject),
+    check(
+      "hm_wallet_claims_status",
+      sql`${t.status} in ('bound','already_bound_same','ignored_locked',
+        'rejected_checksum','rejected_several','rejected_unpayable','wallet_taken')`
+    ),
+  ]
+)
+
 /** Wallets allowed to skip a lane, accept a partial read, or retry a stuck job. */
 export const hmOperators = pgTable("hm_operators", {
   wallet: text("wallet").primaryKey(),
@@ -620,6 +666,7 @@ export const schema = {
   hmKeeperTxs,
   hmUsdcSplits,
   hmJobs,
+  hmWalletClaims,
   hmOperators,
   hmNonces,
 }
@@ -644,6 +691,7 @@ export const TABLE_NAMES = [
   "hm_keeper_txs",
   "hm_usdc_splits",
   "hm_jobs",
+  "hm_wallet_claims",
   "hm_operators",
   "hm_nonces",
 ] as const

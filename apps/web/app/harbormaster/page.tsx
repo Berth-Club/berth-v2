@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import Record from "./record"
+import StatusPill from "./status-pill"
 
 export const metadata: Metadata = {
   title: "The Harbormaster — berth.club",
@@ -111,13 +112,7 @@ export default async function HarbormasterPage() {
   return (
     <div className="relative z-[1] mx-auto max-w-[1000px] px-5 pb-15 pt-6">
       <section className="my-[10px] mb-[26px] max-w-[720px]">
-        <div
-          className="text-primary mb-3.5 inline-flex items-center gap-2 rounded-full border border-[rgba(137,167,219,.4)] px-[13px] py-1.5 text-[11px] font-semibold"
-          style={{ letterSpacing: ".18em" }}
-        >
-          <span className="bg-primary size-1.5 animate-pulse rounded-full" />
-          COMING SOON
-        </div>
+        <StatusPill />
 
         <h1 className="font-display text-[clamp(30px,4vw,42px)] leading-[1.12]">
           The sea pays no one for waiting.

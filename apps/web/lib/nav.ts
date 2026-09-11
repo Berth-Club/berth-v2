@@ -15,11 +15,11 @@ export const HARBORMASTER_ITEM: NavItem = {
   href: "/harbormaster",
   label: "Harbormaster",
   icon: Compass,
-  soon: true,
 }
 
-// v4 desktop capsule: Harbor / Analytics / Portfolio / Harbormaster·SOON,
-// centered between the brand and the wallet.
+// v4 desktop capsule: Harbor / Analytics / Portfolio / Harbormaster, centered
+// between the brand and the wallet. Nothing carries a SOON badge now; the
+// Harbormaster page states its own status from the record it is showing.
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Harbor", icon: Anchor },
   { href: "/stats", label: "Analytics", icon: BarChart3 },

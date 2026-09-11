@@ -16,7 +16,10 @@
     "check:scoring": "node --env-file-if-exists=../../.env --import tsx src/scoring/scoring.selfcheck.ts",
     "check:split": "node --env-file-if-exists=../../.env --import tsx src/epoch/split.selfcheck.ts",
     "check:pipeline": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/pipeline.check.ts",
-    "demo:week": "node --env-file-if-exists=../../.env --import tsx src/demo/week.ts"
+    "demo:week": "node --env-file-if-exists=../../.env --import tsx src/demo/week.ts",
+    "check:address": "node --env-file-if-exists=../../.env --import tsx src/connectors/address.selfcheck.ts",
+    "check:binding": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/binding.check.ts",
+    "watch": "node --env-file-if-exists=../../.env --import tsx src/demo/watch.ts"
   },
   "dependencies": {
     "@workspace/contracts": "workspace:*",

@@ -10,13 +10,20 @@ import { NAV_ITEMS, LAUNCH_HREF, isActive } from "@/lib/nav"
 /** Bottom tab bar for mobile. Launch is the emphasized center action. */
 export function MobileTabBar() {
   const pathname = usePathname()
-  // Harbormaster is desktop-only while it carries a SOON badge, which keeps
-  // this at exactly 3 tabs + the center launch action = grid-cols-4.
-  const items = NAV_ITEMS.filter((item) => !item.soon)
+  // The column count follows the tabs, rather than the tabs being trimmed to
+  // fit a hard-coded four. This used to drop any item marked `soon`, which is
+  // how the Harbormaster page ended up unreachable on a phone once it had
+  // something real to show.
+  const items = NAV_ITEMS
+  const half = Math.ceil(items.length / 2)
+  const columns = items.length + 1
 
   return (
-    <nav className="border-border/60 bg-background/90 fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t backdrop-blur-xl md:hidden">
-      {items.slice(0, 2).map((item) => (
+    <nav
+      className="border-border/60 bg-background/90 fixed inset-x-0 bottom-0 z-40 grid border-t backdrop-blur-xl md:hidden"
+      style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+    >
+      {items.slice(0, half).map((item) => (
         <Tab key={item.href} href={item.href} label={item.label} pathname={pathname} icon={item.icon} />
       ))}
 
@@ -31,7 +38,7 @@ export function MobileTabBar() {
         Launch
       </Link>
 
-      {items.slice(2).map((item) => (
+      {items.slice(half).map((item) => (
         <Tab key={item.href} href={item.href} label={item.label} pathname={pathname} icon={item.icon} />
       ))}
     </nav>
@@ -55,7 +62,7 @@ function Tab({
       href={href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors",
+        "flex min-w-0 flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
         active ? "text-foreground" : "text-muted-foreground"
       )}
     >
@@ -67,7 +74,7 @@ function Tab({
       >
         <Icon className="size-5" />
       </span>
-      {label}
+      <span className="max-w-full truncate px-0.5">{label}</span>
     </Link>
   )
 }
