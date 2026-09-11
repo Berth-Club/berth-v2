@@ -32,8 +32,9 @@ import { pickClient, type ModelClient } from "../scoring/model.js"
  *
  *   DATABASE_URL=… GITHUB_TOKEN=… pnpm --filter agent demo:week acme/app
  *
- * Set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to score with a real model, and
- * HM_SCORER to pick between them when both are present. With neither, a local
+ * Set OPENROUTER_API_KEY, ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to score with a
+ * real model, HM_SCORER to pick between them, and HM_SCORER_MODEL to name the
+ * model, e.g. `deepseek/deepseek-chat` through OpenRouter. With neither, a local
  * stand-in scores on size alone and says so on every line, so nobody mistakes
  * the output for a judgement.
  */
@@ -105,6 +106,7 @@ async function main() {
     provider: env.scorerProvider,
     anthropicApiKey: env.anthropicApiKey,
     deepseekApiKey: env.deepseekApiKey,
+    openrouterApiKey: env.openrouterApiKey,
     modelId: env.scorerModelId,
   })
   console.log(`scorer  ${scorer ? scorer.modelId : "SIZE ONLY, no API key set"}`)

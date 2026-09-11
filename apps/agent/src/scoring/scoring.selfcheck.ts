@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import {
   jsonSchemaInstruction,
   makeDeepseekClient,
+  makeOpenRouterClient,
   pickClient,
   type ModelClient,
 } from "./model.js"
@@ -188,6 +189,21 @@ async function main() {
   )
   assert.equal(pickClient({ deepseekApiKey: "d" })!.modelId, "deepseek-chat", "one key, no choice")
   assert.equal(
+    pickClient({ provider: "openrouter", openrouterApiKey: "o" })!.modelId,
+    "deepseek/deepseek-chat",
+    "OpenRouter model ids carry their vendor prefix, and that prefix reaches the audit row"
+  )
+  assert.equal(
+    pickClient({ openrouterApiKey: "o", anthropicApiKey: "a", deepseekApiKey: "d" })!.modelId,
+    "deepseek/deepseek-chat",
+    "with everything set and no preference, OpenRouter wins: one key, one bill"
+  )
+  assert.equal(
+    pickClient({ provider: "openrouter", deepseekApiKey: "d" }),
+    null,
+    "naming a provider whose key is missing waits, rather than scoring with another one"
+  )
+  assert.equal(
     pickClient({ provider: "deepseek", deepseekApiKey: "d", modelId: "deepseek-reasoner" })!.modelId,
     "deepseek-reasoner",
     "the model can be overridden without touching the code"
@@ -267,7 +283,9 @@ async function main() {
     const impl = (async () => new Response("nope", { status: 402 })) as unknown as typeof fetch
     await assert.rejects(
       scoreItem({ id: "1", content: "x" }, { client: makeDeepseekClient({ apiKey: "k", fetchImpl: impl }), rules }),
-      /DeepSeek returned 402/,
+      // The message names the model rather than the vendor, because the model
+      // id is what lands on the audit row and what an operator configured.
+      /deepseek-chat returned 402/,
       "an unpaid account fails loudly instead of scoring everyone zero"
     )
   }
@@ -279,6 +297,106 @@ async function main() {
     assert.match(instruction, new RegExp(`"${field}"`), `${field} is named in the prompt`)
   }
   assert.match(instruction, /0 to 100/, "generated from the schema, not typed out beside it")
+
+  /* ── OpenRouter, and the ways it fails that DeepSeek does not ───────────── */
+
+  {
+    let sent: Record<string, unknown> = {}
+    let headers: Record<string, string> = {}
+    const impl = (async (url: string, init: RequestInit) => {
+      assert.match(String(url), /openrouter\.ai\/api\/v1\/chat\/completions/)
+      headers = init.headers as Record<string, string>
+      sent = JSON.parse(String(init.body))
+      return Response.json({
+        id: "gen-1",
+        model: "deepseek/deepseek-chat",
+        provider: "Fireworks",
+        choices: [{ message: { content: verdict(45, "a narrow fix", ["1"]) }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 900, completion_tokens: 30 },
+      })
+    }) as unknown as typeof fetch
+
+    const client = makeOpenRouterClient({
+      apiKey: "or-k",
+      fetchImpl: impl,
+      appUrl: "https://berth.club",
+      appTitle: "Harbormaster",
+    })
+    const res = await scoreItem({ id: "1", content: "fixed a thing" }, { client, rules })
+
+    assert.equal(res.median, 45)
+    assert.equal(sent.model, "deepseek/deepseek-chat")
+    assert.equal(sent.temperature, 0)
+    assert.equal(headers.authorization, "Bearer or-k")
+    assert.equal(headers["http-referer"], "https://berth.club", "attribution reaches the dashboard")
+    assert.equal(headers["x-title"], "Harbormaster")
+    assert.equal(
+      res.samples[0]!.requestId,
+      "gen-1@Fireworks",
+      "which upstream served the call is recorded, since two can serve one model name"
+    )
+  }
+
+  {
+    // The failure that matters. OpenRouter answers 200 with an error body when
+    // an upstream fails, and there are no choices. Read naively that is an
+    // empty reply, which the parser calls a malformed verdict and scores zero.
+    const impl = (async () =>
+      Response.json({
+        error: { code: 502, message: "Provider returned error" },
+        user_id: "u_1",
+      })) as unknown as typeof fetch
+    await assert.rejects(
+      scoreItem(
+        { id: "1", content: "x" },
+        { client: makeOpenRouterClient({ apiKey: "k", fetchImpl: impl }), rules }
+      ),
+      /Provider returned error/,
+      "an upstream failure is thrown so the job retries, never recorded as a zero"
+    )
+  }
+
+  {
+    const impl = (async () => Response.json({ id: "gen-2" })) as unknown as typeof fetch
+    await assert.rejects(
+      scoreItem(
+        { id: "1", content: "x" },
+        { client: makeOpenRouterClient({ apiKey: "k", fetchImpl: impl }), rules }
+      ),
+      /no choices/,
+      "and so is a 200 with nothing in it"
+    )
+  }
+
+  {
+    const impl = (async () => new Response("insufficient credits", { status: 402 })) as unknown as typeof fetch
+    await assert.rejects(
+      scoreItem(
+        { id: "1", content: "x" },
+        { client: makeOpenRouterClient({ apiKey: "k", fetchImpl: impl }), rules }
+      ),
+      /returned 402/,
+      "an empty account fails loudly instead of scoring everyone zero"
+    )
+  }
+
+  {
+    // The model name is chosen by the operator and is not validated by us. What
+    // must hold is that whatever was asked for is what lands on the audit row.
+    const impl = (async (_u: string, init: RequestInit) =>
+      Response.json({
+        id: "gen-3",
+        choices: [{ message: { content: verdict(50, "r", ["1"]) }, finish_reason: "stop" }],
+      })) as unknown as typeof fetch
+    const client = makeOpenRouterClient({
+      apiKey: "k",
+      modelId: "anthropic/claude-sonnet-4.5",
+      fetchImpl: impl,
+    })
+    assert.equal(client.modelId, "anthropic/claude-sonnet-4.5")
+    const res = await scoreItem({ id: "1", content: "x" }, { client, rules })
+    assert.equal(res.status, "scored")
+  }
 
   console.log("scoring check passed")
 }

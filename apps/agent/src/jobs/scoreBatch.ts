@@ -49,6 +49,7 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
         provider: env.scorerProvider,
         anthropicApiKey: env.anthropicApiKey,
         deepseekApiKey: env.deepseekApiKey,
+        openrouterApiKey: env.openrouterApiKey,
         modelId: env.scorerModelId,
       }))
 

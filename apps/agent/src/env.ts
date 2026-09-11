@@ -28,7 +28,9 @@ export const env = {
 
   anthropicApiKey: required("ANTHROPIC_API_KEY"),
   deepseekApiKey: required("DEEPSEEK_API_KEY"),
-  /** `anthropic` | `deepseek`. Unset means whichever key is present. */
+  /** Fronts the others behind one key and one bill. */
+  openrouterApiKey: required("OPENROUTER_API_KEY"),
+  /** `openrouter` | `anthropic` | `deepseek`. Unset means whichever key is present. */
   scorerProvider: required("HM_SCORER"),
   /** Overrides the provider's default model, e.g. `deepseek-reasoner`. */
   scorerModelId: required("HM_SCORER_MODEL"),
@@ -53,7 +55,7 @@ export const env = {
 export function capabilities() {
   return {
     database: Boolean(env.databaseUrl),
-    scoring: Boolean(env.anthropicApiKey || env.deepseekApiKey),
+    scoring: Boolean(env.anthropicApiKey || env.deepseekApiKey || env.openrouterApiKey),
     github: Boolean(env.githubToken),
     fomo: Boolean(env.fomoApiKey),
     payouts: Boolean(env.keeperPrivateKey),

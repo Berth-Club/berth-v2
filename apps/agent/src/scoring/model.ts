@@ -120,54 +120,69 @@ export function makeAnthropicClient(opts: AnthropicOptions): ModelClient {
   }
 }
 
-/* ─────────────────────────────── deepseek ────────────────────────────────── */
+/* ──────────────────── openai-compatible chat completions ─────────────────── */
 
-const DEEPSEEK_API = "https://api.deepseek.com/chat/completions"
-export const DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
+/**
+ * DeepSeek and OpenRouter both speak OpenAI's chat completions format, so they
+ * are one client with different defaults rather than two that drift apart.
+ *
+ * Three things differ from the Anthropic path, and all three matter.
+ *
+ * There is no forced tool call, so the API cannot enforce the output shape.
+ * JSON mode guarantees the reply parses as JSON and nothing more: it will not
+ * keep an extra field out or hold a score inside 0 to 100. So the schema is
+ * spelled into the prompt and re-checked here on the way back, which is the
+ * same check the Anthropic path runs anyway. The API is asked for a shape; only
+ * our own parser decides whether it got one.
+ *
+ * Temperature is pinned to 0, which these accept and Claude 5 rejects. That
+ * buys more run-to-run stability than the Anthropic path can offer. It is still
+ * not a guarantee, so the audit row remains what makes a score checkable.
+ *
+ * An error can arrive inside a 200 response. OpenRouter answers that way when
+ * an upstream provider fails, and the body has no `choices`. Read naively that
+ * becomes an empty reply, which the parser reports as a malformed verdict and
+ * scores zero. It is a transport failure and has to be thrown, so the job
+ * retries instead of recording a zero someone has to dispute.
+ */
 
-export interface DeepseekOptions {
+const MAX_TOKENS_JSON = 1024
+
+export interface ChatCompletionsOptions {
   apiKey: string
-  /** `deepseek-chat` for V3, `deepseek-reasoner` for R1. */
-  modelId?: string
-  baseUrl?: string
+  modelId: string
+  baseUrl: string
+  /** Provider-specific extras, such as OpenRouter's attribution headers. */
+  headers?: Record<string, string>
   fetchImpl?: typeof fetch
 }
 
-/**
- * DeepSeek, through its OpenAI-compatible chat completions endpoint.
- *
- * Two differences from the Anthropic path, both of which matter.
- *
- * There is no forced tool call, so the schema cannot be enforced by the API.
- * JSON mode guarantees the reply parses as JSON and nothing more: it will not
- * keep a field out or a score inside 0 to 100. So the schema is spelled into
- * the prompt and then re-checked here on the way back, which is the same check
- * the Anthropic path runs anyway. The API is asked for a shape; only our own
- * parser decides whether it got one.
- *
- * Temperature is pinned to 0, which DeepSeek accepts and Claude 5 does not.
- * That buys more run-to-run stability than the Anthropic path can offer. It is
- * still not a guarantee, so the audit row is what actually makes a score
- * checkable, exactly as before.
- */
-export function makeDeepseekClient(opts: DeepseekOptions): ModelClient {
+interface ChatCompletionsResponse {
+  id?: string
+  model?: string
+  provider?: string
+  error?: { message?: string; code?: number | string }
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
+  usage?: { prompt_tokens?: number; completion_tokens?: number }
+}
+
+export function makeChatCompletionsClient(opts: ChatCompletionsOptions): ModelClient {
   const doFetch = opts.fetchImpl ?? fetch
-  const modelId = opts.modelId ?? DEEPSEEK_DEFAULT_MODEL
-  const url = opts.baseUrl ?? DEEPSEEK_API
 
   return {
-    modelId,
+    modelId: opts.modelId,
     async complete(userPrompt, signal) {
-      const res = await doFetch(url, {
+      const res = await doFetch(opts.baseUrl, {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${opts.apiKey}`,
+          ...opts.headers,
         },
         signal,
         body: JSON.stringify({
-          model: modelId,
-          max_tokens: MAX_TOKENS,
+          model: opts.modelId,
+          max_tokens: MAX_TOKENS_JSON,
           temperature: 0,
           // JSON mode refuses the request unless the word appears in the
           // prompt. The system prompt already asks for a JSON object, and
@@ -182,32 +197,113 @@ export function makeDeepseekClient(opts: DeepseekOptions): ModelClient {
 
       if (!res.ok) {
         const body = await res.text().catch(() => "")
-        throw new Error(`DeepSeek returned ${res.status}: ${body.slice(0, 200)}`)
+        throw new Error(`${opts.modelId} returned ${res.status}: ${body.slice(0, 200)}`)
       }
 
-      const json = (await res.json()) as {
-        id?: string
-        choices?: Array<{ message?: { content?: string }; finish_reason?: string }>
-        usage?: { prompt_tokens?: number; completion_tokens?: number }
-      }
+      const json = (await res.json()) as ChatCompletionsResponse
 
+      // A 200 carrying an error, or carrying no choices at all. Both are the
+      // upstream failing, not the model answering badly.
+      if (json.error) {
+        throw new Error(`${opts.modelId} failed: ${json.error.message ?? JSON.stringify(json.error)}`)
+      }
       const choice = json.choices?.[0]
+      if (!choice) {
+        throw new Error(`${opts.modelId} returned no choices`)
+      }
       // A reply cut off at the token limit is usually truncated JSON, which
-      // would fail the parser with a confusing message. Say what happened.
-      if (choice?.finish_reason === "length") {
-        throw new Error(`DeepSeek stopped at the ${MAX_TOKENS} token limit`)
+      // would fail the parser with a message pointing at the wrong problem.
+      if (choice.finish_reason === "length") {
+        throw new Error(`${opts.modelId} stopped at the ${MAX_TOKENS_JSON} token limit`)
       }
 
       return {
-        raw: choice?.message?.content ?? "",
+        raw: choice.message?.content ?? "",
         usage: {
           inputTokens: json.usage?.prompt_tokens,
           outputTokens: json.usage?.completion_tokens,
         },
-        requestId: json.id,
+        // OpenRouter names the upstream that actually served the call, and a
+        // week scored through two different upstreams is worth being able to
+        // see when someone disputes a line.
+        requestId: json.provider ? `${json.id ?? "?"}@${json.provider}` : json.id,
       }
     },
   }
+}
+
+/* ─────────────────────────────── deepseek ────────────────────────────────── */
+
+const DEEPSEEK_API = "https://api.deepseek.com/chat/completions"
+export const DEEPSEEK_DEFAULT_MODEL = "deepseek-chat"
+
+export interface DeepseekOptions {
+  apiKey: string
+  /** `deepseek-chat` for V3, `deepseek-reasoner` for R1. */
+  modelId?: string
+  baseUrl?: string
+  fetchImpl?: typeof fetch
+}
+
+/** DeepSeek direct. */
+export function makeDeepseekClient(opts: DeepseekOptions): ModelClient {
+  return makeChatCompletionsClient({
+    apiKey: opts.apiKey,
+    modelId: opts.modelId ?? DEEPSEEK_DEFAULT_MODEL,
+    baseUrl: opts.baseUrl ?? DEEPSEEK_API,
+    fetchImpl: opts.fetchImpl,
+  })
+}
+
+/* ────────────────────────────── openrouter ───────────────────────────────── */
+
+const OPENROUTER_API = "https://openrouter.ai/api/v1/chat/completions"
+
+/**
+ * The default when routing through OpenRouter.
+ *
+ * Named with its vendor prefix, which OpenRouter requires and which is worth
+ * the noise: the id lands on every audit row, so "which model scored this
+ * week" is answerable without also knowing how the worker was configured.
+ */
+export const OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-chat"
+
+export interface OpenRouterOptions {
+  apiKey: string
+  /** Vendor-prefixed, e.g. `deepseek/deepseek-chat`, `anthropic/claude-sonnet-4.5`. */
+  modelId?: string
+  baseUrl?: string
+  /** Shown on OpenRouter's dashboard next to the spend. */
+  appUrl?: string
+  appTitle?: string
+  fetchImpl?: typeof fetch
+}
+
+/**
+ * OpenRouter, which fronts DeepSeek, Anthropic and most others behind one key.
+ *
+ * The routing is the thing to be careful about rather than the protocol. Asking
+ * for a model by name can be served by more than one upstream, and two upstreams
+ * serving the same weights do not always answer identically. The provider that
+ * served each call is recorded, so a week is auditable even when it was not
+ * scored by one machine throughout.
+ */
+export function makeOpenRouterClient(opts: OpenRouterOptions): ModelClient {
+  // Fixed for this app rather than configurable. They only label the spend on
+  // OpenRouter's own dashboard, and a per-deployment value would make the
+  // scoring bill harder to read, not easier.
+  const headers: Record<string, string> = {
+    "http-referer": opts.appUrl ?? "https://berth.club",
+    "x-title": opts.appTitle ?? "Harbormaster",
+  }
+
+  return makeChatCompletionsClient({
+    apiKey: opts.apiKey,
+    modelId: opts.modelId ?? OPENROUTER_DEFAULT_MODEL,
+    baseUrl: opts.baseUrl ?? OPENROUTER_API,
+    headers,
+    fetchImpl: opts.fetchImpl,
+  })
 }
 
 /**
@@ -232,33 +328,54 @@ export function jsonSchemaInstruction(): string {
  * The client the worker uses, chosen from what is configured.
  *
  * Explicit `HM_SCORER` wins, so a week can be pinned to one provider even when
- * both keys are present. Otherwise whichever key exists is used, and neither
- * means no scoring rather than a crash: a missing secret degrades the handler
- * that needs it and leaves the rest of the worker running.
+ * several keys are present. An explicit provider whose key is missing returns
+ * nothing rather than quietly falling through to another one: the week waiting
+ * is recoverable, a week scored by a model the operator did not choose is not.
+ *
+ * With no provider named, the order is OpenRouter, Anthropic, DeepSeek. It only
+ * ever picks from keys that are actually set, and no key at all means no
+ * scoring rather than a crash.
  */
 export function pickClient(cfg: {
   provider?: string
   anthropicApiKey?: string
   deepseekApiKey?: string
+  openrouterApiKey?: string
   modelId?: string
+  appUrl?: string
+  appTitle?: string
 }): ModelClient | null {
-  const wanted = cfg.provider?.toLowerCase()
+  const openrouter = () =>
+    cfg.openrouterApiKey
+      ? makeOpenRouterClient({
+          apiKey: cfg.openrouterApiKey,
+          modelId: cfg.modelId,
+          appUrl: cfg.appUrl,
+          appTitle: cfg.appTitle,
+        })
+      : null
+  const anthropic = () =>
+    cfg.anthropicApiKey
+      ? makeAnthropicClient({ apiKey: cfg.anthropicApiKey, modelId: cfg.modelId })
+      : null
+  const deepseek = () =>
+    cfg.deepseekApiKey
+      ? makeDeepseekClient({ apiKey: cfg.deepseekApiKey, modelId: cfg.modelId })
+      : null
 
-  if (wanted === "deepseek") {
-    if (!cfg.deepseekApiKey) return null
-    return makeDeepseekClient({ apiKey: cfg.deepseekApiKey, modelId: cfg.modelId })
+  switch (cfg.provider?.toLowerCase()) {
+    case "openrouter":
+      return openrouter()
+    case "anthropic":
+      return anthropic()
+    case "deepseek":
+      return deepseek()
+    case undefined:
+    case "":
+      return openrouter() ?? anthropic() ?? deepseek()
+    default:
+      // A misspelled provider is a configuration mistake. Scoring the week with
+      // whatever else happens to be configured would hide it.
+      return null
   }
-  if (wanted === "anthropic") {
-    if (!cfg.anthropicApiKey) return null
-    return makeAnthropicClient({ apiKey: cfg.anthropicApiKey, modelId: cfg.modelId })
-  }
-  if (wanted) return null
-
-  if (cfg.anthropicApiKey) {
-    return makeAnthropicClient({ apiKey: cfg.anthropicApiKey, modelId: cfg.modelId })
-  }
-  if (cfg.deepseekApiKey) {
-    return makeDeepseekClient({ apiKey: cfg.deepseekApiKey, modelId: cfg.modelId })
-  }
-  return null
 }
