@@ -174,6 +174,11 @@ async function main() {
     assert.equal(res.items.length, 5, "stops at the cap")
     assert.equal(res.status, "partial")
     assert.match(res.reason!, /cap/)
+    assert.equal(
+      res.reason!.match(/item cap/g)!.length,
+      1,
+      "said once: the reader and its caller both used to report it"
+    )
   }
 
   /* ── paging stops once the pages predate the window ────────────────────── */

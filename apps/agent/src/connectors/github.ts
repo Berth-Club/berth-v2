@@ -187,9 +187,10 @@ async function readRepo(
         },
       })
 
-      if (alreadyHeld + items.length >= ctx.cap) {
-        return { items, reason: `stopped at the ${ctx.cap} item cap` }
-      }
+      // Stop, but say nothing: the caller checks the same condition right
+      // after and owns the message. Reporting it here too put the sentence
+      // on the lane twice.
+      if (alreadyHeld + items.length >= ctx.cap) return { items }
     }
 
     // Past the window, or out of results. Either way this repo is fully read.

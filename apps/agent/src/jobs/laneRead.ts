@@ -21,7 +21,17 @@ import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types
  * dies mid-read — converges instead of duplicating a week's work.
  */
 
-const CAP_PER_LANE = 500
+/**
+ * Most items one lane may contribute to one week.
+ *
+ * A real limit, not a test knob: a week that returns thousands of items is a
+ * coin whose rules point at something far too broad, and scoring all of it
+ * would cost more than the week pays out. Hitting it marks the lane partial,
+ * so an operator decides rather than the list quietly being short.
+ *
+ * Lowering it is also how a first paid run on a busy repository stays cheap.
+ */
+const CAP_PER_LANE = Number(process.env.HM_LANE_CAP ?? 500)
 
 const readers: Record<string, () => LaneReader> = {
   github: () => makeGithubReader({ token: env.githubToken }),

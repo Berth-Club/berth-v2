@@ -21,6 +21,7 @@ import { laneRead } from "../jobs/laneRead.js"
 import { makePublish } from "../jobs/publish.js"
 import { makeScoreBatch } from "../jobs/scoreBatch.js"
 import { pickClient, type ModelClient } from "../scoring/model.js"
+import type { JobContext } from "../jobs/types.js"
 
 /**
  * One real week, against a real repository, printed as a payout list.
@@ -34,9 +35,12 @@ import { pickClient, type ModelClient } from "../scoring/model.js"
  *
  * Set OPENROUTER_API_KEY, ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to score with a
  * real model, HM_SCORER to pick between them, and HM_SCORER_MODEL to name the
- * model, e.g. `deepseek/deepseek-chat` through OpenRouter. With neither, a local
- * stand-in scores on size alone and says so on every line, so nobody mistakes
- * the output for a judgement.
+ * model, e.g. `deepseek/deepseek-chat` through OpenRouter. With none of them, a
+ * local stand-in scores on size alone and says so on every line, so nobody
+ * mistakes the output for a judgement.
+ *
+ * HM_LANE_CAP keeps a first paid run small: HM_LANE_CAP=5 scores five items
+ * rather than a whole week of a busy repository.
  */
 
 const COIN = "0x00000000000000000000000000000000000000aa"
@@ -93,6 +97,42 @@ async function resolveRepoId(nameWithOwner: string): Promise<number> {
   return ((await res.json()) as { id: number }).id
 }
 
+/** A job context for running a handler directly, outside the loop. */
+function ctxFor(key = "", epoch = 0): JobContext {
+  return {
+    db: db!,
+    workerId: "demo",
+    job: { id: 1n, type: "demo", coin: COIN, epoch, key, attempts: 0, payload: null },
+  }
+}
+
+/**
+ * Give every author in this week a wallet derived from their GitHub id.
+ *
+ * Derived, not invented: the address is a function of the numeric id, so the
+ * same contributor lands on the same address every run and two of them can
+ * never collide. Nothing here claims a real person controls it.
+ */
+async function bindAuthors(): Promise<number> {
+  const authors = await db!
+    .selectDistinct({ subject: hmItems.platformUserId, handle: hmItems.platformHandle })
+    .from(hmItems)
+    .where(eq(hmItems.coin, COIN))
+  if (authors.length === 0) return 0
+  await db!
+    .insert(hmBindings)
+    .values(
+      authors.map((a) => ({
+        platform: "github",
+        subject: a.subject,
+        handle: a.handle,
+        wallet: `0x${BigInt(a.subject).toString(16).padStart(40, "0")}`,
+      }))
+    )
+    .onConflictDoNothing()
+  return authors.length
+}
+
 async function main() {
   const epoch = lastClosedEpoch()
   if (epoch == null) throw new Error("no epoch has closed yet")
@@ -138,6 +178,18 @@ async function main() {
 
   const client = scorer ?? sizeScorer()
 
+  // Read the lane once up front, then bind a wallet per author, BEFORE the loop
+  // starts. Doing it inside the polling loop was a race the demo lost on a
+  // small week: scoring and publishing both finished inside the first poll, so
+  // the list published with nobody bound and no money moved. In production the
+  // binding happens days earlier, when the contributor connects a wallet, so
+  // seeding it first is also the more honest simulation.
+  await epochStart(ctxFor("", epoch))
+  await laneRead(ctxFor("github", epoch))
+  const boundCount = await bindAuthors()
+  console.log(`  bound ${boundCount} author wallet(s) before scoring`)
+
+
   const controller = new AbortController()
   const loop = runLoop({
     db: db!,
@@ -155,33 +207,8 @@ async function main() {
       console.log(`  [${level}] ${msg}${meta ? " " + JSON.stringify(meta) : ""}`),
   })
 
-  // Bind a wallet per author as soon as the items land, so the split has
-  // somewhere to go. In production this is the contributor connecting a
-  // wallet themselves; nothing here invents an address for anyone real.
-  let bound = false
   for (let i = 0; i < 600; i++) {
     await new Promise((r) => setTimeout(r, 500))
-
-    if (!bound) {
-      const authors = await db!
-        .selectDistinct({ subject: hmItems.platformUserId, handle: hmItems.platformHandle })
-        .from(hmItems)
-        .where(eq(hmItems.coin, COIN))
-      if (authors.length > 0) {
-        await db!
-          .insert(hmBindings)
-          .values(
-            authors.map((a) => ({
-              platform: "github",
-              subject: a.subject,
-              handle: a.handle,
-              wallet: `0x${BigInt(a.subject).toString(16).padStart(40, "0")}`,
-            }))
-          )
-          .onConflictDoNothing()
-        bound = true
-      }
-    }
 
     const [e] = await db!
       .select({ state: hmEpochs.state })
