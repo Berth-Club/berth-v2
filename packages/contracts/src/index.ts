@@ -178,4 +178,8 @@ export const HM_EPOCH_SECONDS = 604_800 as const // 7 days
  * one home, and this is it — never an env var, or the web app and the agent
  * could disagree about who counts as the team.
  */
-export const TEAM_WALLETS = [] as const satisfies readonly `0x${string}`[]
+// Annotated rather than `as const`: an empty `as const` array types as the
+// empty tuple, so every consumer that iterates it gets `never` and fails to
+// compile until the first address is added. The annotation keeps the list
+// usable while it is still empty.
+export const TEAM_WALLETS: readonly `0x${string}`[] = []
