@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Harbormaster architecture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{--bg:#0B0F17;--lane:#111722;--lane-rule:#1E2736;--node:#161D2A;--node-rule:#2E394C;--ink:#E8EDF5;--muted:#8391A8;
+        --mono:"IBM Plex Mono",ui-monospace,monospace;--green:#4ADE80;--amber:#F5B942;--blue:#7FB0F0;--violet:#B69CF6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+       background-image:radial-gradient(circle,#1a2230 1px,transparent 1px);background-size:22px 22px}
+  #canvas{position:relative;width:1920px;height:820px}
+  .title{position:absolute;left:36px;top:22px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  .legend{position:absolute;right:40px;top:20px;display:flex;gap:18px;font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .legend i{display:inline-block;width:18px;height:2px;vertical-align:middle;margin-right:6px}
+  .lane{position:absolute;z-index:0;top:56px;bottom:24px;width:270px;background:var(--lane);border:1px solid var(--lane-rule);border-radius:10px;padding:12px}
+  .lane h3{margin:0;font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;font-weight:500}
+  .node{position:absolute;z-index:2;width:246px;height:66px;background:var(--node);border:1px solid var(--node-rule);border-radius:9px;padding:12px 10px 10px 42px}
+  .node .ic{position:absolute;left:11px;top:12px;width:22px;height:22px;border:1px solid var(--node-rule);border-radius:6px;display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .node .t{font-size:13.5px;font-weight:600;line-height:1.15;white-space:nowrap}
+  .node .s{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node.new{border-color:rgba(74,222,128,.55)}
+  .node.chg{border-color:rgba(245,185,66,.55)}
+  .node.other{border-color:rgba(182,156,246,.6);border-style:dashed}
+  .tag{position:absolute;right:10px;top:-9px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;padding:2px 7px;border-radius:999px;background:var(--bg)}
+  .tag.new{color:var(--green);border:1px solid var(--green)}.tag.chg{color:var(--amber);border:1px solid var(--amber)}.tag.other{color:var(--violet);border:1px solid var(--violet)}
+  svg{position:absolute;z-index:1;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .lbl{font-family:var(--mono);font-size:9.5px}
+</style>
+<div id="canvas">
+  <div class="title">The Harbormaster · how the pieces connect</div>
+  <div class="legend">
+    <span><i style="background:var(--green)"></i>work and scores</span>
+    <span><i style="background:var(--amber)"></i>money</span>
+    <span><i style="background:var(--blue)"></i>reads and state</span>
+    <span><i style="border-top:2px dashed var(--violet);height:0"></i>built by the other developer</span>
+  </div>
+  <svg id="wires"></svg>
+</div>
+<script>
+const LANES=['People','Outside services','Web · Next.js','Worker · apps/agent · new','Indexer · Ponder','Chain · Arc'];
+const NODES=[
+ // id, col, row, title, sub, kind, icon
+ ['creator',0,0,'Creator','launches a coin, writes rules','','◉'],
+ ['builder',0,1,'Builder','does work, disputes, collects','','◉'],
+ ['team',0,3,'berth team','funds USDC, unsticks a week','','◉'],
+ ['privy',1,1,'Privy','login, links GitHub and X','','⚿'],
+ ['lanes',1,2,'GitHub · X · callouts','pump.fun · FOMO · the four lanes','','⇣'],
+ ['claude',1,3,'Claude','scores each item, writes the reason','','✦'],
+ ['wizard',2,0,'Launch wizard','Harbormaster toggle · rules card','chg','▤'],
+ ['bind',2,1,'Account binding','wallet ↔ GitHub, X, callout wallet','new','⇄'],
+ ['record',2,2,'/harbormaster record','weekly list · dispute · collect','new','▤'],
+ ['db',2,3,'App database · hm_* tables','rules · items · scores · jobs','new','▣'],
+ ['clock',3,0,'Weekly clock','Monday 00:00 UTC · job table','new','◷'],
+ ['readers',3,1,'Readers','pull the week’s work per coin','new','⇣'],
+ ['scorer',3,2,'Scorer + dispute handler','frozen rules · 48h window','new','✦'],
+ ['keeper',3,3,'Keeper','payout list · signs · posts','new','✎'],
+ ['fees',4,2,'Trading fees','per coin, per week','','≣'],
+ ['vaultidx',4,3,'Vault events','roots posted, claims paid','chg','≣'],
+ ['launch',5,0,'Launch path','half the supply into the vault','other','◇'],
+ ['wallet',5,2,'Company wallet','USDC pot · replaces keeper key','','◇'],
+ ['vault',5,3,'Vault','1% a week cap · merkle claims','other','◇'],
+];
+const C=document.getElementById('canvas'),S=document.getElementById('wires');
+const X0=36,LW=270,GAP=44,Y0=56,ROW0=56,RH=66,RGAP=90,NPAD=12;
+const laneX=c=>X0+c*(LW+GAP);
+const rowY=r=>Y0+ROW0+r*(RH+RGAP);
+LANES.forEach((n,i)=>{const d=document.createElement('div');d.className='lane';d.style.left=laneX(i)+'px';d.innerHTML=`<h3>${n}</h3>`;C.appendChild(d)});
+const B={};
+NODES.forEach(([id,c,r,t,s,k,ic])=>{const d=document.createElement('div');d.className='node '+k;d.id=id;
+  const x=laneX(c)+NPAD,y=rowY(r);d.style.left=x+'px';d.style.top=y+'px';
+  d.innerHTML=`${k?`<span class="tag ${k}">${k==='chg'?'changed':k==='other'?'other dev':'new'}</span>`:''}<span class="ic">${ic}</span><div class="t">${t}</div><div class="s">${s}</div>`;
+  C.appendChild(d);B[id]={x,y,w:246,h:RH,c,r}});
+const col={g:'#4ADE80',a:'#F5B942',b:'#7FB0F0',v:'#B69CF6'};
+const defs=document.createElementNS('http://www.w3.org/2000/svg','defs');
+for(const c of Object.values(col))defs.innerHTML+=`<marker id="m${c.slice(1)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`;
+S.appendChild(defs);
+const gx=c=>laneX(c)+LW+GAP/2;           // gutter right of column c
+const gy=r=>rowY(r)+RH+RGAP/2;           // gutter below row r
+const R=12;
+function seg(pts){let d=`M${pts[0][0]} ${pts[0][1]}`;for(let i=1;i<pts.length;i++){const[p,q]=[pts[i-1],pts[i]];const n=pts[i+1];
+  if(!n){d+=`L${q[0]} ${q[1]}`;continue}
+  const dx1=Math.sign(q[0]-p[0]),dy1=Math.sign(q[1]-p[1]),dx2=Math.sign(n[0]-q[0]),dy2=Math.sign(n[1]-q[1]);
+  d+=`L${q[0]-dx1*R} ${q[1]-dy1*R} Q${q[0]} ${q[1]} ${q[0]+dx2*R} ${q[1]+dy2*R}`}return d}
+function draw(pts,color,label,dash,at=0.5){const p=document.createElementNS('http://www.w3.org/2000/svg','path');p.setAttribute('d',seg(pts));p.setAttribute('fill','none');p.setAttribute('stroke',color);p.setAttribute('stroke-width',1.8);if(dash)p.setAttribute('stroke-dasharray','5 4');p.setAttribute('marker-end',`url(#m${color.slice(1)})`);S.appendChild(p);
+  if(!label)return;const L=p.getTotalLength(),m=p.getPointAtLength(L*at);
+  const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('class','lbl');t.setAttribute('x',m.x);t.setAttribute('y',m.y+3.5);t.setAttribute('text-anchor','middle');t.setAttribute('fill',color);t.textContent=label;
+  const bg=document.createElementNS('http://www.w3.org/2000/svg','rect');bg.setAttribute('rx',4);bg.setAttribute('fill','#0B0F17');bg.setAttribute('stroke',color);bg.setAttribute('stroke-opacity','.55');
+  S.appendChild(bg);S.appendChild(t);const bb=t.getBBox();bg.setAttribute('x',bb.x-6);bg.setAttribute('y',bb.y-3);bg.setAttribute('width',bb.width+12);bg.setAttribute('height',bb.height+6)}
+let k=0;
+function wire(a,b,color,label,o={}){const A=B[a],Bn=B[b];const off=(o.off??0);const dash=o.dash;k++;
+  const ac=[A.x+A.w/2,A.y+A.h/2],bc=[Bn.x+Bn.w/2,Bn.y+Bn.h/2];
+  if(A.c===Bn.c){ // same column
+    if(Math.abs(A.r-Bn.r)===1){const down=Bn.r>A.r;draw([[ac[0]+off,down?A.y+A.h:A.y],[ac[0]+off,down?Bn.y:Bn.y+Bn.h]],color,label,dash);return}
+    const g=gx(A.c)+off;draw([[A.x+A.w,A.y+A.h*0.7],[g,A.y+A.h*0.7],[g,Bn.y+Bn.h*0.3],[Bn.x+Bn.w,Bn.y+Bn.h*0.3]],color,label,dash,o.at??0.5);return}
+  const right=Bn.c>A.c;
+  const ax=right?A.x+A.w:A.x, bx=right?Bn.x:Bn.x+Bn.w;
+  const ay=A.y+A.h*(o.af??0.5), by=Bn.y+Bn.h*(o.bf??0.5);
+  if(Math.abs(Bn.c-A.c)===1&&A.r===Bn.r){draw([[ax,ay],[bx,by]],color,label,dash);return}
+  if(Math.abs(Bn.c-A.c)===1){const g=(right?gx(A.c):gx(Bn.c))+off;draw([[ax,ay],[g,ay],[g,by],[bx,by]],color,label,dash,o.at??0.5);return}
+  // far: go to row gutter
+  const g1=(right?gx(A.c):gx(A.c-1))+off, g2=(right?gx(Bn.c-1):gx(Bn.c))+off;
+  const gr=o.gr??(Bn.r>=A.r?gy(A.r):gy(A.r-1)); const yy=gr+off;
+  draw([[ax,ay],[g1,ay],[g1,yy],[g2,yy],[g2,by],[bx,by]],color,label,dash,o.at??0.5)}
+
+// people
+wire('creator','wizard',col.g,'switches on, writes rules',{gr:gy(0)-RGAP/2+8,off:0});
+wire('builder','bind',col.g,'links accounts',{af:0.35,bf:0.35,at:0.35});
+wire('builder','record',col.g,'disputes, collects',{af:0.7,bf:0.4,off:-10,at:0.72});
+wire('team','db',col.b,'unsticks a week',{af:0.3,bf:0.3,off:10});
+wire('team','wallet',col.a,'funds the USDC pot',{af:0.75,bf:0.7,gr:gy(3)-RGAP/2+40,off:0,at:0.55});
+// outside
+wire('privy','bind',col.b,'verified ids',{af:0.6,bf:0.7});
+wire('lanes','readers',col.g,'the week’s work',{af:0.4,bf:0.5,off:-8,at:0.5});
+wire('claude','scorer',col.g,'',{af:0.4,bf:0.72,off:8});
+// web
+wire('wizard','launch',col.a,'creator signs the launch',{af:0.3,bf:0.3,gr:gy(0)-RGAP/2-14,at:0.86});
+wire('wizard','db',col.g,'rules',{off:6,at:0.5});
+wire('bind','db',col.g,'bindings',{off:16,at:0.5});
+wire('record','db',col.g,'disputes',{off:-40,at:0.35});
+// worker
+wire('clock','readers',col.g,'epoch start');
+wire('readers','scorer',col.g,'items');
+wire('scorer','keeper',col.g,'settled list',{off:-46});
+wire('db','keeper',col.b,'jobs, state',{af:0.5,bf:0.5});
+wire('fees','keeper',col.b,'fee totals',{af:0.5,bf:0.25,off:-8});
+wire('keeper','vaultidx',col.b,'',{af:0.75,bf:0.75});
+wire('vaultidx','vault',col.b,'events',{af:0.75,bf:0.75});
+wire('keeper','vault',col.a,'post payout list + USDC',{af:0.5,bf:0.35,gr:gy(3)-RGAP/2+40,off:0,at:0.5});
+wire('vaultidx','db',col.b,'proof ready · claimed',{af:0.3,bf:0.8,gr:gy(3)-RGAP/2+58,off:0,at:0.5});
+wire('wallet','keeper',col.a,'one week of USDC',{af:0.42,bf:0.6,off:18,at:0.5});
+wire('record','vault',col.a,'builder claims with one tx',{af:0.9,bf:0.1,gr:gy(3)-RGAP/2+14,off:0,at:0.62});
+// other dev
+wire('launch','vault',col.v,'half the supply',{dash:true,off:-30,at:0.5});
+wire('wallet','vault',col.v,'can replace keeper key',{dash:true,off:60});
+</script>

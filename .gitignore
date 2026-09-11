@@ -46,3 +46,6 @@ next-env.d.ts
 .env
 
 *.swp
+
+# PR Lens writes its previews here. They are rebuilt on demand.
+.pr-lens/
