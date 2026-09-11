@@ -57,8 +57,16 @@ export interface LaneWindow {
 export interface LaneSources {
   /** GitHub repository ids. Numeric and stable across renames and transfers. */
   github?: Array<{ repoId: number; name?: string }>
-  /** FOMO page ids. */
-  fomo?: Array<{ pageId: string; name?: string }>
+  /**
+   * Tokens whose FOMO callouts count.
+   *
+   * The plan assumed a page id. FOMO's archive is keyed on the token's own
+   * contract address and the chain it lives on, because a callout is written
+   * about a token rather than posted to a page. `networkId` is FOMO's own
+   * chain number, kept so an address that exists on two chains cannot be
+   * confused for one.
+   */
+  fomo?: Array<{ tokenAddress: string; networkId?: number; name?: string }>
 }
 
 export interface ReaderContext {

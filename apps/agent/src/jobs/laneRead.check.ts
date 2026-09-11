@@ -67,6 +67,10 @@ function withFetch<T>(impl: typeof fetch, fn: () => Promise<T>): Promise<T> {
 
 function servePulls(pages: unknown[][]) {
   return (async (url: string) => {
+    // The reader asks twice: once for closed pull requests, once for open
+    // ones. Serving the same page to both returned every pull request twice,
+    // which is the fixture lying rather than the reader misbehaving.
+    if (/[?&]state=open/.test(String(url))) return Response.json([])
     const page = Number(/[?&]page=(\d+)/.exec(String(url))?.[1] ?? 1)
     return Response.json(pages[page - 1] ?? [])
   }) as unknown as typeof fetch
@@ -206,11 +210,24 @@ async function main() {
 
   await reset()
   await seedEpoch({ github: [{ repoId: 10 }] })
-  const noReader = await laneRead(jobCtx("fomo"))
+  // A lane name nothing can read. This used to be `fomo`, until FOMO got a
+  // reader; the case still matters, because a job type that outlives its
+  // handler must say so rather than burn its attempts in silence.
+  const noReader = await laneRead(jobCtx("nosuchlane"))
   assert.equal(noReader.kind, "done", "not a failure that burns attempts")
+  const missing = await laneRow("nosuchlane")
+  assert.equal(missing!.status, "failed")
+  assert.match(missing!.reason!, /no reader/, "and the page can say the lane is not live")
+
+  /* ── a live lane a coin has not opted into is not an error ──────────────── */
+
+  await reset()
+  await seedEpoch({ github: [{ repoId: 10 }] })
+  const fomoNoTokens = await laneRead(jobCtx("fomo"))
+  assert.equal(fomoNoTokens.kind, "done")
   const fomo = await laneRow("fomo")
-  assert.equal(fomo!.status, "failed")
-  assert.match(fomo!.reason!, /no reader/, "and the page can say the lane is not live")
+  assert.equal(fomo!.status, "ok", "a coin naming no FOMO tokens simply has no callouts")
+  assert.equal(fomo!.itemCount, 0)
 
   /* ── hidden text never reaches the stored item ─────────────────────────── */
 

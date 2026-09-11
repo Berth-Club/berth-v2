@@ -62,6 +62,10 @@ function pull(body: string, userId = 1001, login = "alice", nodeId?: string) {
 
 function serve(pages: unknown[][]) {
   return (async (url: string) => {
+    // The reader asks twice: once for closed pull requests, once for open
+    // ones. Serving the same page to both returned every pull request twice,
+    // which is the fixture lying rather than the reader misbehaving.
+    if (/[?&]state=open/.test(String(url))) return Response.json([])
     const page = Number(/[?&]page=(\d+)/.exec(String(url))?.[1] ?? 1)
     return Response.json(pages[page - 1] ?? [])
   }) as unknown as typeof fetch

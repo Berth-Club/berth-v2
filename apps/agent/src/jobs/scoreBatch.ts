@@ -14,6 +14,7 @@ import { env } from "../env.js"
 import { DEFAULT_MODEL_ID, pickClient, type ModelClient } from "../scoring/model.js"
 import { promptHash } from "../scoring/prompt.js"
 import { SCHEMA_HASH } from "../scoring/schema.js"
+import { judgeItem, SCREENED_LANES } from "../scoring/judge.js"
 import { excludedReason, scoreItem } from "../scoring/score.js"
 import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types.js"
 
@@ -147,6 +148,23 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
         await writeScore(ctx, item.id, "excluded", 0, skip, [])
         excluded++
         continue
+      }
+
+      // Lanes with no upstream filter are screened before they are scored. A
+      // pull request was merged by a maintainer; a callout was merely typed.
+      // Handing unscreened callouts to the scorer makes volume the cheapest
+      // way to earn, and the scorer's job is to rank work rather than to
+      // decide what counts as work at all.
+      if (SCREENED_LANES.has(item.lane)) {
+        const verdict = await judgeItem(
+          { content: item.content!, ticker: null },
+          { client }
+        )
+        if (!verdict.counts) {
+          await writeScore(ctx, item.id, "excluded", 0, `Screened out: ${verdict.reason}`, [])
+          excluded++
+          continue
+        }
       }
 
       const result = await scoreItem(

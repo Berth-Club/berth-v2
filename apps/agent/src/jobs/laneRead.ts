@@ -3,6 +3,7 @@ import { and, eq, ne } from "drizzle-orm"
 
 import { bindFromItem } from "./bindFromItem.js"
 
+import { makeFomoReader } from "../connectors/fomo.js"
 import { makeGithubReader } from "../connectors/github.js"
 import { clean, contentHash, looksLikeInjection } from "../connectors/hygiene.js"
 import type { LaneReader, LaneResult, LaneSources } from "../connectors/types.js"
@@ -37,7 +38,7 @@ const CAP_PER_LANE = Number(process.env.HM_LANE_CAP ?? 500)
 
 const readers: Record<string, () => LaneReader> = {
   github: () => makeGithubReader({ token: env.githubToken }),
-  // fomo: gated on the access track; the reader lands with Unit 9.
+  fomo: () => makeFomoReader({ archiveUrl: env.fomoArchiveUrl }),
 }
 
 export async function laneRead(ctx: JobContext): Promise<JobOutcome> {

@@ -37,6 +37,13 @@ export const env = {
   /** Fine-grained, read-only. Public repo reads need no write scope. */
   githubToken: required("GITHUB_TOKEN"),
   fomoApiKey: required("FOMO_API_KEY"),
+  /**
+   * The callout bot's Postgres, read-only.
+   *
+   * FOMO has no public API, so the payout path reads the archive that bot
+   * already fills rather than depending on a browser session staying alive.
+   */
+  fomoArchiveUrl: required("FOMO_ARCHIVE_URL"),
 
   rpcUrl: required("RPC_URL") ?? CHAIN.defaultRpc,
   /** Failed over to when the public endpoint rate-limits. Key is in the path. */
@@ -57,7 +64,7 @@ export function capabilities() {
     database: Boolean(env.databaseUrl),
     scoring: Boolean(env.anthropicApiKey || env.deepseekApiKey || env.openrouterApiKey),
     github: Boolean(env.githubToken),
-    fomo: Boolean(env.fomoApiKey),
+    fomo: Boolean(env.fomoArchiveUrl),
     payouts: Boolean(env.keeperPrivateKey),
     indexer: Boolean(env.indexerUrl),
   }

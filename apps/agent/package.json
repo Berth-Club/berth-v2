@@ -19,7 +19,8 @@
     "demo:week": "node --env-file-if-exists=../../.env --import tsx src/demo/week.ts",
     "check:address": "node --env-file-if-exists=../../.env --import tsx src/connectors/address.selfcheck.ts",
     "check:binding": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/binding.check.ts",
-    "watch": "node --env-file-if-exists=../../.env --import tsx src/demo/watch.ts"
+    "watch": "node --env-file-if-exists=../../.env --import tsx src/demo/watch.ts",
+    "check:fomo": "node --env-file-if-exists=../../.env --import tsx src/connectors/fomo.selfcheck.ts"
   },
   "dependencies": {
     "@workspace/contracts": "workspace:*",
