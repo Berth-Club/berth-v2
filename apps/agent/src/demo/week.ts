@@ -138,8 +138,24 @@ async function bindAuthors(): Promise<number> {
 }
 
 async function main() {
-  const epoch = lastClosedEpoch()
-  if (epoch == null) throw new Error("no epoch has closed yet")
+  // Defaults to the week that just closed, which is what the scheduler does.
+  // HM_DEMO_EPOCH looks at an older one instead, because the interesting week
+  // for a given project is rarely the most recent: a repo can be quiet for a
+  // month and then merge everything at once.
+  const requested = process.env.HM_DEMO_EPOCH
+  const latest = lastClosedEpoch()
+  if (latest == null) throw new Error("no epoch has closed yet")
+  const epoch = requested ? Number(requested) : latest
+  if (!Number.isInteger(epoch) || epoch < 0) {
+    throw new Error(`HM_DEMO_EPOCH must be a non-negative integer, got ${requested}`)
+  }
+  if (epoch > latest) {
+    // The lane job refuses to read a week still in progress, so this would
+    // otherwise sit and wait until the timeout with nothing to show.
+    throw new Error(
+      `epoch ${epoch} has not closed yet; the newest readable one is ${latest}`
+    )
+  }
   const { start, end } = epochBounds(epoch)
   const repoId = await resolveRepoId(repoArg)
 

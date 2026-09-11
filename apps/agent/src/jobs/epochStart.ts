@@ -24,8 +24,18 @@ const LANES_TO_READ = ["github"] as const
 export async function epochStart(ctx: JobContext): Promise<JobOutcome> {
   const { db } = ctx
 
-  const epoch = lastClosedEpoch()
-  if (epoch == null) return waitFor(3600, "the first epoch has not closed yet")
+  const latest = lastClosedEpoch()
+  if (latest == null) return waitFor(3600, "the first epoch has not closed yet")
+
+  // The job row names the week to open. Zero means "whatever just closed",
+  // which is what the repeating timer enqueues and what production always
+  // does. A non-zero epoch backfills an older week, which is how a coin that
+  // joins late gets the week its work actually happened in.
+  const epoch = ctx.job.epoch > 0 ? ctx.job.epoch : latest
+  if (epoch > latest) {
+    // Reading a week still in progress would miss whatever lands after.
+    return waitFor(3600, `epoch ${epoch} has not closed yet, newest is ${latest}`)
+  }
 
   const { start, end } = epochBounds(epoch)
 
