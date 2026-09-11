@@ -150,11 +150,15 @@ async function readRepo(
     )
     if (pulls.length === 0) break
 
-    let sawOlder = false
+    // Sorted by `updated` descending, so the first row updated before the
+    // window marks the end of the useful results: everything after it in the
+    // sort order is older still. A pull request merged inside the window is
+    // always updated at or after its merge, so none can hide past this point.
+    let reachedOlder = false
     for (const pr of pulls) {
       if (new Date(pr.updated_at) < start) {
-        sawOlder = true
-        continue
+        reachedOlder = true
+        break
       }
       if (!pr.merged_at) continue // closed without merging: not work
 
@@ -188,8 +192,8 @@ async function readRepo(
       }
     }
 
-    // Everything on this page predates the window, and pages only get older.
-    if (sawOlder && items.length === 0 && page > 1) break
+    // Past the window, or out of results. Either way this repo is fully read.
+    if (reachedOlder) break
     if (pulls.length < PER_PAGE) break
     if (page === MAX_PAGES_PER_REPO) {
       return { items, reason: `repo ${repoId} has more than ${MAX_PAGES_PER_REPO} pages of updates` }

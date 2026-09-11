@@ -179,16 +179,46 @@ async function main() {
   /* ── paging stops once the pages predate the window ────────────────────── */
 
   {
+    // The cap must NOT be what stops this: an earlier version of the check
+    // filled page one to the cap, so the reader returned on the cap and the
+    // paging logic under test never ran. The assertion passed on one call
+    // while the real reader was fetching all twenty pages of every repo.
+    // Here the in-window rows are few and the cap is far away, so the only
+    // thing that can stop the paging is the thing being tested.
     const old = () => pull({ updated_at: "2026-08-01T00:00:00Z", merged_at: "2026-08-01T00:00:00Z" })
     const { impl, calls } = fakeFetch({
       10: [
-        Array.from({ length: 100 }, () => pull()),
+        [...Array.from({ length: 3 }, () => pull()), ...Array.from({ length: 97 }, old)],
         Array.from({ length: 100 }, old),
         Array.from({ length: 100 }, old),
       ],
     })
-    await makeGithubReader({ token: "t", fetchImpl: impl })(ctx())
-    assert.ok(calls.length <= 2, `stops paging once updates predate the window, made ${calls.length} calls`)
+    const res = await makeGithubReader({ token: "t", fetchImpl: impl })(ctx({ cap: 500 }))
+    assert.equal(res.items.length, 3, "the in-window merges are found")
+    assert.equal(calls.length, 1, `stops on the first page that runs past the window, made ${calls.length}`)
+    assert.equal(res.status, "ok", "a complete read is never reported as partial")
+  }
+
+  /* ── a busy repo is read completely, and says so ───────────────────────── */
+
+  {
+    // A repo where the in-window work spans several pages. The reader must
+    // page until it runs past the window and then report `ok`, because a
+    // false `partial` blocks the week's publish and needs a human to clear.
+    const old = () => pull({ updated_at: "2026-08-01T00:00:00Z", merged_at: "2026-08-01T00:00:00Z" })
+    const { impl, calls } = fakeFetch({
+      10: [
+        Array.from({ length: 100 }, () => pull()),
+        Array.from({ length: 100 }, () => pull()),
+        [...Array.from({ length: 10 }, () => pull()), ...Array.from({ length: 90 }, old)],
+        Array.from({ length: 100 }, old),
+      ],
+    })
+    const res = await makeGithubReader({ token: "t", fetchImpl: impl })(ctx({ cap: 500 }))
+    assert.equal(res.items.length, 210, "every in-window merge across the pages")
+    assert.equal(calls.length, 3, "three pages read, the fourth never requested")
+    assert.equal(res.status, "ok")
+    assert.equal(res.reason, undefined, "nothing for an operator to clear")
   }
 
   /* ── the configuration cases report rather than throw ──────────────────── */
