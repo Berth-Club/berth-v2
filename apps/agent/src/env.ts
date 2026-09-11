@@ -43,7 +43,7 @@ export const env = {
    * FOMO has no public API, so the payout path reads the archive that bot
    * already fills rather than depending on a browser session staying alive.
    */
-  fomoArchiveUrl: required("FOMO_ARCHIVE_URL"),
+  fomoArchiveUrl: required("FOMO_ARCHIVE_DATABASE_URL"),
 
   rpcUrl: required("RPC_URL") ?? CHAIN.defaultRpc,
   /** Failed over to when the public endpoint rate-limits. Key is in the path. */

@@ -109,7 +109,7 @@ export function makeFomoReader(opts: FomoReaderOptions = {}) {
       return {
         status: "failed",
         items: [],
-        reason: "not configured: FOMO_ARCHIVE_URL is unset",
+        reason: "not configured: FOMO_ARCHIVE_DATABASE_URL is unset",
       }
     }
 
