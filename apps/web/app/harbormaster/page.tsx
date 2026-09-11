@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 
+import Record from "./record"
+
 export const metadata: Metadata = {
   title: "The Harbormaster — berth.club",
   description:
@@ -105,7 +107,7 @@ function GitHubMark() {
 
 /* ── page ────────────────────────────────────────────────────── */
 
-export default function HarbormasterPage() {
+export default async function HarbormasterPage() {
   return (
     <div className="relative z-[1] mx-auto max-w-[1000px] px-5 pb-15 pt-6">
       <section className="my-[10px] mb-[26px] max-w-[720px]">
@@ -144,6 +146,11 @@ export default function HarbormasterPage() {
           </Link>
         </div>
       </section>
+
+      {/* The record sits above the explanation: once a week has been scored,
+          what actually happened matters more than how it is meant to work.
+          Renders nothing until there is a scored week. */}
+      <Record />
 
       <section className={PANEL}>
         <div className="text-faint text-[11px] font-semibold" style={{ letterSpacing: ".12em" }}>
