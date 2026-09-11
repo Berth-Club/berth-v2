@@ -12,7 +12,11 @@
     "check:migrations": "node --import tsx src/migrations.check.ts",
     "check:hygiene": "node --import tsx src/connectors/hygiene.selfcheck.ts",
     "check:github": "node --import tsx src/connectors/github.check.ts",
-    "check:lane": "GITHUB_TOKEN=test-token node --import tsx src/jobs/laneRead.check.ts"
+    "check:lane": "GITHUB_TOKEN=test-token node --import tsx src/jobs/laneRead.check.ts",
+    "check:scoring": "node --import tsx src/scoring/scoring.selfcheck.ts",
+    "check:split": "node --import tsx src/epoch/split.selfcheck.ts",
+    "check:pipeline": "GITHUB_TOKEN=test-token node --import tsx src/jobs/pipeline.check.ts",
+    "demo:week": "node --import tsx src/demo/week.ts"
   },
   "dependencies": {
     "@workspace/contracts": "workspace:*",
