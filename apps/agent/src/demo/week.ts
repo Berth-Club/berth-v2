@@ -10,6 +10,7 @@ import {
   hmScores,
   makeDb,
   TABLE_NAMES,
+  assertThrowaway,
 } from "@workspace/db"
 import { and, desc, eq, sql } from "drizzle-orm"
 
@@ -49,6 +50,9 @@ const COIN_POT = BigInt(process.env.HM_COIN_POT ?? "1000000000000000000000") // 
 const USDC_POT = BigInt(process.env.HM_USDC_POT ?? "500000000") // 500 USDC at 6dp
 
 const repoArg = process.argv[2] ?? "vercel/next.js"
+
+// Before anything is created or truncated.
+assertThrowaway(process.env.DATABASE_URL)
 
 const db = makeDb(process.env.DATABASE_URL)
 if (!db) {

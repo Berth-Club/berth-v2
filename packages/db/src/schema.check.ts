@@ -1,3 +1,4 @@
+import { assertThrowaway } from "./throwaway.js"
 import assert from "node:assert/strict"
 
 import { and, eq, sql } from "drizzle-orm"
@@ -33,6 +34,8 @@ import {
 const COIN = "0x00000000000000000000000000000000000000aa"
 const W1 = "0x1111111111111111111111111111111111111111"
 const W2 = "0x2222222222222222222222222222222222222222"
+
+assertThrowaway(process.env.DATABASE_URL)
 
 const db = makeDb(process.env.DATABASE_URL)
 if (!db) {

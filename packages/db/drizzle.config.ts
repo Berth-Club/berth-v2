@@ -1,6 +1,22 @@
 import { defineConfig } from "drizzle-kit"
 
 /**
+ * drizzle-kit runs its own Node process and does not read the repo's `.env`,
+ * so `db:migrate` would ask for a url that is sitting right there. The agent's
+ * scripts get it through `--env-file-if-exists`, which is not a thing a config
+ * file can opt into, hence doing it by hand.
+ *
+ * Missing is fine and silent: on Railway the platform supplies the variables
+ * and there is no file. Anything already in the environment wins, matching how
+ * `--env-file-if-exists` behaves everywhere else in this repo.
+ */
+try {
+  process.loadEnvFile(new URL("../../.env", import.meta.url).pathname)
+} catch {
+  // No file, or no permission to read it. Either way the environment decides.
+}
+
+/**
  * drizzle-kit config for every table the web app and the agent own.
  *
  * `tablesFilter` is the safety rail, not a nicety: this database is shared with

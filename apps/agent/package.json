@@ -4,19 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --import tsx --watch src/index.ts",
-    "start": "node --import tsx src/index.ts",
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "check:clock": "node --import tsx src/clock.selfcheck.ts",
-    "check:loop": "node --import tsx src/jobs/loop.check.ts",
-    "check:migrations": "node --import tsx src/migrations.check.ts",
-    "check:hygiene": "node --import tsx src/connectors/hygiene.selfcheck.ts",
-    "check:github": "node --import tsx src/connectors/github.check.ts",
-    "check:lane": "GITHUB_TOKEN=test-token node --import tsx src/jobs/laneRead.check.ts",
-    "check:scoring": "node --import tsx src/scoring/scoring.selfcheck.ts",
-    "check:split": "node --import tsx src/epoch/split.selfcheck.ts",
-    "check:pipeline": "GITHUB_TOKEN=test-token node --import tsx src/jobs/pipeline.check.ts",
-    "demo:week": "node --import tsx src/demo/week.ts"
+    "check:clock": "node --env-file-if-exists=../../.env --import tsx src/clock.selfcheck.ts",
+    "check:loop": "node --env-file-if-exists=../../.env --import tsx src/jobs/loop.check.ts",
+    "check:migrations": "node --env-file-if-exists=../../.env --import tsx src/migrations.check.ts",
+    "check:hygiene": "node --env-file-if-exists=../../.env --import tsx src/connectors/hygiene.selfcheck.ts",
+    "check:github": "node --env-file-if-exists=../../.env --import tsx src/connectors/github.check.ts",
+    "check:lane": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/laneRead.check.ts",
+    "check:scoring": "node --env-file-if-exists=../../.env --import tsx src/scoring/scoring.selfcheck.ts",
+    "check:split": "node --env-file-if-exists=../../.env --import tsx src/epoch/split.selfcheck.ts",
+    "check:pipeline": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/pipeline.check.ts",
+    "demo:week": "node --env-file-if-exists=../../.env --import tsx src/demo/week.ts"
   },
   "dependencies": {
     "@workspace/contracts": "workspace:*",
@@ -32,6 +32,6 @@
     "typescript": "^5"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   }
 }

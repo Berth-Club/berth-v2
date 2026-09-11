@@ -11,6 +11,7 @@ import {
   hmScores,
   makeDb,
   TABLE_NAMES,
+  assertThrowaway,
 } from "@workspace/db"
 import { and, eq, sql } from "drizzle-orm"
 
@@ -39,6 +40,8 @@ const COIN = "0x00000000000000000000000000000000000000aa"
 const DEPLOYER = "0x00000000000000000000000000000000000000de"
 const WALLET_A = "0x000000000000000000000000000000000000aaaa"
 const WALLET_B = "0x000000000000000000000000000000000000bbbb"
+
+assertThrowaway(process.env.DATABASE_URL)
 
 const db = makeDb(process.env.DATABASE_URL)
 if (!db) {

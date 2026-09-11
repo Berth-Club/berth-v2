@@ -7,6 +7,7 @@ import {
   hmRuleVersions,
   makeDb,
   TABLE_NAMES,
+  assertThrowaway,
 } from "@workspace/db"
 import { and, eq, sql } from "drizzle-orm"
 
@@ -30,6 +31,8 @@ const EPOCH = 40
 // epoch still in progress. The guard for that case is checked separately.
 const WINDOW_START = new Date("2026-08-31T00:00:00Z")
 const WINDOW_END = new Date("2026-09-07T00:00:00Z")
+
+assertThrowaway(process.env.DATABASE_URL)
 
 const db = makeDb(process.env.DATABASE_URL)
 if (!db) {
