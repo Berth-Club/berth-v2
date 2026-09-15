@@ -237,7 +237,7 @@ const sections: Section[] = [
         <DefGrid
           items={[
             {
-              term: "Work lanes",
+              term: "Work venues",
               def: "GitHub, X, pump.fun and FOMO. Tag the agent where the work happened. The connector spec is open, any platform can plug in.",
             },
             {

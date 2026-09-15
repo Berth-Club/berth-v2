@@ -1,0 +1,1 @@
+ALTER TABLE "hm_items" ADD COLUMN "meta" jsonb;

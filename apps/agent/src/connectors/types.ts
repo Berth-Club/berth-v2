@@ -1,7 +1,7 @@
 /**
- * The shape every lane produces, whatever it read.
+ * The shape every venue produces, whatever it read.
  *
- * Fixed here, in the first lane, because the other three implement it later and
+ * Fixed here, in the first venue, because the other three implement it later and
  * the scorer must not care which venue an item came from. The fields are the
  * minimum that makes an item scoreable and attributable: who, what, where, when.
  *
@@ -10,16 +10,25 @@
  * would let whoever claims that name inherit the payout. The handle is carried
  * alongside for display only, and nothing ever joins on it.
  */
-export interface LaneItem {
+export interface VenueItem {
   /** Matches `hm_items.platform`: `github` | `fomo`. */
   platform: string
   platformUserId: string
   platformHandle?: string
-  /** The platform's id for the item itself, unique within the lane. */
+  /** The platform's id for the item itself, unique within the venue. */
   externalId: string
   link?: string
   /** Author-written text. Attacker-controlled; hygiene runs before it is stored. */
   content?: string
+  /**
+   * An address the PLATFORM holds for this author, not one they typed.
+   *
+   * Only FOMO has this, because it gives every account a custodial wallet and
+   * returns it for any user id. It exists because a market callout is four words
+   * long and nobody pastes forty-two hex characters into one, so without it the
+   * venue could read and score perfectly and still pay nobody.
+   */
+  platformWallet?: string
   /** When the work counted as done: a merge time, a post time. */
   createdAt: Date
   /** True for work still in flight. Stored and shown, never scored. */
@@ -31,7 +40,7 @@ export interface LaneItem {
 /**
  * What a reader reports back, which is as important as the items.
  *
- * A lane that could not be read must never look like a quiet week: an empty
+ * A venue that could not be read must never look like a quiet week: an empty
  * list and a failed read are the same rows but opposite meanings, and publishing
  * the first when the truth was the second pays nobody and tells no one. So
  * `status` is part of the result, not an exception, and `partial` exists for the
@@ -39,22 +48,22 @@ export interface LaneItem {
  */
 export type LaneStatus = "ok" | "partial" | "failed"
 
-export interface LaneResult {
+export interface VenueResult {
   status: LaneStatus
-  items: LaneItem[]
+  items: VenueItem[]
   /** Required for partial and failed. Printed on the public list. */
   reason?: string
 }
 
-export interface LaneWindow {
+export interface VenueWindow {
   /** Inclusive. Widened for a coin's first epoch, to honour a lookback date. */
   start: Date
   /** Exclusive, so one item lands on exactly one week. */
   end: Date
 }
 
-/** What a coin's rules named for this lane, already resolved to ids. */
-export interface LaneSources {
+/** What a coin's rules named for this venue, already resolved to ids. */
+export interface VenueSources {
   /** GitHub repository ids. Numeric and stable across renames and transfers. */
   github?: Array<{ repoId: number; name?: string }>
   /**
@@ -70,8 +79,15 @@ export interface LaneSources {
 }
 
 export interface ReaderContext {
-  window: LaneWindow
-  sources: LaneSources
+  /**
+   * The coin this read is for.
+   *
+   * A venue that reads a shared archive needs it: two coins can name the same
+   * FOMO token, and a callout earns for the coin whose rules named it.
+   */
+  coin: string
+  window: VenueWindow
+  sources: VenueSources
   /** Stop paging once this many items are held, and report `partial`. */
   cap: number
   /**
@@ -85,4 +101,4 @@ export interface ReaderContext {
   signal?: AbortSignal
 }
 
-export type LaneReader = (ctx: ReaderContext) => Promise<LaneResult>
+export type VenueReader = (ctx: ReaderContext) => Promise<VenueResult>

@@ -1,4 +1,4 @@
-import { hmEpochs, hmItems, hmLaneReads, hmRuleVersions } from "@workspace/db"
+import { hmEpochs, hmItems, hmVenueReads, hmRuleVersions } from "@workspace/db"
 import { and, eq, ne } from "drizzle-orm"
 
 import { bindFromItem } from "./bindFromItem.js"
@@ -6,18 +6,18 @@ import { bindFromItem } from "./bindFromItem.js"
 import { makeFomoReader } from "../connectors/fomo.js"
 import { makeGithubReader } from "../connectors/github.js"
 import { clean, contentHash, looksLikeInjection } from "../connectors/hygiene.js"
-import type { LaneReader, LaneResult, LaneSources } from "../connectors/types.js"
+import type { VenueReader, VenueResult, VenueSources } from "../connectors/types.js"
 import { env } from "../env.js"
 import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types.js"
 
 /**
- * Read one lane for one coin for one week, and write down how it went.
+ * Read one venue for one coin for one week, and write down how it went.
  *
- * The job's real product is the `hm_lane_reads` row, not the items. An empty
+ * The job's real product is the `hm_venue_reads` row, not the items. An empty
  * week and an unreadable week produce the same zero items, and publishing the
  * first when the truth was the second pays nobody while looking completely
  * normal. So the status is written every time, and `publish` refuses to run
- * until every lane says `ok` or an operator has said `skipped` with a reason.
+ * until every venue says `ok` or an operator has said `skipped` with a reason.
  *
  * Items are inserted with `onConflictDoNothing` against the natural key, so a
  * handler that runs twice — which the lease makes possible whenever a worker
@@ -25,25 +25,33 @@ import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types
  */
 
 /**
- * Most items one lane may contribute to one week.
+ * Most items one venue may contribute to one week.
  *
  * A real limit, not a test knob: a week that returns thousands of items is a
  * coin whose rules point at something far too broad, and scoring all of it
- * would cost more than the week pays out. Hitting it marks the lane partial,
+ * would cost more than the week pays out. Hitting it marks the venue partial,
  * so an operator decides rather than the list quietly being short.
  *
  * Lowering it is also how a first paid run on a busy repository stays cheap.
  */
 const CAP_PER_LANE = Number(process.env.HM_LANE_CAP ?? 500)
 
-const readers: Record<string, () => LaneReader> = {
+/**
+ * A reader per venue.
+ *
+ * Takes the job's database handle, because the FOMO venue reads an archive in
+ * the same database rather than calling anyone. A module-level map could not
+ * see it, and giving that venue its own connection would mean a second pool
+ * for rows the job is already connected to.
+ */
+const readers: Record<string, (ctx: JobContext) => VenueReader> = {
   github: () => makeGithubReader({ token: env.githubToken }),
-  fomo: () => makeFomoReader({ archiveUrl: env.fomoArchiveUrl }),
+  fomo: (ctx) => makeFomoReader({ db: ctx.db as never }),
 }
 
-export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
+export async function venueRead(ctx: JobContext): Promise<JobOutcome> {
   const { db, job } = ctx
-  const lane = job.key
+  const venue = job.key
   const coin = job.coin
 
   const [epoch] = await db
@@ -63,28 +71,29 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
     return waitFor(60, "the week has not closed yet")
   }
 
-  const makeReader = readers[lane]
+  const makeReader = readers[venue]
   if (!makeReader) {
-    await recordRead(ctx, lane, "failed", `no reader for lane "${lane}"`, 0)
-    return done(`lane ${lane} has no reader`)
+    await recordRead(ctx, venue, "failed", `no reader for venue "${venue}"`, 0)
+    return done(`venue ${venue} has no reader`)
   }
 
   const sources = await frozenSources(ctx, epoch.rulesVersionId)
   if (!sources) {
-    await recordRead(ctx, lane, "failed", "the epoch has no frozen rules", 0)
+    await recordRead(ctx, venue, "failed", "the epoch has no frozen rules", 0)
     return done("no frozen rules")
   }
 
-  let result: LaneResult
+  let result: VenueResult
   try {
-    result = await makeReader()({
+    result = await makeReader(ctx)({
+      coin,
       window: { start: epoch.windowStart, end: epoch.windowEnd },
       sources,
       cap: CAP_PER_LANE,
       includeOpen: true,
     })
   } catch (error) {
-    // An unexpected throw is a retry, not a verdict: the lane may be fine in
+    // An unexpected throw is a retry, not a verdict: the venue may be fine in
     // thirty seconds, and recording `failed` here would need an operator to
     // clear something that cleared itself.
     return failed(error)
@@ -101,7 +110,7 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
       .values({
         coin,
         epoch: job.epoch,
-        lane,
+        venue,
         platform: item.platform,
         platformUserId: item.platformUserId,
         platformHandle: item.platformHandle,
@@ -111,9 +120,10 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
         contentHash: contentHash(cleaned.text),
         strippedBytes: cleaned.strippedBytes,
         status: item.open ? "open" : "pending",
+        meta: item.meta ?? null,
         createdAt: item.createdAt,
       })
-      // The natural key is (coin, epoch, lane, externalId): a second run of the
+      // The natural key is (coin, epoch, venue, externalId): a second run of the
       // same read is a no-op rather than a doubled payout.
       //
       // The one exception is work that was open and has now merged. Without
@@ -123,12 +133,15 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
       // judged is frozen, because its content hash is what the score was
       // computed over and a later edit must not move it.
       .onConflictDoUpdate({
-        target: [hmItems.coin, hmItems.epoch, hmItems.lane, hmItems.externalId],
+        target: [hmItems.coin, hmItems.epoch, hmItems.venue, hmItems.externalId],
         set: {
           status: item.open ? "open" : "pending",
           content: cleaned.text || null,
           contentHash: contentHash(cleaned.text),
           strippedBytes: cleaned.strippedBytes,
+          // Refreshed only while still open, like everything else here. A
+          // scored item's signals are what its score was computed from.
+          meta: item.meta ?? null,
           // The merge time, which is the moment the work counted.
           createdAt: item.createdAt,
         },
@@ -138,11 +151,12 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
 
     if (inserted.length > 0) stored++
 
-    // Bind the author's wallet from what they wrote, if they wrote one. Done
-    // here rather than in a later job because the cleaned text is already in
-    // hand, and because a contributor who mentions an address in the same
-    // pull request that earns should be paid for that week, not the next one.
-    const itemId = inserted[0]?.id ?? (await existingItemId(ctx, lane, item.externalId))
+    // Bind the author's wallet: from what they wrote, or from what the platform
+    // holds for them when the venue supplies it. Done here rather than in a
+    // later job because the cleaned text is already in hand, and because a
+    // contributor who mentions an address in the same pull request that earns
+    // should be paid for that week, not the next one.
+    const itemId = inserted[0]?.id ?? (await existingItemId(ctx, venue, item.externalId))
     if (itemId != null) {
       const claim = await bindFromItem(ctx, {
         id: itemId,
@@ -150,6 +164,7 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
         platformUserId: item.platformUserId,
         platformHandle: item.platformHandle ?? null,
         content: cleaned.text,
+        platformWallet: item.platformWallet ?? null,
         coin,
         epoch: job.epoch,
       })
@@ -174,16 +189,16 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
           msg: "item addresses the scorer directly",
           coin,
           epoch: job.epoch,
-          lane,
+          venue,
           externalId: item.externalId,
         })
       )
     }
   }
 
-  await recordRead(ctx, lane, result.status, result.reason, result.items.length)
+  await recordRead(ctx, venue, result.status, result.reason, result.items.length)
   return done(
-      `${lane}: ${result.status}, ${stored} new of ${result.items.length}` +
+      `${venue}: ${result.status}, ${stored} new of ${result.items.length}` +
         (bound > 0 ? `, ${bound} wallet(s) bound` : "")
     )
 }
@@ -192,45 +207,45 @@ export async function laneRead(ctx: JobContext): Promise<JobOutcome> {
 async function frozenSources(
   ctx: JobContext,
   rulesVersionId: bigint | null
-): Promise<LaneSources | null> {
+): Promise<VenueSources | null> {
   if (rulesVersionId == null) return null
   const [version] = await ctx.db
     .select({ sources: hmRuleVersions.sources })
     .from(hmRuleVersions)
     .where(eq(hmRuleVersions.id, rulesVersionId))
-  return (version?.sources as LaneSources | undefined) ?? null
+  return (version?.sources as VenueSources | undefined) ?? null
 }
 
 /**
- * Write the lane's verdict for this week.
+ * Write the venue's verdict for this week.
  *
- * Never overwrites an operator's decision: once someone has skipped a lane or
+ * Never overwrites an operator's decision: once someone has skipped a venue or
  * accepted a partial read, a later automatic retry must not silently undo it.
  */
 async function recordRead(
   ctx: JobContext,
-  lane: string,
+  venue: string,
   status: string,
   reason: string | undefined,
   itemCount: number
 ): Promise<void> {
   await ctx.db
-    .insert(hmLaneReads)
+    .insert(hmVenueReads)
     .values({
       coin: ctx.job.coin,
       epoch: ctx.job.epoch,
-      lane,
+      venue,
       status,
       reason: reason ?? null,
       itemCount,
       readAt: new Date(),
     })
     .onConflictDoUpdate({
-      target: [hmLaneReads.coin, hmLaneReads.epoch, hmLaneReads.lane],
+      target: [hmVenueReads.coin, hmVenueReads.epoch, hmVenueReads.venue],
       set: { status, reason: reason ?? null, itemCount, readAt: new Date() },
       // An operator's `skipped` is a decision, not a cached value: a later
       // automatic retry must not quietly undo it.
-      setWhere: ne(hmLaneReads.status, "skipped"),
+      setWhere: ne(hmVenueReads.status, "skipped"),
     })
 }
 
@@ -244,7 +259,7 @@ async function recordRead(
  */
 async function existingItemId(
   ctx: JobContext,
-  lane: string,
+  venue: string,
   externalId: string
 ): Promise<bigint | null> {
   const [row] = await ctx.db
@@ -254,7 +269,7 @@ async function existingItemId(
       and(
         eq(hmItems.coin, ctx.job.coin),
         eq(hmItems.epoch, ctx.job.epoch),
-        eq(hmItems.lane, lane),
+        eq(hmItems.venue, venue),
         eq(hmItems.externalId, externalId)
       )
     )

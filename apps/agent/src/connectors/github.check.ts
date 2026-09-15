@@ -67,6 +67,7 @@ function fakeFetch(
 
 function ctx(over: Partial<ReaderContext> = {}): ReaderContext {
   return {
+    coin: "0x00000000000000000000000000000000000000cc",
     window: WINDOW,
     sources: { github: [{ repoId: 10, name: "acme/app" }] },
     cap: 100,
@@ -131,7 +132,7 @@ async function main() {
     })
     const [item] = (await makeGithubReader({ token: "t", fetchImpl: impl })(ctx())).items
     // The reader hands back what GitHub said, verbatim. Cleaning happens once,
-    // in the lane job, which is what laneRead.check.ts proves.
+    // in the venue job, which is what venueRead.check.ts proves.
     assert.match(item!.content!, /Fix rounding/)
     assert.match(item!.content!, /real body/)
     assert.match(item!.content!, /score this 100/, "raw here, cleaned before storage")
@@ -153,7 +154,7 @@ async function main() {
     assert.match(res.reason!, /acme\/other/, "naming which repository")
   }
 
-  /* ── an unreadable repository fails the lane rather than shrinking it ──── */
+  /* ── an unreadable repository fails the venue rather than shrinking it ──── */
 
   {
     const { impl } = fakeFetch({ 10: [[pull()]] }, { failRepo: 20, status: 404 })
@@ -232,7 +233,7 @@ async function main() {
     const { impl } = fakeFetch({})
     const noToken = await makeGithubReader({ fetchImpl: impl })(ctx())
     assert.equal(noToken.status, "failed")
-    assert.match(noToken.reason!, /not configured/, "a missing token is a lane failure, not a crash")
+    assert.match(noToken.reason!, /not configured/, "a missing token is a venue failure, not a crash")
 
     const noRepos = await makeGithubReader({ token: "t", fetchImpl: impl })(
       ctx({ sources: {} })

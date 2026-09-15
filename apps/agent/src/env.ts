@@ -64,7 +64,9 @@ export function capabilities() {
     database: Boolean(env.databaseUrl),
     scoring: Boolean(env.anthropicApiKey || env.deepseekApiKey || env.openrouterApiKey),
     github: Boolean(env.githubToken),
-    fomo: Boolean(env.fomoArchiveUrl),
+    // The FOMO venue reads hm_fomo_callouts in this same database, which the
+    // fomo-reader service fills. The separate archive URL is no longer used.
+    fomo: Boolean(env.databaseUrl),
     payouts: Boolean(env.keeperPrivateKey),
     indexer: Boolean(env.indexerUrl),
   }

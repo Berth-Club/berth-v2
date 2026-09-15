@@ -1,4 +1,4 @@
-import { hmBindings, hmEpochs, hmItems, hmLaneReads, hmLeaves, hmScores } from "@workspace/db"
+import { hmBindings, hmEpochs, hmItems, hmVenueReads, hmLeaves, hmScores } from "@workspace/db"
 import { and, eq, inArray } from "drizzle-orm"
 
 import { splitPot, type Contribution } from "../epoch/split.js"
@@ -9,7 +9,7 @@ import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types
  *
  * Publishing is the last point where a mistake is cheap. After this the list
  * goes up, people read it, and a correction means arguing with the public
- * record. So the gates here are deliberately blunt: every lane must have
+ * record. So the gates here are deliberately blunt: every venue must have
  * reported, every item must be judged, and a week with nothing in it publishes
  * as an empty week rather than as an error to be cleared.
  *
@@ -56,16 +56,16 @@ export function makePublish(deps: { pot?: PotSource } = {}) {
 
     if (epoch.publishedAt) return done("already published")
 
-    // Same gate as scoring, repeated on purpose. A lane could be marked failed
+    // Same gate as scoring, repeated on purpose. A venue could be marked failed
     // by an operator between the two, and publishing is the expensive mistake.
-    const lanes = await db
+    const venues = await db
       .select()
-      .from(hmLaneReads)
-      .where(and(eq(hmLaneReads.coin, coin), eq(hmLaneReads.epoch, job.epoch)))
-    if (lanes.length === 0) return waitFor(60, "no lane has reported yet")
-    const bad = lanes.filter((l) => l.status === "failed")
+      .from(hmVenueReads)
+      .where(and(eq(hmVenueReads.coin, coin), eq(hmVenueReads.epoch, job.epoch)))
+    if (venues.length === 0) return waitFor(60, "no venue has reported yet")
+    const bad = venues.filter((l) => l.status === "failed")
     if (bad.length > 0) {
-      return done(`cannot publish: lane(s) ${bad.map((l) => l.lane).join(", ")} failed`)
+      return done(`cannot publish: venue(s) ${bad.map((l) => l.venue).join(", ")} failed`)
     }
 
     const rows = await db

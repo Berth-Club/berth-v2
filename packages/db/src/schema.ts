@@ -237,20 +237,20 @@ export const hmEpochs = pgTable(
 )
 
 /**
- * How one lane fared in one week.
+ * How one venue fared in one week.
  *
- * The point of this table is that a lane which could not be read NEVER looks
+ * The point of this table is that a venue which could not be read NEVER looks
  * like a quiet week. `status` is checked before an epoch may publish, and a
  * `skipped` row must carry who skipped it and why, because that reason is
  * printed on the public list.
  */
-export const hmLaneReads = pgTable(
-  "hm_lane_reads",
+export const hmVenueReads = pgTable(
+  "hm_venue_reads",
   {
     coin: text("coin").notNull(),
     epoch: integer("epoch").notNull(),
     /** `github` | `fomo`. */
-    lane: text("lane").notNull(),
+    venue: text("venue").notNull(),
     status: text("status").notNull(),
     reason: text("reason"),
     /** Wallet of the operator who skipped or accepted a partial read. */
@@ -259,17 +259,17 @@ export const hmLaneReads = pgTable(
     readAt: timestamp("read_at", { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex("hm_lane_reads_pk").on(t.coin, t.epoch, t.lane),
-    check("hm_lane_reads_status", sql`${t.status} in ('pending','ok','partial','failed','skipped')`),
+    uniqueIndex("hm_venue_reads_pk").on(t.coin, t.epoch, t.venue),
+    check("hm_venue_reads_status", sql`${t.status} in ('pending','ok','partial','failed','skipped')`),
     check(
-      "hm_lane_reads_skip_has_reason",
+      "hm_venue_reads_skip_has_reason",
       sql`${t.status} <> 'skipped' or (${t.operator} is not null and ${t.reason} is not null)`
     ),
   ]
 )
 
 /**
- * One piece of work read from one lane.
+ * One piece of work read from one venue.
  *
  * `content` is attacker-authored text and is the ONLY erasable column on a
  * frozen row: X and FOMO can require a takedown, and an author can ask for
@@ -285,7 +285,7 @@ export const hmItems = pgTable(
     id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
     coin: text("coin").notNull(),
     epoch: integer("epoch").notNull(),
-    lane: text("lane").notNull(),
+    venue: text("venue").notNull(),
     platform: text("platform").notNull(),
     /** The platform's immutable id for the author. Joined to `hm_bindings`. */
     platformUserId: text("platform_user_id").notNull(),
@@ -301,11 +301,25 @@ export const hmItems = pgTable(
     /** Bytes removed by hygiene (HTML comments, non-printing unicode). */
     strippedBytes: integer("stripped_bytes").notNull().default(0),
     status: text("status").notNull(),
+    /**
+     * What the venue knows that the text does not say.
+     *
+     * For FOMO: likes on the callout, the author's position in USD, and whether
+     * they had already sold. Those decide most of a callout's score and none of
+     * them is in the text, so without this the scorer reads bare words and
+     * guesses. `VenueItem.meta` existed and was thrown away before it was
+     * stored, which is why a callout could only ever be judged on prose.
+     *
+     * Frozen with the item, deliberately. Likes keep climbing after we read a
+     * callout, and a week whose scores moved every time someone tapped a heart
+     * would never settle.
+     */
+    meta: jsonb("meta"),
     originItemId: bigint("origin_item_id", { mode: "bigint" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
   (t) => [
-    uniqueIndex("hm_items_external").on(t.coin, t.epoch, t.lane, t.externalId),
+    uniqueIndex("hm_items_external").on(t.coin, t.epoch, t.venue, t.externalId),
     uniqueIndex("hm_items_origin").on(t.originItemId),
     index("hm_items_epoch_idx").on(t.coin, t.epoch),
     index("hm_items_author_idx").on(t.platform, t.platformUserId),
@@ -540,8 +554,8 @@ export const hmUsdcSplits = pgTable(
 /**
  * The agent's work queue.
  *
- * `key` is what makes the unique index usable: `lane_read` needs one row per
- * lane and `rescore_batch` one per round, so a key of just `(type, coin, epoch)`
+ * `key` is what makes the unique index usable: `venue_read` needs one row per
+ * venue and `rescore_batch` one per round, so a key of just `(type, coin, epoch)`
  * would collapse them into one. Global jobs use the zero address for `coin`
  * rather than NULL, because NULLs are distinct in a unique index and would let
  * duplicates through.
@@ -557,7 +571,7 @@ export const hmJobs = pgTable(
     type: text("type").notNull(),
     coin: text("coin").notNull(),
     epoch: integer("epoch").notNull(),
-    /** Lane name, round number, or '' — whatever makes this job distinct. */
+    /** Venue name, round number, or '' — whatever makes this job distinct. */
     key: text("key").notNull().default(""),
     status: text("status").notNull(),
     runAfter: timestamp("run_after", { withTimezone: true }).notNull().defaultNow(),
@@ -611,7 +625,7 @@ export const hmWalletClaims = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // One row per (item, wallet), not per item. A lane re-read of an unchanged
+    // One row per (item, wallet), not per item. A venue re-read of an unchanged
     // body must not pile up duplicates, but a body EDITED to name a different
     // address has to leave a row: that edit is the attack this table exists to
     // make visible, and keying on the item alone would swallow it.
@@ -625,7 +639,123 @@ export const hmWalletClaims = pgTable(
   ]
 )
 
-/** Wallets allowed to skip a lane, accept a partial read, or retry a stuck job. */
+/**
+ * Every FOMO thesis the reader has seen, before any filter.
+ *
+ * Its own table, NOT `hm_items`. The agent owns items and decides which week
+ * each belongs to from an epoch's frozen window; the reader only knows what it
+ * saw and when. Writing items directly would put a second writer on the table
+ * payouts are computed from, and would let a browser hiccup change a week that
+ * had already been scored.
+ *
+ * So this is an archive and the FOMO venue reads it. That separation is also
+ * what lets the reader run continuously while weeks open and close on their own
+ * schedule.
+ *
+ * Rows are never updated. FOMO allows a thesis to be edited after the fact, and
+ * the copy a week was scored on must not move underneath the score.
+ */
+export const hmFomoCallouts = pgTable(
+  "hm_fomo_callouts",
+  {
+    id: bigint("id", { mode: "bigint" }).primaryKey().generatedAlwaysAsIdentity(),
+    /** FOMO's id for the thesis. */
+    externalId: text("external_id").notNull(),
+    /** The berth coin these callouts earn for. */
+    coin: text("coin").notNull(),
+    /** FOMO's immutable user id. Never the handle: handles get renamed. */
+    subject: text("subject").notNull(),
+    /** Handle at read time. Shown for display; never joined on. */
+    handle: text("handle"),
+    text: text("text").notNull(),
+    /** Case preserved: Solana addresses are case-sensitive base58. */
+    tokenAddress: text("token_address"),
+    networkId: integer("network_id"),
+    /**
+     * Likes on the callout, at read time.
+     *
+     * The only engagement signal this feed actually populates. `numReplies` and
+     * `equity` are zero on every row of every token checked, and `verified`,
+     * `isDev` and `twitter` are empty too. Measured 0 to 74 on a live token:
+     * 240 callouts on one like, 43 on none, a handful above twenty.
+     *
+     * A snapshot, not a running total. It is whatever the count was when we
+     * read the row, which is the honest thing to score: a week that reopened
+     * its own scores every time a like arrived would never settle.
+     */
+    numLikes: integer("num_likes"),
+    /**
+     * What the author's position in this token was worth, in USD.
+     *
+     * From `authorTrade.usdValue`, not from the row's `threshold` field. Those
+     * two agreed on the first row I looked at and on only 56 of 298 overall, so
+     * `threshold` is something else and using it would have been quietly wrong.
+     */
+    positionUsd: numeric("position_usd", { precision: 38, scale: 6 }),
+    /**
+     * When the author closed the position, if they have.
+     *
+     * The most interesting number found today: 207 of 298 callout authors on a
+     * live token had ALREADY SOLD. Someone who promotes a coin and exits is the
+     * clearest case of what not to pay for, and it is readable for free.
+     */
+    soldAt: timestamp("sold_at", { withTimezone: true }),
+    /** When the thesis was posted, from the feed. */
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("hm_fomo_callouts_external").on(t.externalId),
+    // The venue reads by coin and window, so this is the index that matters.
+    index("hm_fomo_callouts_window").on(t.coin, t.createdAt),
+    index("hm_fomo_callouts_subject").on(t.subject),
+  ]
+)
+
+/**
+ * The wallet FOMO already holds for a callout author.
+ *
+ * FOMO gives every user a custodial wallet and will hand it over for any user
+ * id, so a caller-out never has to paste an address into a market callout the
+ * way a pull request author pastes one into a description. That is the only
+ * reason the FOMO venue can pay at all.
+ *
+ * This table is a RECORD OF WHAT FOMO SAID, not a decision about who gets paid.
+ * The reader writes here; the agent reads it, applies its own address rules, and
+ * is still the only writer of `hm_bindings`. Keeping that split means a browser
+ * reading a third party's API can never move money on its own.
+ *
+ * Keyed on FOMO's user id, never the handle: handles get renamed, ids do not.
+ */
+export const hmFomoUsers = pgTable(
+  "hm_fomo_users",
+  {
+    /** FOMO's immutable user id. */
+    subject: text("subject").primaryKey(),
+    /** Handle at read time. Display only, never joined on. */
+    handle: text("handle"),
+    /**
+     * Lowercased EVM address, exactly as FOMO returned it. Nullable because a
+     * user can genuinely have none, and "asked and there was none" has to be
+     * distinguishable from "never asked".
+     */
+    evmAddress: text("evm_address"),
+    /** Base58, case PRESERVED. Recorded for later; berth pays on EVM today. */
+    solAddress: text("sol_address"),
+    /** Set once FOMO has answered, whatever the answer was. */
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /** Why the lookup produced nothing, so a silent gap is explainable. */
+    note: text("note"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The reader asks "who still needs looking up?" every sweep. Without this
+    // it is a full scan that grows with every author we have ever seen.
+    index("hm_fomo_users_unresolved").on(t.resolvedAt),
+  ]
+)
+
+/** Wallets allowed to skip a venue, accept a partial read, or retry a stuck job. */
 export const hmOperators = pgTable("hm_operators", {
   wallet: text("wallet").primaryKey(),
   note: text("note"),
@@ -660,7 +790,7 @@ export const schema = {
   hmRuleDrafts,
   hmBindings,
   hmEpochs,
-  hmLaneReads,
+  hmVenueReads,
   hmItems,
   hmScores,
   hmAudit,
@@ -670,6 +800,8 @@ export const schema = {
   hmKeeperTxs,
   hmUsdcSplits,
   hmJobs,
+  hmFomoCallouts,
+  hmFomoUsers,
   hmWalletClaims,
   hmOperators,
   hmNonces,
@@ -685,7 +817,7 @@ export const TABLE_NAMES = [
   "hm_rule_drafts",
   "hm_bindings",
   "hm_epochs",
-  "hm_lane_reads",
+  "hm_venue_reads",
   "hm_items",
   "hm_scores",
   "hm_audit",
@@ -695,10 +827,41 @@ export const TABLE_NAMES = [
   "hm_keeper_txs",
   "hm_usdc_splits",
   "hm_jobs",
+  "hm_fomo_callouts",
+  "hm_fomo_users",
   "hm_wallet_claims",
   "hm_operators",
   "hm_nonces",
 ] as const
+
+/**
+ * Tables a check must NEVER truncate.
+ *
+ * The FOMO archive is not the agent's state, it is a record of things that
+ * happened somewhere else. A thesis the feed has already paged past cannot be
+ * fetched again at any price, so wiping this is not "resetting a fixture", it is
+ * losing evidence for good.
+ *
+ * This exists because it happened. Adding the archive to `TABLE_NAMES` quietly
+ * enrolled it in the `hm_*` truncate that every check runs first, and a routine
+ * pass of the check suite deleted 517 real callouts that had taken a day to
+ * collect. Nothing failed and nothing warned.
+ */
+export const ARCHIVE_TABLE_NAMES: ReadonlySet<string> = new Set([
+  "hm_fomo_callouts",
+  "hm_fomo_users",
+])
+
+/**
+ * The Harbormaster tables a check is allowed to truncate.
+ *
+ * Use this, never `TABLE_NAMES.filter(startsWith("hm_"))`. That filter was
+ * copied into six files, so the archive became destroyable in six places at
+ * once the moment it was added to the list.
+ */
+export const TRUNCATABLE_TABLE_NAMES: readonly string[] = TABLE_NAMES.filter(
+  (t) => t.startsWith("hm_") && !ARCHIVE_TABLE_NAMES.has(t)
+)
 
 /** Epoch states, in the order an epoch moves through them. */
 export const EPOCH_STATES = [
@@ -721,6 +884,6 @@ export const EPOCH_STATES = [
 
 export type EpochState = (typeof EPOCH_STATES)[number]
 
-/** The lanes this phase ships. X and pump.fun join later, same event shape. */
-export const LANES = ["github", "fomo"] as const
-export type Lane = (typeof LANES)[number]
+/** The venues this phase ships. X and pump.fun join later, same event shape. */
+export const VENUES = ["github", "fomo"] as const
+export type Venue = (typeof VENUES)[number]

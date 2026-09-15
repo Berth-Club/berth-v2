@@ -64,7 +64,7 @@ CREATE TABLE "hm_items" (
 	"id" bigint PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "hm_items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"coin" text NOT NULL,
 	"epoch" integer NOT NULL,
-	"lane" text NOT NULL,
+	"venue" text NOT NULL,
 	"platform" text NOT NULL,
 	"platform_user_id" text NOT NULL,
 	"platform_handle" text,
@@ -110,17 +110,17 @@ CREATE TABLE "hm_keeper_txs" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "hm_lane_reads" (
+CREATE TABLE "hm_venue_reads" (
 	"coin" text NOT NULL,
 	"epoch" integer NOT NULL,
-	"lane" text NOT NULL,
+	"venue" text NOT NULL,
 	"status" text NOT NULL,
 	"reason" text,
 	"operator" text,
 	"item_count" integer DEFAULT 0 NOT NULL,
 	"read_at" timestamp with time zone,
-	CONSTRAINT "hm_lane_reads_status" CHECK ("hm_lane_reads"."status" in ('pending','ok','partial','failed','skipped')),
-	CONSTRAINT "hm_lane_reads_skip_has_reason" CHECK ("hm_lane_reads"."status" <> 'skipped' or ("hm_lane_reads"."operator" is not null and "hm_lane_reads"."reason" is not null))
+	CONSTRAINT "hm_lane_reads_status" CHECK ("hm_venue_reads"."status" in ('pending','ok','partial','failed','skipped')),
+	CONSTRAINT "hm_lane_reads_skip_has_reason" CHECK ("hm_venue_reads"."status" <> 'skipped' or ("hm_venue_reads"."operator" is not null and "hm_venue_reads"."reason" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "hm_leaves" (
@@ -235,7 +235,7 @@ CREATE UNIQUE INDEX "hm_challenges_one_open" ON "hm_challenges" USING btree ("it
 CREATE INDEX "hm_challenges_epoch_idx" ON "hm_challenges" USING btree ("coin","epoch");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_epochs_pk" ON "hm_epochs" USING btree ("coin","epoch");--> statement-breakpoint
 CREATE INDEX "hm_epochs_state_idx" ON "hm_epochs" USING btree ("state","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "hm_items_external" ON "hm_items" USING btree ("coin","epoch","lane","external_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "hm_items_external" ON "hm_items" USING btree ("coin","epoch","venue","external_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_items_origin" ON "hm_items" USING btree ("origin_item_id");--> statement-breakpoint
 CREATE INDEX "hm_items_epoch_idx" ON "hm_items" USING btree ("coin","epoch");--> statement-breakpoint
 CREATE INDEX "hm_items_author_idx" ON "hm_items" USING btree ("platform","platform_user_id");--> statement-breakpoint
@@ -243,7 +243,7 @@ CREATE UNIQUE INDEX "hm_jobs_identity" ON "hm_jobs" USING btree ("type","coin","
 CREATE INDEX "hm_jobs_due_idx" ON "hm_jobs" USING btree ("status","run_after");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_keeper_txs_kind" ON "hm_keeper_txs" USING btree ("kind","coin","epoch");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_keeper_txs_hash" ON "hm_keeper_txs" USING btree ("hash");--> statement-breakpoint
-CREATE UNIQUE INDEX "hm_lane_reads_pk" ON "hm_lane_reads" USING btree ("coin","epoch","lane");--> statement-breakpoint
+CREATE UNIQUE INDEX "hm_lane_reads_pk" ON "hm_venue_reads" USING btree ("coin","epoch","venue");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_leaves_pk" ON "hm_leaves" USING btree ("coin","epoch","wallet");--> statement-breakpoint
 CREATE UNIQUE INDEX "hm_leaves_index" ON "hm_leaves" USING btree ("coin","epoch","leaf_index");--> statement-breakpoint
 CREATE INDEX "hm_rule_drafts_wallet_idx" ON "hm_rule_drafts" USING btree ("wallet","created_at" desc);--> statement-breakpoint

@@ -3,15 +3,17 @@ import "server-only"
 import {
   hmBindings,
   hmEpochs,
+  hmFomoCallouts,
+  hmFomoUsers,
   hmItems,
-  hmLaneReads,
+  hmVenueReads,
   hmLeaves,
   hmRuleVersions,
   hmScores,
   hmRules,
   hmWalletClaims,
 } from "@workspace/db/schema"
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 
@@ -81,7 +83,7 @@ export interface RecordPayout {
 }
 
 export interface RecordLane {
-  lane: string
+  venue: string
   status: string
   reason: string | null
   itemCount: number
@@ -98,7 +100,7 @@ export interface WeekRecord {
   modelId: string | null
   promptHash: string | null
   rules: string | null
-  lanes: RecordLane[]
+  venues: RecordLane[]
   lines: RecordLine[]
   payouts: RecordPayout[]
   /** Work still open. Read and shown, never scored, never paid. */
@@ -130,9 +132,9 @@ export async function listWeeks(limit = 10): Promise<Array<{ coin: string; epoch
   // One extra query rather than a join, because the count is per (coin, epoch)
   // and a join would multiply the epoch rows by their items.
   const counts = await d
-    .select({ coin: hmLaneReads.coin, epoch: hmLaneReads.epoch, itemCount: hmLaneReads.itemCount })
-    .from(hmLaneReads)
-    .where(inArray(hmLaneReads.epoch, rows.map((r) => r.epoch)))
+    .select({ coin: hmVenueReads.coin, epoch: hmVenueReads.epoch, itemCount: hmVenueReads.itemCount })
+    .from(hmVenueReads)
+    .where(inArray(hmVenueReads.epoch, rows.map((r) => r.epoch)))
 
   return rows.map((r) => ({
     ...r,
@@ -153,15 +155,15 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     .where(and(eq(hmEpochs.coin, coin.toLowerCase()), eq(hmEpochs.epoch, epoch)))
   if (!week) return null
 
-  const lanes = await d
+  const venues = await d
     .select({
-      lane: hmLaneReads.lane,
-      status: hmLaneReads.status,
-      reason: hmLaneReads.reason,
-      itemCount: hmLaneReads.itemCount,
+      venue: hmVenueReads.venue,
+      status: hmVenueReads.status,
+      reason: hmVenueReads.reason,
+      itemCount: hmVenueReads.itemCount,
     })
-    .from(hmLaneReads)
-    .where(and(eq(hmLaneReads.coin, week.coin), eq(hmLaneReads.epoch, epoch)))
+    .from(hmVenueReads)
+    .where(and(eq(hmVenueReads.coin, week.coin), eq(hmVenueReads.epoch, epoch)))
 
   // Left join, so an item the scorer never reached still appears. A record that
   // silently dropped unjudged work would look complete when it is not.
@@ -264,7 +266,7 @@ export async function getWeek(coin: string, epoch: number): Promise<WeekRecord |
     modelId: week.modelId,
     promptHash: week.promptHash,
     rules,
-    lanes,
+    venues,
     lines,
     payouts,
     inFlight,
@@ -346,4 +348,121 @@ export async function listFomoTokens(): Promise<FomoToken[]> {
   }
 
   return out
+}
+
+export interface LiveCallout {
+  id: string
+  handle: string | null
+  text: string
+  numLikes: number | null
+  /** Null when FOMO did not report a position, not "zero". */
+  positionUsd: number | null
+  /** True once the author closed their position in this token. */
+  sold: boolean
+  createdAt: Date
+  /** FOMO has handed us a wallet for this author, so they can be paid. */
+  hasWallet: boolean
+}
+
+export interface LiveCallouts {
+  /** Newest first. */
+  latest: LiveCallout[]
+  /** Most liked, newest breaking ties. */
+  top: LiveCallout[]
+  total: number
+  authors: number
+  withWallet: number
+  holding: number
+  sold: number
+  /** When the reader last saved anything. The honest "last updated". */
+  lastSeenAt: Date | null
+  /** Token names being watched, for the heading. */
+  tokens: string[]
+}
+
+/**
+ * The FOMO callouts the reader has collected, before any scoring.
+ *
+ * This is the archive, not the record. Nothing here has been judged yet, and
+ * the page says so: a callout appearing in this list is evidence it was seen,
+ * never a promise that it will be paid.
+ */
+export async function listLiveCallouts(latestLimit = 24, topLimit = 3): Promise<LiveCallouts | null> {
+  const d = db()
+  if (!d) return null
+
+  const fields = {
+    id: hmFomoCallouts.externalId,
+    handle: hmFomoCallouts.handle,
+    text: hmFomoCallouts.text,
+    numLikes: hmFomoCallouts.numLikes,
+    positionUsd: hmFomoCallouts.positionUsd,
+    soldAt: hmFomoCallouts.soldAt,
+    createdAt: hmFomoCallouts.createdAt,
+    evmAddress: hmFomoUsers.evmAddress,
+  }
+  type Row = {
+    id: string
+    handle: string | null
+    text: string
+    numLikes: number | null
+    positionUsd: string | null
+    soldAt: Date | null
+    createdAt: Date
+    evmAddress: string | null
+  }
+  const shape = (r: Row): LiveCallout => ({
+    id: r.id,
+    handle: r.handle,
+    text: r.text,
+    numLikes: r.numLikes,
+    positionUsd: r.positionUsd === null ? null : Number(r.positionUsd),
+    sold: r.soldAt !== null,
+    createdAt: r.createdAt,
+    hasWallet: Boolean(r.evmAddress),
+  })
+
+  // Left joins: an author the reader has not looked up yet is still shown.
+  const [latest, top, [counts], [wallets], tokens] = await Promise.all([
+    d
+      .select(fields)
+      .from(hmFomoCallouts)
+      .leftJoin(hmFomoUsers, eq(hmFomoUsers.subject, hmFomoCallouts.subject))
+      .orderBy(desc(hmFomoCallouts.createdAt))
+      .limit(latestLimit),
+    d
+      .select(fields)
+      .from(hmFomoCallouts)
+      .leftJoin(hmFomoUsers, eq(hmFomoUsers.subject, hmFomoCallouts.subject))
+      .where(sql`${hmFomoCallouts.numLikes} > 0`)
+      .orderBy(desc(hmFomoCallouts.numLikes), desc(hmFomoCallouts.createdAt))
+      .limit(topLimit),
+    d
+      .select({
+        total: sql<number>`count(*)::int`,
+        authors: sql<number>`count(distinct ${hmFomoCallouts.subject})::int`,
+        sold: sql<number>`count(*) filter (where ${hmFomoCallouts.soldAt} is not null)::int`,
+        lastSeenAt: sql<Date | null>`max(${hmFomoCallouts.seenAt})`,
+      })
+      .from(hmFomoCallouts),
+    d
+      .select({ n: sql<number>`count(*)::int` })
+      .from(hmFomoUsers)
+      .where(sql`${hmFomoUsers.evmAddress} is not null`),
+    listFomoTokens().catch(() => []),
+  ])
+
+  const total = counts?.total ?? 0
+  const sold = counts?.sold ?? 0
+  return {
+    latest: (latest as Row[]).map(shape),
+    top: (top as Row[]).map(shape),
+    total,
+    authors: counts?.authors ?? 0,
+    withWallet: wallets?.n ?? 0,
+    holding: total - sold,
+    sold,
+    lastSeenAt: counts?.lastSeenAt ? new Date(counts.lastSeenAt) : null,
+    tokens: [...new Set(tokens.map((t) => t.name).filter((n): n is string => Boolean(n)))],
+  }
 }

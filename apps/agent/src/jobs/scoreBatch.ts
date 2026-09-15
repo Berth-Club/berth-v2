@@ -3,7 +3,7 @@ import {
   hmBindings,
   hmEpochs,
   hmItems,
-  hmLaneReads,
+  hmVenueReads,
   hmRuleVersions,
   hmScores,
 } from "@workspace/db"
@@ -12,9 +12,9 @@ import { and, eq, inArray, sql } from "drizzle-orm"
 
 import { env } from "../env.js"
 import { DEFAULT_MODEL_ID, pickClient, type ModelClient } from "../scoring/model.js"
-import { promptHash } from "../scoring/prompt.js"
+import { epochPromptHash, promptHash } from "../scoring/prompt.js"
 import { SCHEMA_HASH } from "../scoring/schema.js"
-import { judgeItem, SCREENED_LANES } from "../scoring/judge.js"
+import { judgeItem, SCREENED_VENUES } from "../scoring/judge.js"
 import { excludedReason, scoreItem } from "../scoring/score.js"
 import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types.js"
 
@@ -28,9 +28,9 @@ import { done, failed, waitFor, type JobContext, type JobOutcome } from "./types
  * each item is committed as it finishes rather than the batch being wrapped in
  * one transaction.
  *
- * A lane that failed blocks scoring entirely. Scoring a week whose GitHub read
+ * A venue that failed blocks scoring entirely. Scoring a week whose GitHub read
  * errored would produce a tidy, confident, wrong list, and the point of the
- * lane status is that this never happens quietly.
+ * venue status is that this never happens quietly.
  */
 
 /** Scored per run. Keeps one job from holding a lease for an hour. */
@@ -64,20 +64,20 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
       .where(and(eq(hmEpochs.coin, coin), eq(hmEpochs.epoch, job.epoch)))
     if (!epoch) return failed(new Error(`no epoch row for ${coin} ${job.epoch}`))
 
-    // Every lane must have reported before any number is computed. A failed
+    // Every venue must have reported before any number is computed. A failed
     // read and an empty week look identical in the items table; only this row
     // tells them apart.
-    const lanes = await db
+    const venues = await db
       .select()
-      .from(hmLaneReads)
-      .where(and(eq(hmLaneReads.coin, coin), eq(hmLaneReads.epoch, job.epoch)))
-    if (lanes.length === 0) return waitFor(60, "no lane has reported yet")
+      .from(hmVenueReads)
+      .where(and(eq(hmVenueReads.coin, coin), eq(hmVenueReads.epoch, job.epoch)))
+    if (venues.length === 0) return waitFor(60, "no venue has reported yet")
 
-    const blocked = lanes.filter((l) => l.status === "failed")
+    const blocked = venues.filter((l) => l.status === "failed")
     if (blocked.length > 0) {
       await setState(ctx, "needs_operator")
       return done(
-        `lane(s) ${blocked.map((l) => l.lane).join(", ")} failed; an operator must skip or retry them`
+        `venue(s) ${blocked.map((l) => l.venue).join(", ")} failed; an operator must skip or retry them`
       )
     }
 
@@ -99,7 +99,10 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
 
     // Pin the model and prompt for the epoch on first entry, so every item in
     // this week is scored under one contract even if the batch spans restarts.
-    const hash = promptHash(rules)
+    // Covers BOTH venues' prompts. One week scores pull requests and callouts
+    // under different rules, and pinning only one would let the other drift
+    // mid-epoch unnoticed.
+    const hash = epochPromptHash(rules)
     if (!epoch.promptHash || !epoch.modelId) {
       await db
         .update(hmEpochs)
@@ -150,12 +153,12 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
         continue
       }
 
-      // Lanes with no upstream filter are screened before they are scored. A
+      // Venues with no upstream filter are screened before they are scored. A
       // pull request was merged by a maintainer; a callout was merely typed.
       // Handing unscreened callouts to the scorer makes volume the cheapest
       // way to earn, and the scorer's job is to rank work rather than to
       // decide what counts as work at all.
-      if (SCREENED_LANES.has(item.lane)) {
+      if (SCREENED_VENUES.has(item.venue)) {
         const verdict = await judgeItem(
           { content: item.content!, ticker: null },
           { client }
@@ -167,12 +170,25 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
         }
       }
 
+      // The venue's own numbers, put there by its reader. A callout's likes and
+      // whether its author had already sold are not in the text, and the scorer
+      // cannot ask.
+      const meta = (item.meta ?? {}) as Record<string, unknown>
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined)
+
       const result = await scoreItem(
         {
           id: String(item.id),
           content: item.content!,
           handle: item.platformHandle,
           link: item.link,
+          venue: item.venue,
+          signals: {
+            numLikes: num(meta.numLikes),
+            positionUsd: num(meta.positionUsd),
+            // undefined means "not reported"; null means "asked, still holding".
+            soldAt: typeof meta.soldAt === "string" ? meta.soldAt : (meta.soldAt as null),
+          },
         },
         { client, rules }
       )
@@ -188,7 +204,9 @@ export function makeScoreBatch(deps: ScoreBatchDeps = {}) {
             round: ROUND,
             sampleIdx: s.index,
             modelId: client.modelId,
-            promptHash: hash,
+            // The prompt THIS item was scored under, so one score can be
+            // reproduced exactly. The epoch-wide hash lives on hm_epochs.
+            promptHash: promptHash(rules, item.venue),
             schemaHash: SCHEMA_HASH,
             contentHash: item.contentHash,
             rulesVersionId: epoch.rulesVersionId,

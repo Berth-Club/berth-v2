@@ -2,6 +2,7 @@ import { JOURNAL_PATH, makeDb } from "@workspace/db"
 
 import { assertClockSafe, currentEpoch, epochBounds } from "./clock.js"
 import { capabilities, env } from "./env.js"
+import { ensureEpochTimer } from "./jobs/epochStart.js"
 import { runLoop } from "./jobs/loop.js"
 import { handlers, leaseSeconds } from "./jobs/registry.js"
 import { waitForMigrations } from "./migrations.js"
@@ -58,6 +59,9 @@ async function main() {
 
   await waitForMigrations({ db, journalPath: JOURNAL_PATH, signal: controller.signal, log })
   if (controller.signal.aborted) return
+
+  // The weekly clock. Nothing else creates it, so without this no week opens.
+  await ensureEpochTimer(db)
 
   await runLoop({
     db,

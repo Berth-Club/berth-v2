@@ -12,7 +12,7 @@
     "check:migrations": "node --env-file-if-exists=../../.env --import tsx src/migrations.check.ts",
     "check:hygiene": "node --env-file-if-exists=../../.env --import tsx src/connectors/hygiene.selfcheck.ts",
     "check:github": "node --env-file-if-exists=../../.env --import tsx src/connectors/github.check.ts",
-    "check:lane": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/laneRead.check.ts",
+    "check:venue": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/venueRead.check.ts",
     "check:scoring": "node --env-file-if-exists=../../.env --import tsx src/scoring/scoring.selfcheck.ts",
     "check:split": "node --env-file-if-exists=../../.env --import tsx src/epoch/split.selfcheck.ts",
     "check:pipeline": "GITHUB_TOKEN=test-token node --env-file-if-exists=../../.env --import tsx src/jobs/pipeline.check.ts",

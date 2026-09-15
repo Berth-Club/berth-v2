@@ -140,7 +140,7 @@ export async function complete(
 
   if (outcome.kind === "wait") {
     // Waiting is not failing: attempts are untouched, so a job can wait on a
-    // stuck lane all week without exhausting its retries.
+    // stuck venue all week without exhausting its retries.
     await db
       .update(hmJobs)
       .set({

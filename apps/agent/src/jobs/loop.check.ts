@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 
-import { hmJobs, makeDb, TABLE_NAMES } from "@workspace/db"
+import { hmJobs, makeDb, TRUNCATABLE_TABLE_NAMES } from "@workspace/db"
 import { eq, sql } from "drizzle-orm"
 
 import { redact } from "../redact.js"
@@ -30,7 +30,7 @@ const quiet = () => {}
 
 async function reset() {
   await db!.execute(
-    sql.raw(`truncate ${TABLE_NAMES.filter((t) => t.startsWith("hm_")).join(", ")} cascade`)
+    sql.raw(`truncate ${TRUNCATABLE_TABLE_NAMES.join(", ")} cascade`)
   )
 }
 
@@ -79,7 +79,7 @@ async function main() {
 
   await reset()
   const waitId = await seed("waiter")
-  const waiting: JobHandler = async () => waitFor(300, "lane not read yet")
+  const waiting: JobHandler = async () => waitFor(300, "venue not read yet")
   await tick({ db: db!, handlers: { waiter: waiting }, workerId: "w1", log: quiet })
   const waited = await read(waitId)
   assert.equal(waited.status, "pending", "it comes back")

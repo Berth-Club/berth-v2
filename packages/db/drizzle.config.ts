@@ -56,6 +56,8 @@ export default defineConfig({
     "hm_keeper_txs",
     "hm_usdc_splits",
     "hm_jobs",
+    "hm_fomo_callouts",
+    "hm_fomo_users",
     "hm_wallet_claims",
     "hm_operators",
     "hm_nonces",

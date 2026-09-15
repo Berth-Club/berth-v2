@@ -1,31 +1,22 @@
-import postgres from "postgres"
+import { hmFomoCallouts, hmFomoUsers } from "@workspace/db"
+import { and, asc, gte, inArray, lt, sql } from "drizzle-orm"
 
-import type { LaneItem, LaneResult, ReaderContext } from "./types.js"
+import type { VenueItem, VenueResult, ReaderContext } from "./types.js"
 
 /**
- * Callouts on FOMO, read from the archive a separate bot already fills.
+ * Callouts on FOMO, read from the archive this repo's reader fills.
  *
  * FOMO has no public API. Its backend sits behind Cloudflare and a short-lived
- * Privy bearer token held in localStorage, so a plain HTTP client gets 403 no
- * matter what headers it sends. The callout bot solves that by driving a real
- * logged-in browser and borrowing the app's own Authorization header, and it
- * writes every thesis it sees into a Postgres `events` table before any alert
- * filter runs.
+ * Privy token held in localStorage, so a plain HTTP client gets 403 whatever
+ * headers it sends. `apps/fomo-reader` solves that by driving a logged-in
+ * browser and borrowing the app's own Authorization header, and it archives
+ * every thesis it sees before any filter runs.
  *
- * So this reader does not talk to FOMO at all. It reads that table. That is the
- * right shape for more reasons than convenience: the payout path never depends
- * on someone else's private interface staying up, a browser session expiring
- * cannot cost a week's payouts, and the archive keeps events that the API will
- * not return again afterwards.
- *
- * The cost is that another service's schema is now a dependency. Only the
- * columns below are read, and a missing one fails the lane with a message that
- * names it rather than quietly reading nulls into a payout.
+ * So this venue does not talk to FOMO at all. It reads that archive, in the
+ * same database, which means the payout path never depends on a browser
+ * session being alive at the moment a week closes. An archive also keeps
+ * theses the feed will not return again.
  */
-
-/** FOMO's own word for a callout. Swaps are archived too and are not work. */
-const THESIS = "thesis"
-const SOURCE = "fomo"
 
 /**
  * Most callouts one author can be paid for in a week.
@@ -36,10 +27,19 @@ const SOURCE = "fomo"
 const MAX_PER_AUTHOR = 5
 
 export interface FomoReaderOptions {
-  /** The callout bot's Postgres. Separate database, separate pool. */
-  archiveUrl?: string
-  /** Injected in checks so the reader runs without a database. */
+  /** The agent's own database handle. Same one the rest of the week uses. */
+  db?: VenueDb
+  /** Injected in checks so the venue runs without a database. */
   query?: FomoQuery
+}
+
+/** Just enough of the drizzle handle to run one select. */
+export type VenueDb = {
+  select: (fields: Record<string, unknown>) => {
+    from: (t: unknown) => {
+      where: (w: unknown) => { orderBy: (o: unknown) => Promise<FomoRow[]> }
+    }
+  }
 }
 
 export interface FomoRow {
@@ -50,66 +50,87 @@ export interface FomoRow {
   text: string | null
   token_address: string | null
   network_id: string | number | null
+  /** The custodial wallet FOMO holds for this author, if the reader has asked yet. */
+  evm_address: string | null
+  /** Likes at read time. The only engagement number this feed populates. */
+  num_likes: number | null
+  /** The author's position in USD. numeric() comes back as a string. */
+  position_usd: string | null
+  /** When the author sold, if they have. Null means they still hold. */
+  sold_at: Date | null
 }
 
 export type FomoQuery = (args: {
   tokens: readonly string[]
+  coin: string
   start: Date
   end: Date
 }) => Promise<FomoRow[]>
 
-let pool: ReturnType<typeof postgres> | null = null
-
-/** One lazily-opened read-only pool, small: this runs once a week per coin. */
-function archive(url: string) {
-  if (!pool) {
-    pool = postgres(url, { max: 2, idle_timeout: 20, connect_timeout: 10 })
-  }
-  return pool
-}
-
-function makeQuery(url: string): FomoQuery {
-  return async ({ tokens, start, end }) => {
-    const sql = archive(url)
-    // Lowercased on both sides: EVM addresses arrive in mixed case from some
-    // sources and a case-sensitive match would silently find nothing, which
-    // looks exactly like a quiet week.
-    return (await sql`
-      select
-        event_id,
-        created_at,
-        username,
-        raw->>'userId'                as subject,
-        raw->'comment'->>'comment'    as text,
-        token_address,
-        network_id
-      from events
-      where source = ${SOURCE}
-        and kind = ${THESIS}
-        and created_at >= ${start}
-        and created_at < ${end}
-        and lower(token_address) = any(${tokens as string[]})
-      order by created_at asc
-    `) as unknown as FomoRow[]
-  }
+/**
+ * Read the archive this repo's reader fills.
+ *
+ * Scoped to the coin as well as the window: two coins can name the same token,
+ * and a callout earns for the coin whose rules named it.
+ */
+function makeQuery(db: VenueDb): FomoQuery {
+  return async ({ coin, start, end }) =>
+    (await (db as never as {
+      select: (f: unknown) => never
+    }).select({
+      event_id: hmFomoCallouts.externalId,
+      created_at: hmFomoCallouts.createdAt,
+      username: hmFomoCallouts.handle,
+      subject: hmFomoCallouts.subject,
+      text: hmFomoCallouts.text,
+      token_address: hmFomoCallouts.tokenAddress,
+      network_id: hmFomoCallouts.networkId,
+      num_likes: hmFomoCallouts.numLikes,
+      position_usd: hmFomoCallouts.positionUsd,
+      sold_at: hmFomoCallouts.soldAt,
+      // A subquery rather than a join, so a missing wallet leaves the callout on
+      // the record with nothing to pay instead of dropping it from the week. An
+      // author the reader has not looked up yet is a payment pending, not a
+      // contribution that did not happen.
+      //
+      // The outer column is qualified by hand. Drizzle prints columns in a
+      // select list unqualified, so both sides rendered as "subject", matched
+      // every user, and epoch 35's read failed with "more than one row".
+      evm_address: sql<
+        string | null
+      >`(select ${hmFomoUsers.evmAddress} from ${hmFomoUsers} where ${hmFomoUsers.subject} = ${hmFomoCallouts}.${sql.identifier("subject")})`,
+    } as never) as never as {
+      from: (t: unknown) => {
+        where: (w: unknown) => { orderBy: (o: unknown) => Promise<FomoRow[]> }
+      }
+    })
+      .from(hmFomoCallouts)
+      .where(
+        and(
+          inArray(hmFomoCallouts.coin, [coin]),
+          gte(hmFomoCallouts.createdAt, start),
+          lt(hmFomoCallouts.createdAt, end)
+        )
+      )
+      .orderBy(asc(hmFomoCallouts.createdAt))
 }
 
 export function makeFomoReader(opts: FomoReaderOptions = {}) {
-  const query = opts.query ?? (opts.archiveUrl ? makeQuery(opts.archiveUrl) : null)
+  const query = opts.query ?? (opts.db ? makeQuery(opts.db) : null)
 
-  return async function readFomo(ctx: ReaderContext): Promise<LaneResult> {
+  return async function readFomo(ctx: ReaderContext): Promise<VenueResult> {
     const sources = ctx.sources.fomo ?? []
     if (sources.length === 0) {
       return { status: "ok", items: [], reason: "no FOMO tokens in this coin's rules" }
     }
     if (!query) {
-      // Degrade the lane, never the week. An unconfigured archive is an
+      // Degrade the venue, never the week. An unconfigured archive is an
       // operator problem, and the record says so instead of showing a coin
       // whose callouts silently stopped counting.
       return {
         status: "failed",
         items: [],
-        reason: "not configured: FOMO_ARCHIVE_DATABASE_URL is unset",
+        reason: "the FOMO archive is not readable",
       }
     }
 
@@ -122,7 +143,7 @@ export function makeFomoReader(opts: FomoReaderOptions = {}) {
 
     let rows: FomoRow[]
     try {
-      rows = await query({ tokens, start: ctx.window.start, end: ctx.window.end })
+      rows = await query({ tokens, coin: ctx.coin, start: ctx.window.start, end: ctx.window.end })
     } catch (error) {
       const message = (error as Error).message
       // A column that vanished from the other service's schema is the failure
@@ -136,7 +157,7 @@ export function makeFomoReader(opts: FomoReaderOptions = {}) {
       }
     }
 
-    const items: LaneItem[] = []
+    const items: VenueItem[] = []
     const perAuthor = new Map<string, number>()
     const partials: string[] = []
     let skippedNoAuthor = 0
@@ -166,11 +187,22 @@ export function makeFomoReader(opts: FomoReaderOptions = {}) {
         platformHandle: row.username ?? undefined,
         externalId: row.event_id,
         link: row.username ? `https://fomo.family/profile/${row.username}` : undefined,
-        // Raw on purpose: hygiene runs once, in the lane job, so the rule
-        // "nothing author-written is stored uncleaned" holds for every lane.
+        // Raw on purpose: hygiene runs once, in the venue job, so the rule
+        // "nothing author-written is stored uncleaned" holds for every venue.
         content: row.text,
+        // Straight from FOMO, unvalidated here on purpose: the binding job owns
+        // the address gate, and one gate is easier to trust than two.
+        platformWallet: row.evm_address ?? undefined,
         createdAt: row.created_at,
-        meta: { tokenAddress: row.token_address, networkId: row.network_id },
+        // The numbers the scorer needs and the text does not carry. Likes are a
+        // snapshot at read time, so a settled week stays settled.
+        meta: {
+          tokenAddress: row.token_address,
+          networkId: row.network_id,
+          numLikes: row.num_likes,
+          positionUsd: row.position_usd === null ? null : Number(row.position_usd),
+          soldAt: row.sold_at ? row.sold_at.toISOString() : null,
+        },
       })
 
       if (items.length >= ctx.cap) {

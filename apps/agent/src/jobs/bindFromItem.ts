@@ -1,7 +1,7 @@
 import { hmBindings, hmWalletClaims } from "@workspace/db"
 import { and, eq } from "drizzle-orm"
 
-import { findPayoutAddress, rejectionReason } from "../connectors/address.js"
+import { checkPayoutAddress, findPayoutAddress, rejectionReason } from "../connectors/address.js"
 import type { JobContext } from "./types.js"
 
 /**
@@ -22,6 +22,15 @@ import type { JobContext } from "./types.js"
  * The cost is that a genuine change of wallet needs an operator. That is the
  * right way round: losing a wallet is rare and recoverable by asking, while
  * silently redirecting someone's pay is neither.
+ *
+ * Some venues hand us the address instead. FOMO keeps a custodial wallet per
+ * account and will return it for any user id, which is what lets a four-word
+ * market callout be paid at all. That case takes `platformWallet` and skips the
+ * scraping; every rule after it, the gate, first-mention-wins, the unique index
+ * that stops one wallet earning for two accounts, is exactly the same. The one
+ * asymmetry is deliberate: an address the platform holds cannot be edited by a
+ * coin's maintainer, so the attack first-mention-wins exists to stop does not
+ * apply to it.
  */
 
 export interface BindOutcome {
@@ -38,6 +47,12 @@ export async function bindFromItem(
     platformUserId: string
     platformHandle: string | null
     content: string | null
+    /**
+     * An address the PLATFORM holds for this author, if the venue has one.
+     * Takes precedence over the content, because a field from the platform is
+     * not attacker-editable and a description is.
+     */
+    platformWallet?: string | null
     coin: string
     epoch: number
   }
@@ -46,7 +61,9 @@ export async function bindFromItem(
   // Run against the CLEANED content. An address hidden in an HTML comment, or
   // split by zero-width characters so it reads one way to a human and another
   // to a parser, is defeated by hygiene running first.
-  const found = findPayoutAddress(item.content)
+  const found = item.platformWallet
+    ? checkPayoutAddress(item.platformWallet)
+    : findPayoutAddress(item.content)
 
   const record = async (status: string, wallet: string | null, note: string) => {
     await db
@@ -61,15 +78,16 @@ export async function bindFromItem(
         status,
         note,
       })
-      // One claim row per item, so a lane re-read converges instead of piling up.
+      // One claim row per item, so a venue re-read converges instead of piling up.
       .onConflictDoNothing()
     return { status, wallet, note }
   }
 
   if (!found.address) {
     if (found.rejected === "none_found") {
-      // Not worth a row. Most pull requests will never mention an address, and
-      // recording every one of those would bury the claims that matter.
+      // Not worth a row. Most pull requests never mention an address, and most
+      // callout authors have not been looked up yet; recording every one of
+      // those would bury the claims that matter.
       return { status: "none_found", wallet: null, note: "" }
     }
     return record(

@@ -8,12 +8,12 @@ import {
   hmRuleVersions,
   hmWalletClaims,
   makeDb,
-  TABLE_NAMES,
+  TRUNCATABLE_TABLE_NAMES,
 } from "@workspace/db"
 import { and, eq, sql } from "drizzle-orm"
 
 import { epochBounds, lastClosedEpoch } from "../clock.js"
-import { laneRead } from "./laneRead.js"
+import { venueRead } from "./venueRead.js"
 import type { JobContext } from "./types.js"
 
 /**
@@ -84,12 +84,12 @@ async function withFetch<T>(impl: typeof fetch, fn: () => Promise<T>): Promise<T
 const ctx = (): JobContext => ({
   db: db!,
   workerId: "binding-check",
-  job: { id: 1n, type: "lane_read", coin: COIN, epoch: EPOCH, key: "github", attempts: 0, payload: null },
+  job: { id: 1n, type: "venue_read", coin: COIN, epoch: EPOCH, key: "github", attempts: 0, payload: null },
 })
 
 async function reset() {
   await db!.execute(
-    sql.raw(`truncate ${TABLE_NAMES.filter((t) => t.startsWith("hm_")).join(", ")} cascade`)
+    sql.raw(`truncate ${TRUNCATABLE_TABLE_NAMES.join(", ")} cascade`)
   )
   const [v] = await db!
     .insert(hmRuleVersions)
@@ -130,7 +130,7 @@ async function main() {
 
   await reset()
   await withFetch(serve([[pull(`Fixes the rounding bug.\n\nPayout: ${ALICE}`)]]), async () => {
-    await laneRead(ctx())
+    await venueRead(ctx())
   })
   assert.equal(await bindingOf("1001"), ALICE_LOWER, "the address they wrote is bound to them")
   const first = await claims()
@@ -145,7 +145,7 @@ async function main() {
     // this to anyone's description at any time, including after the merge.
     serve([[pull(`Fixes the rounding bug.\n\nPayout: ${THIEF}`, 1001, "alice", "PR_1")]]),
     async () => {
-      await laneRead(ctx())
+      await venueRead(ctx())
     }
   )
   assert.equal(
@@ -162,7 +162,7 @@ async function main() {
   /* ── a later pull request repeating the same address is not a conflict ──── */
 
   await withFetch(serve([[pull(`More work. ${ALICE}`, 1001, "alice", "PR_SECOND")]]), async () => {
-    await laneRead(ctx())
+    await venueRead(ctx())
   })
   assert.equal(await bindingOf("1001"), ALICE_LOWER)
   assert.ok(
@@ -175,7 +175,7 @@ async function main() {
   await withFetch(
     serve([[pull(`Me too. ${ALICE}`, 2002, "sockpuppet", "PR_SOCK")]]),
     async () => {
-      await laneRead(ctx())
+      await venueRead(ctx())
     }
   )
   assert.equal(await bindingOf("2002"), null, "the second account gets no binding")
@@ -188,7 +188,7 @@ async function main() {
   await reset()
   const typo = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96046"
   await withFetch(serve([[pull(`Pay me at ${typo}`, 3003, "careless")]]), async () => {
-    await laneRead(ctx())
+    await venueRead(ctx())
   })
   assert.equal(await bindingOf("3003"), null, "one wrong character binds nothing")
   const rejected = (await claims()).find((c) => c.status === "rejected_checksum")
@@ -201,7 +201,7 @@ async function main() {
   await withFetch(
     serve([[pull(`Real work here.\n<!-- ${THIEF} -->\nPayout: ${ALICE}`, 4004, "alice2")]]),
     async () => {
-      await laneRead(ctx())
+      await venueRead(ctx())
     }
   )
   assert.equal(
@@ -216,7 +216,7 @@ async function main() {
 
   await reset()
   await withFetch(serve([[pull("Just a normal fix, no address.", 5005, "quiet")]]), async () => {
-    await laneRead(ctx())
+    await venueRead(ctx())
   })
   assert.equal(await bindingOf("5005"), null)
   assert.equal(
@@ -231,7 +231,7 @@ async function main() {
   // First read: the contributor did not know to include an address.
   await withFetch(serve([[pull("Fixes a real bug. No address yet.", 6006, "latecomer", "PR_LATE")]]),
     async () => {
-      await laneRead(ctx())
+      await venueRead(ctx())
     }
   )
   assert.equal(await bindingOf("6006"), null, "nothing to bind on the first pass")
@@ -242,7 +242,7 @@ async function main() {
   await withFetch(
     serve([[pull(`Fixes a real bug. Payout: ${ALICE}`, 6006, "latecomer", "PR_LATE")]]),
     async () => {
-      await laneRead(ctx())
+      await venueRead(ctx())
     }
   )
   assert.equal(

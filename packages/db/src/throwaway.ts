@@ -4,7 +4,7 @@
  * Every check in this repo truncates the Harbormaster tables before it starts,
  * which was safe while `DATABASE_URL` had to be typed on the command line. Once
  * the worker reads a `.env` file, the variable is ambient: `pnpm --filter agent
- * check:lane` in a shell where someone pasted the production URL would wipe
+ * check:venue` in a shell where someone pasted the production URL would wipe
  * real payout history without asking anything.
  *
  * So the rule is whitelist, not blacklist. A URL has to look local before it is

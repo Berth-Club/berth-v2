@@ -11,7 +11,7 @@ import { and, eq } from "drizzle-orm"
 
 import { epochBounds } from "../clock.js"
 import { env } from "../env.js"
-import { laneRead } from "../jobs/laneRead.js"
+import { venueRead } from "../jobs/venueRead.js"
 import { makePublish } from "../jobs/publish.js"
 import { makeScoreBatch } from "../jobs/scoreBatch.js"
 import { pickClient } from "../scoring/model.js"
@@ -21,7 +21,7 @@ import type { JobContext } from "../jobs/types.js"
  * Watch one repository for one week, and keep the record up to date.
  *
  * Unlike `demo:week` this never truncates. It seeds the coin once if it is not
- * there, then re-reads the lane every minute, scores anything new, and
+ * there, then re-reads the venue every minute, scores anything new, and
  * republishes. Editing a pull request description to add a wallet address shows
  * up on the page within a minute without anyone running a command.
  *
@@ -165,7 +165,7 @@ async function tick(): Promise<string> {
       .where(and(eq(hmEpochs.coin, COIN), eq(hmEpochs.epoch, epoch)))
   }
 
-  const read = await laneRead(ctx("github"))
+  const read = await venueRead(ctx("github"))
 
   // Scoring only touches items with no score row, so this is cheap on a pass
   // where nothing changed. It is the same batch the production worker runs.

@@ -10,6 +10,16 @@ export const metadata: Metadata = {
     "An agent that pays for work, not for waiting. Half of every launch supply settles weekly to the people shipping code, posts and callouts.",
 }
 
+/**
+ * Re-rendered at most once a minute, never frozen at build time.
+ *
+ * Without this Next prerendered the page as static during `next build`. On
+ * Railway the build container cannot reach the private database, so the record
+ * read failed, was caught, and the page shipped saying COMING SOON for good:
+ * a published week sat in the database and never appeared.
+ */
+export const revalidate = 60
+
 const GITHUB = "https://github.com/Berth-Club"
 
 /* ── shared bits ─────────────────────────────────────────────── */
@@ -178,7 +188,7 @@ export default async function HarbormasterPage() {
             <div
               className={`${CARD} flex flex-wrap items-baseline justify-between gap-3 px-3.5 py-2.5`}
             >
-              <div className="text-[13px] font-semibold">Every lane speaks one language</div>
+              <div className="text-[13px] font-semibold">Every venue speaks one language</div>
               <div className="text-faint font-mono text-[11.5px]">
                 open connector spec · one standard event format
               </div>

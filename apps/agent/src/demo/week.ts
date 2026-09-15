@@ -3,13 +3,13 @@ import {
   hmEpochs,
   hmItems,
   hmJobs,
-  hmLaneReads,
+  hmVenueReads,
   hmLeaves,
   hmRules,
   hmRuleVersions,
   hmScores,
   makeDb,
-  TABLE_NAMES,
+  TRUNCATABLE_TABLE_NAMES,
   assertThrowaway,
 } from "@workspace/db"
 import { and, desc, eq, inArray, sql } from "drizzle-orm"
@@ -18,7 +18,7 @@ import { epochBounds, lastClosedEpoch } from "../clock.js"
 import { env } from "../env.js"
 import { runLoop } from "../jobs/loop.js"
 import { epochStart } from "../jobs/epochStart.js"
-import { laneRead } from "../jobs/laneRead.js"
+import { venueRead } from "../jobs/venueRead.js"
 import { makePublish } from "../jobs/publish.js"
 import { makeScoreBatch } from "../jobs/scoreBatch.js"
 import { pickClient, type ModelClient } from "../scoring/model.js"
@@ -143,7 +143,7 @@ async function main() {
     throw new Error(`HM_DEMO_EPOCH must be a non-negative integer, got ${requested}`)
   }
   if (epoch > latest) {
-    // The lane job refuses to read a week still in progress, so this would
+    // The venue job refuses to read a week still in progress, so this would
     // otherwise sit and wait until the timeout with nothing to show.
     throw new Error(
       `epoch ${epoch} has not closed yet; the newest readable one is ${latest}`
@@ -166,7 +166,7 @@ async function main() {
   console.log()
 
   await db!.execute(
-    sql.raw(`truncate ${TABLE_NAMES.filter((t) => t.startsWith("hm_")).join(", ")} cascade`)
+    sql.raw(`truncate ${TRUNCATABLE_TABLE_NAMES.join(", ")} cascade`)
   )
 
   const [version] = await db!
@@ -191,14 +191,14 @@ async function main() {
 
   const client = scorer ?? sizeScorer()
 
-  // Read the lane once up front, then bind a wallet per author, BEFORE the loop
+  // Read the venue once up front, then bind a wallet per author, BEFORE the loop
   // starts. Doing it inside the polling loop was a race the demo lost on a
   // small week: scoring and publishing both finished inside the first poll, so
   // the list published with nobody bound and no money moved. In production the
   // binding happens days earlier, when the contributor connects a wallet, so
   // seeding it first is also the more honest simulation.
   await epochStart(ctxFor("", epoch))
-  await laneRead(ctxFor("github", epoch))
+  await venueRead(ctxFor("github", epoch))
   const b = await boundAuthors()
   console.log(
     `  ${b.bound} of ${b.total} author(s) wrote a wallet address in their pull request`
@@ -210,11 +210,11 @@ async function main() {
     db: db!,
     handlers: {
       epoch_start: epochStart,
-      lane_read: laneRead,
+      venue_read: venueRead,
       score_batch: makeScoreBatch({ makeClient: () => client }),
       publish: makePublish({ pot: { async potFor() { return { coin: COIN_POT, usdc: USDC_POT } } } }),
     },
-    leaseSeconds: { lane_read: 600, score_batch: 1200 },
+    leaseSeconds: { venue_read: 600, score_batch: 1200 },
     workerId: "demo",
     pollSeconds: 1,
     signal: controller.signal,
@@ -243,7 +243,7 @@ async function report(epoch: number) {
     .select()
     .from(hmEpochs)
     .where(and(eq(hmEpochs.coin, COIN), eq(hmEpochs.epoch, epoch)))
-  const lanes = await db!.select().from(hmLaneReads).where(eq(hmLaneReads.coin, COIN))
+  const venues = await db!.select().from(hmVenueReads).where(eq(hmVenueReads.coin, COIN))
   const leaves = await db!
     .select()
     .from(hmLeaves)
@@ -252,8 +252,8 @@ async function report(epoch: number) {
 
   console.log(`\n─── week ───`)
   console.log(`  state ${e?.state}   published ${e?.publishedAt?.toISOString() ?? "no"}`)
-  for (const l of lanes) {
-    console.log(`  lane ${l.lane}: ${l.status}, ${l.itemCount} item(s)${l.reason ? ` (${l.reason})` : ""}`)
+  for (const l of venues) {
+    console.log(`  venue ${l.venue}: ${l.status}, ${l.itemCount} item(s)${l.reason ? ` (${l.reason})` : ""}`)
   }
 
   const top = await db!

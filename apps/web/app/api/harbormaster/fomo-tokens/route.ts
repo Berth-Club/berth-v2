@@ -13,7 +13,7 @@ import { listFomoTokens } from "@/lib/harbormaster"
  * stopped being counted.
  *
  * So the rules are the source of truth and the bot reads them here. A launch
- * turns its own lane on.
+ * turns its own venue on.
  *
  * Public and read-only on purpose. Every value in the response is a token
  * contract address, which is already public the moment the coin exists, and

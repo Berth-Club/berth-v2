@@ -82,11 +82,11 @@ BEGIN
   END IF;
 
   -- Everything except the erasable pair must match the stored row.
-  IF (NEW.id, NEW.coin, NEW.epoch, NEW.lane, NEW.platform, NEW.platform_user_id,
+  IF (NEW.id, NEW.coin, NEW.epoch, NEW.venue, NEW.platform, NEW.platform_user_id,
       NEW.platform_handle, NEW.external_id, NEW.link, NEW.content_hash,
       NEW.stripped_bytes, NEW.status, NEW.origin_item_id, NEW.created_at)
      IS DISTINCT FROM
-     (OLD.id, OLD.coin, OLD.epoch, OLD.lane, OLD.platform, OLD.platform_user_id,
+     (OLD.id, OLD.coin, OLD.epoch, OLD.venue, OLD.platform, OLD.platform_user_id,
       OLD.platform_handle, OLD.external_id, OLD.link, OLD.content_hash,
       OLD.stripped_bytes, OLD.status, OLD.origin_item_id, OLD.created_at) THEN
     RAISE EXCEPTION

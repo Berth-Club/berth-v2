@@ -50,8 +50,8 @@ function Stat({ value, label, dim }: { value: string; label: string; dim?: boole
   )
 }
 
-/** Green when the lane was read, amber when a human has to look at it. */
-function LaneBadge({ lane, status }: { lane: string; status: string }) {
+/** Green when the venue was read, amber when a human has to look at it. */
+function LaneBadge({ venue, status }: { venue: string; status: string }) {
   const tone =
     status === "ok"
       ? "border-[rgba(110,200,150,.45)] text-[#7fd6a6]"
@@ -60,7 +60,7 @@ function LaneBadge({ lane, status }: { lane: string; status: string }) {
         : "border-[rgba(226,170,90,.5)] text-[#e0ac63]"
   return (
     <span className={`rounded-full border px-2.5 py-[3px] font-mono text-[11px] ${tone}`}>
-      {lane} · {status}
+      {venue} · {status}
     </span>
   )
 }
@@ -151,18 +151,18 @@ export default async function Record() {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {week.lanes.map((l) => (
-            <LaneBadge key={l.lane} lane={l.lane} status={l.status} />
+          {week.venues.map((l) => (
+            <LaneBadge key={l.venue} venue={l.venue} status={l.status} />
           ))}
           <span className={LABEL}>{week.state}</span>
         </div>
       </div>
 
-      {week.lanes.some((l) => l.reason) ? (
+      {week.venues.some((l) => l.reason) ? (
         <div className={`${LABEL} mt-3 leading-[1.6]`}>
-          {week.lanes
+          {week.venues
             .filter((l) => l.reason)
-            .map((l) => `${l.lane}: ${l.reason}`)
+            .map((l) => `${l.venue}: ${l.reason}`)
             .join(" · ")}
         </div>
       ) : null}

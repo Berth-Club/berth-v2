@@ -657,8 +657,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "lane": {
-          "name": "lane",
+        "venue": {
+          "name": "venue",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -754,7 +754,7 @@
               "nulls": "last"
             },
             {
-              "expression": "lane",
+              "expression": "venue",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1135,8 +1135,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.hm_lane_reads": {
-      "name": "hm_lane_reads",
+    "public.hm_venue_reads": {
+      "name": "hm_venue_reads",
       "schema": "",
       "columns": {
         "coin": {
@@ -1151,8 +1151,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "lane": {
-          "name": "lane",
+        "venue": {
+          "name": "venue",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -1190,8 +1190,8 @@
         }
       },
       "indexes": {
-        "hm_lane_reads_pk": {
-          "name": "hm_lane_reads_pk",
+        "hm_venue_reads_pk": {
+          "name": "hm_venue_reads_pk",
           "columns": [
             {
               "expression": "coin",
@@ -1206,7 +1206,7 @@
               "nulls": "last"
             },
             {
-              "expression": "lane",
+              "expression": "venue",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1223,13 +1223,13 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "hm_lane_reads_status": {
-          "name": "hm_lane_reads_status",
-          "value": "\"hm_lane_reads\".\"status\" in ('pending','ok','partial','failed','skipped')"
+        "hm_venue_reads_status": {
+          "name": "hm_venue_reads_status",
+          "value": "\"hm_venue_reads\".\"status\" in ('pending','ok','partial','failed','skipped')"
         },
-        "hm_lane_reads_skip_has_reason": {
-          "name": "hm_lane_reads_skip_has_reason",
-          "value": "\"hm_lane_reads\".\"status\" <> 'skipped' or (\"hm_lane_reads\".\"operator\" is not null and \"hm_lane_reads\".\"reason\" is not null)"
+        "hm_venue_reads_skip_has_reason": {
+          "name": "hm_venue_reads_skip_has_reason",
+          "value": "\"hm_venue_reads\".\"status\" <> 'skipped' or (\"hm_venue_reads\".\"operator\" is not null and \"hm_venue_reads\".\"reason\" is not null)"
         }
       },
       "isRLSEnabled": false

@@ -4,14 +4,14 @@ import type { Db } from "@workspace/db"
  * What a handler is allowed to say when it finishes.
  *
  * The third outcome is the one that matters. Most of what this worker does is
- * waiting on something outside itself: every lane read, the USDC top-up, a
+ * waiting on something outside itself: every venue read, the USDC top-up, a
  * dispute window closing. If waiting counted as failure, a healthy epoch would
  * burn its five attempts and park itself in `needs_operator` while nothing was
  * actually wrong. So `wait` is a distinct answer that leaves the attempt count
  * alone, and only `failed` counts toward giving up.
  *
  * It also removes the need for anything to signal anything. An operator who
- * skips a stuck lane does not have to wake a job; the next poll sees the row.
+ * skips a stuck venue does not have to wake a job; the next poll sees the row.
  */
 export type JobOutcome =
   | { kind: "done"; note?: string }

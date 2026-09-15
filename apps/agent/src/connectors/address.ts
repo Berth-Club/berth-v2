@@ -105,6 +105,42 @@ export function findPayoutAddress(text: string | null | undefined): AddressResul
   return { address: lower, rejected: null, seen: distinct }
 }
 
+/**
+ * Check one address a PLATFORM handed us, rather than one a person typed.
+ *
+ * FOMO holds a custodial wallet per account and returns it for any user id, so
+ * a callout author never types an address at all. That field still goes through
+ * the same gate: an upstream that starts returning the zero address, or a
+ * truncated one, must fail here and not at the point where funds move.
+ *
+ * No scraping and no "several found", because there is exactly one candidate.
+ */
+export function checkPayoutAddress(raw: string | null | undefined): AddressResult {
+  const candidate = (raw ?? "").trim()
+  if (!candidate) return { address: null, rejected: "none_found", seen: [] }
+
+  // Whole string, anchored. `findPayoutAddress` scans prose and so tolerates
+  // text around a match; a dedicated field with anything around it is a field
+  // we have misread, and guessing at the hex inside would be the worst answer.
+  if (!/^0x[0-9a-fA-F]{40}$/.test(candidate)) {
+    return { address: null, rejected: "bad_checksum", seen: [candidate] }
+  }
+
+  const lower = candidate.toLowerCase()
+  if (UNPAYABLE.has(lower)) return { address: null, rejected: "unpayable", seen: [candidate] }
+
+  // Same rule as a typed address: enforce EIP-55 only when the spelling claims
+  // one. Compare the hex body, since `"0x".toUpperCase()` is `"0X"` and made an
+  // all-caps address look mixed-case.
+  const body = candidate.slice(2)
+  const isMixedCase = body !== body.toLowerCase() && body !== body.toUpperCase()
+  if (isMixedCase && !isAddress(candidate, { strict: true })) {
+    return { address: null, rejected: "bad_checksum", seen: [candidate] }
+  }
+
+  return { address: lower, rejected: null, seen: [lower] }
+}
+
 /** Checksummed form, for showing an address back to a person. */
 export function displayAddress(lower: string): string {
   return getAddress(lower)

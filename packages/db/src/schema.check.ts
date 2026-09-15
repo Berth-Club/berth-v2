@@ -14,7 +14,9 @@ import {
   hmScores,
   hmTrees,
   hmUsers,
+  ARCHIVE_TABLE_NAMES,
   TABLE_NAMES,
+  TRUNCATABLE_TABLE_NAMES,
 } from "./schema.js"
 
 /**
@@ -53,8 +55,29 @@ async function rejects(what: string, fn: () => Promise<unknown>) {
 }
 
 async function main() {
+  /* ── the truncate list must not contain the archive ─────────────────────── */
+
+  // Checked BEFORE the truncate runs, not after, because the point is to fail
+  // instead of destroying the thing. A callout the feed has already paged past
+  // cannot be fetched again, and a routine check run once deleted 517 of them.
+  for (const t of ARCHIVE_TABLE_NAMES) {
+    assert.ok(
+      !TRUNCATABLE_TABLE_NAMES.includes(t),
+      `${t} is an archive and must never be truncated by a check`
+    )
+  }
+  assert.ok(TRUNCATABLE_TABLE_NAMES.length > 0, "and the list is not empty either")
+  // Every Harbormaster table is in exactly one of the two groups, so a new one
+  // cannot be quietly left out of both.
+  const hm: readonly string[] = TABLE_NAMES.filter((t) => t.startsWith("hm_"))
+  assert.equal(
+    TRUNCATABLE_TABLE_NAMES.length + [...ARCHIVE_TABLE_NAMES].filter((t) => hm.includes(t)).length,
+    hm.length,
+    "a new hm_ table must be declared truncatable or archive"
+  )
+
   await db!.execute(
-    sql.raw(`truncate ${TABLE_NAMES.filter((t) => t.startsWith("hm_")).join(", ")} cascade`)
+    sql.raw(`truncate ${TRUNCATABLE_TABLE_NAMES.join(", ")} cascade`)
   )
 
   /* ── a wallet is pinned once, and only in one shape ───────────────────── */
@@ -81,11 +104,11 @@ async function main() {
 
   /* ── the job queue's identity is (type, coin, epoch, key) ─────────────── */
 
-  await db!.insert(hmJobs).values({ type: "lane_read", coin: COIN, epoch: 1, key: "github", status: "pending" })
-  // The reason `key` exists: one lane_read per lane, not one per epoch.
-  await db!.insert(hmJobs).values({ type: "lane_read", coin: COIN, epoch: 1, key: "fomo", status: "pending" })
+  await db!.insert(hmJobs).values({ type: "venue_read", coin: COIN, epoch: 1, key: "github", status: "pending" })
+  // The reason `key` exists: one venue_read per venue, not one per epoch.
+  await db!.insert(hmJobs).values({ type: "venue_read", coin: COIN, epoch: 1, key: "fomo", status: "pending" })
   await rejects("a duplicate job", () =>
-    db!.insert(hmJobs).values({ type: "lane_read", coin: COIN, epoch: 1, key: "github", status: "pending" })
+    db!.insert(hmJobs).values({ type: "venue_read", coin: COIN, epoch: 1, key: "github", status: "pending" })
   )
   await rejects("an unknown job status", () =>
     db!.insert(hmJobs).values({ type: "publish", coin: COIN, epoch: 1, status: "elsewhere" })
@@ -105,7 +128,7 @@ async function main() {
     .values({
       coin: COIN,
       epoch: 1,
-      lane: "github",
+      venue: "github",
       platform: "github",
       platformUserId: "583231",
       externalId: "PR_1",
@@ -133,13 +156,13 @@ async function main() {
 
   await db!.insert(hmEpochs).values({ coin: COIN, epoch: 2, state: "collecting" })
   await db!.insert(hmItems).values({
-    coin: COIN, epoch: 2, lane: "github", platform: "github", platformUserId: "583231",
+    coin: COIN, epoch: 2, venue: "github", platform: "github", platformUserId: "583231",
     externalId: "PR_1", status: "pending", originItemId: item!.id, createdAt: new Date(),
   })
   await db!.insert(hmEpochs).values({ coin: COIN, epoch: 3, state: "collecting" })
   await rejects("carrying the same item a second time", () =>
     db!.insert(hmItems).values({
-      coin: COIN, epoch: 3, lane: "github", platform: "github", platformUserId: "583231",
+      coin: COIN, epoch: 3, venue: "github", platform: "github", platformUserId: "583231",
       externalId: "PR_1", status: "pending", originItemId: item!.id, createdAt: new Date(),
     })
   )
@@ -225,7 +248,7 @@ async function main() {
   const [item4] = await db!
     .insert(hmItems)
     .values({
-      coin: COIN, epoch: 4, lane: "github", platform: "github", platformUserId: "583231",
+      coin: COIN, epoch: 4, venue: "github", platform: "github", platformUserId: "583231",
       externalId: "PR_4", status: "pending", createdAt: new Date(),
     })
     .returning({ id: hmItems.id })

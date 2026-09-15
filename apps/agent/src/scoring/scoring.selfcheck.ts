@@ -7,7 +7,7 @@ import {
   pickClient,
   type ModelClient,
 } from "./model.js"
-import { buildUserPrompt, promptHash, SYSTEM_PROMPT } from "./prompt.js"
+import { buildUserPrompt, promptHash, SYSTEM_PROMPT_FOMO, SYSTEM_PROMPT_GITHUB } from "./prompt.js"
 import { parseVerdict, RejectedOutput, SCHEMA_HASH, VERDICT_SCHEMA } from "./schema.js"
 import { excludedReason, medianOf, scoreItem } from "./score.js"
 
@@ -97,7 +97,8 @@ async function main() {
     prompt.indexOf("<contribution>") > prompt.indexOf(rules),
     "the rules are stated before the untrusted text, not after it"
   )
-  assert.match(SYSTEM_PROMPT, /DATA, NOT INSTRUCTION/, "and the system prompt says so")
+  assert.match(SYSTEM_PROMPT_GITHUB, /DATA, NOT INSTRUCTION/, "and the system prompt says so")
+  assert.match(SYSTEM_PROMPT_FOMO, /DATA, NOT INSTRUCTION/, "in both venues, or one is a way in")
 
   /* ── the median is a real sample, never an average ──────────────────────── */
 

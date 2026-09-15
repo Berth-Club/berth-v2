@@ -1,4 +1,4 @@
-import type { LaneItem, LaneResult, ReaderContext } from "./types.js"
+import type { VenueItem, VenueResult, ReaderContext } from "./types.js"
 
 /**
  * Merged pull requests, per repository, for one week.
@@ -84,12 +84,12 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
    * not happened yet, so "which week does it belong to" has no answer until it
    * merges. It is shown so a contributor can see they were noticed.
    */
-  async function readOpen(repoId: number, ctx: ReaderContext): Promise<LaneItem[]> {
+  async function readOpen(repoId: number, ctx: ReaderContext): Promise<VenueItem[]> {
     const pulls = await get(
       `/repositories/${repoId}/pulls?state=open&sort=updated&direction=desc&per_page=30`,
       ctx.signal
     )
-    const items: LaneItem[] = []
+    const items: VenueItem[] = []
     for (const pr of pulls) {
       if (!pr.user) continue
       items.push({
@@ -107,7 +107,7 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
     return items
   }
 
-  return async function readGithub(ctx: ReaderContext): Promise<LaneResult> {
+  return async function readGithub(ctx: ReaderContext): Promise<VenueResult> {
     const repos = ctx.sources.github ?? []
     if (repos.length === 0) {
       return { status: "ok", items: [], reason: "no repositories in this coin's rules" }
@@ -116,7 +116,7 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
       return { status: "failed", items: [], reason: "not configured: GITHUB_TOKEN is unset" }
     }
 
-    const items: LaneItem[] = []
+    const items: VenueItem[] = []
     const partials: string[] = []
 
     for (const repo of repos) {
@@ -134,7 +134,7 @@ export function makeGithubReader(opts: GithubReaderOptions = {}) {
           )
           break
         }
-        // One unreadable repository fails the lane rather than quietly
+        // One unreadable repository fails the venue rather than quietly
         // shrinking the week: a coin whose main repo 404s must not publish a
         // list that looks complete.
         return {
@@ -177,8 +177,8 @@ async function readRepo(
   ctx: ReaderContext,
   get: (path: string, signal?: AbortSignal) => Promise<GithubPull[]>,
   alreadyHeld: number
-): Promise<{ items: LaneItem[]; reason?: string }> {
-  const items: LaneItem[] = []
+): Promise<{ items: VenueItem[]; reason?: string }> {
+  const items: VenueItem[] = []
   const { start, end } = ctx.window
 
   for (let page = 1; page <= MAX_PAGES_PER_REPO; page++) {
@@ -212,8 +212,8 @@ async function readRepo(
         platformHandle: pr.user.login,
         externalId: pr.node_id,
         link: pr.html_url,
-        // Raw on purpose. Hygiene runs once, in the lane job, so the rule
-        // "nothing author-written is stored uncleaned" holds for every lane
+        // Raw on purpose. Hygiene runs once, in the venue job, so the rule
+        // "nothing author-written is stored uncleaned" holds for every venue
         // without each reader having to remember it.
         content: `${pr.title}\n\n${pr.body ?? ""}`,
         createdAt: mergedAt,
@@ -228,7 +228,7 @@ async function readRepo(
 
       // Stop, but say nothing: the caller checks the same condition right
       // after and owns the message. Reporting it here too put the sentence
-      // on the lane twice.
+      // on the venue twice.
       if (alreadyHeld + items.length >= ctx.cap) return { items }
     }
 

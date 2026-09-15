@@ -1,12 +1,12 @@
 import assert from "node:assert/strict"
 
 import { makeFomoReader, type FomoRow } from "./fomo.js"
-import { judgeItem, parseJudge, SCREENED_LANES } from "../scoring/judge.js"
+import { judgeItem, parseJudge, SCREENED_VENUES } from "../scoring/judge.js"
 import type { ModelClient } from "../scoring/model.js"
 import type { ReaderContext } from "./types.js"
 
 /**
- * The FOMO lane, against a fake archive rather than a real one.
+ * The FOMO venue, against a fake archive rather than a real one.
  *
  * Everything here is a way a callout could be paid to the wrong person or not
  * paid at all, and none of it is reachable by pointing the reader at a live
@@ -15,6 +15,7 @@ import type { ReaderContext } from "./types.js"
  *   pnpm --filter agent check:fomo
  */
 
+const COIN = "0x00000000000000000000000000000000000000aa"
 const TOKEN = "0xdd3b11ef34cd511a2da159034a05fcb94d806686"
 const WINDOW = {
   start: new Date("2026-09-07T00:00:00Z"),
@@ -32,12 +33,17 @@ function row(over: Partial<FomoRow> = {}): FomoRow {
     text: "This token is mispriced, the vault pays weekly and nobody has noticed.",
     token_address: TOKEN,
     network_id: 1,
+    evm_address: "0x1febe335f384cfab68e98397b526825eb6533022",
+    num_likes: 7,
+    position_usd: "1250.500000",
+    sold_at: null,
     ...over,
   }
 }
 
 function ctx(over: Partial<ReaderContext> = {}): ReaderContext {
   return {
+    coin: COIN,
     window: WINDOW,
     sources: { fomo: [{ tokenAddress: TOKEN, name: "BERTH" }] },
     cap: 100,
@@ -47,10 +53,10 @@ function ctx(over: Partial<ReaderContext> = {}): ReaderContext {
 
 /** An archive that returns what it is given, and records how it was asked. */
 function fakeArchive(rows: FomoRow[]) {
-  const asked: Array<{ tokens: readonly string[]; start: Date; end: Date }> = []
+  const asked: Array<{ tokens: readonly string[]; coin: string; start: Date; end: Date }> = []
   return {
     asked,
-    query: async (args: { tokens: readonly string[]; start: Date; end: Date }) => {
+    query: async (args: { tokens: readonly string[]; coin: string; start: Date; end: Date }) => {
       asked.push(args)
       return rows
     },
@@ -101,6 +107,48 @@ async function main() {
     assert.deepEqual(a.asked[0]!.tokens, [SOL.toLowerCase()])
   }
 
+  /* ── the signals the scorer cannot get from the text ─────────────────────── */
+
+{
+  const a = fakeArchive([row()])
+  const [item] = (await makeFomoReader({ query: a.query })(ctx())).items
+  const m = item!.meta as Record<string, unknown>
+  assert.equal(m.numLikes, 7)
+  assert.equal(m.positionUsd, 1250.5, "numeric comes back a string and must become a number")
+  assert.equal(m.soldAt, null, "null means asked and still holding")
+}
+
+{
+  // Sold. The sharpest signal in the feed: 207 of 298 callout authors on a live
+  // token had already closed their position, so this is the common case.
+  const sold = new Date("2026-09-12T16:38:08.700Z")
+  const a = fakeArchive([row({ sold_at: sold })])
+  const [item] = (await makeFomoReader({ query: a.query })(ctx())).items
+  assert.equal((item!.meta as Record<string, unknown>).soldAt, sold.toISOString())
+}
+
+/* ── the wallet FOMO holds, which is the only way a callout gets paid ───── */
+
+  {
+    const a = fakeArchive([row()])
+    const [item] = (await makeFomoReader({ query: a.query })(ctx())).items
+    assert.equal(
+      item!.platformWallet,
+      "0x1febe335f384cfab68e98397b526825eb6533022",
+      "carried through, or a scored callout pays nobody"
+    )
+  }
+
+  {
+    // An author the reader has not looked up yet. The callout still counts: a
+    // pending lookup is not a contribution that did not happen, and dropping it
+    // here would lose it for good once the week's window closes.
+    const a = fakeArchive([row({ evm_address: null })])
+    const res = await makeFomoReader({ query: a.query })(ctx())
+    assert.equal(res.items.length, 1, "kept on the record")
+    assert.equal(res.items[0]!.platformWallet, undefined, "with nothing to pay yet")
+  }
+
   /* ── the author is the immutable id, because handles get renamed ────────── */
 
   {
@@ -121,7 +169,7 @@ async function main() {
     assert.match(res.reason!, /no author id/)
   }
 
-  /* ── one person cannot flood the lane ───────────────────────────────────── */
+  /* ── one person cannot flood the venue ───────────────────────────────────── */
 
   {
     const spammer = () => row({ subject: "flooder", username: "flooder" })
@@ -163,7 +211,11 @@ async function main() {
   {
     const res = await makeFomoReader({})(ctx())
     assert.equal(res.status, "failed")
-    assert.match(res.reason!, /not configured/, "an unset archive is a lane failure, not a crash")
+    assert.match(
+      res.reason!,
+      /not readable/,
+      "no database handle is a venue failure, not a crash"
+    )
   }
 
   {
@@ -175,8 +227,8 @@ async function main() {
 
   /* ── the judge, which GitHub does not need and FOMO does ────────────────── */
 
-  assert.ok(SCREENED_LANES.has("fomo"))
-  assert.ok(!SCREENED_LANES.has("github"), "a merged pull request was already filtered by a human")
+  assert.ok(SCREENED_VENUES.has("fomo"))
+  assert.ok(!SCREENED_VENUES.has("github"), "a merged pull request was already filtered by a human")
 
   const judge = (raw: string): ModelClient => ({
     modelId: "test",

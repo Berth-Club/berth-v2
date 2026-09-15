@@ -1,0 +1,29 @@
+{
+  "name": "fomo-reader",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
+    "probe": "node --env-file-if-exists=../../.env --import tsx src/index.ts --probe",
+    "typecheck": "tsc --noEmit",
+    "check:parse": "node --env-file-if-exists=../../.env --import tsx src/parse.selfcheck.ts",
+    "check:wallets": "node --env-file-if-exists=../../.env --import tsx src/wallets.selfcheck.ts"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.1",
+    "playwright": "^1.63.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@workspace/typescript-config": "workspace:*",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20.12"
+  }
+}

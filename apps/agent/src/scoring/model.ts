@@ -1,4 +1,4 @@
-import { SYSTEM_PROMPT } from "./prompt.js"
+import { SYSTEM_PROMPT_GITHUB } from "./prompt.js"
 import { VERDICT_SCHEMA } from "./schema.js"
 
 /**
@@ -19,7 +19,15 @@ export interface ModelReply {
 
 export interface ModelClient {
   readonly modelId: string
-  complete(userPrompt: string, signal?: AbortSignal): Promise<ModelReply>
+  /**
+   * `system` is per call, not per client.
+   *
+   * The rules for a pull request and the rules for a market callout are
+   * different documents, and one process scores both in the same week. Baking
+   * one into the client is what made every FOMO callout score zero: it was
+   * judged as engineering because engineering was the only prompt available.
+   */
+  complete(userPrompt: string, signal?: AbortSignal, system?: string): Promise<ModelReply>
 }
 
 /** Pinned per epoch and written to every audit row alongside the prompt hash. */
@@ -64,7 +72,7 @@ export function makeAnthropicClient(opts: AnthropicOptions): ModelClient {
 
   return {
     modelId,
-    async complete(userPrompt, signal) {
+    async complete(userPrompt, signal, system) {
       const res = await doFetch(API, {
         method: "POST",
         headers: {
@@ -76,7 +84,7 @@ export function makeAnthropicClient(opts: AnthropicOptions): ModelClient {
         body: JSON.stringify({
           model: modelId,
           max_tokens: MAX_TOKENS,
-          system: SYSTEM_PROMPT,
+          system: system ?? SYSTEM_PROMPT_GITHUB,
           messages: [{ role: "user", content: userPrompt }],
           // Forcing the tool is how the reply comes back shaped. The schema is
           // still re-checked on our side, because "the model used the tool" and
@@ -171,7 +179,7 @@ export function makeChatCompletionsClient(opts: ChatCompletionsOptions): ModelCl
 
   return {
     modelId: opts.modelId,
-    async complete(userPrompt, signal) {
+    async complete(userPrompt, signal, system) {
       const res = await doFetch(opts.baseUrl, {
         method: "POST",
         headers: {
@@ -189,7 +197,7 @@ export function makeChatCompletionsClient(opts: ChatCompletionsOptions): ModelCl
           // `jsonSchemaInstruction` repeats it with the field list.
           response_format: { type: "json_object" },
           messages: [
-            { role: "system", content: SYSTEM_PROMPT },
+            { role: "system", content: system ?? SYSTEM_PROMPT_GITHUB },
             { role: "user", content: `${userPrompt}\n\n${jsonSchemaInstruction()}` },
           ],
         }),

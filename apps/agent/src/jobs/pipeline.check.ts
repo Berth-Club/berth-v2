@@ -10,15 +10,15 @@ import {
   hmRuleVersions,
   hmScores,
   makeDb,
-  TABLE_NAMES,
+  TRUNCATABLE_TABLE_NAMES,
   assertThrowaway,
 } from "@workspace/db"
 import { and, eq, sql } from "drizzle-orm"
 
 import { epochBounds, lastClosedEpoch } from "../clock.js"
 import type { ModelClient } from "../scoring/model.js"
-import { epochStart } from "./epochStart.js"
-import { laneRead } from "./laneRead.js"
+import { EPOCH_TIMER, ensureEpochTimer, epochStart } from "./epochStart.js"
+import { venueRead } from "./venueRead.js"
 import { makePublish } from "./publish.js"
 import { makeScoreBatch } from "./scoreBatch.js"
 import { runLoop } from "./loop.js"
@@ -29,7 +29,7 @@ import type { JobContext } from "./types.js"
  *
  * GitHub and the model are fakes; everything between them is the code that runs
  * in production. The point is the joins and the ordering, which no unit check
- * can reach: that a week opens once, that the scorer waits for the lane, that
+ * can reach: that a week opens once, that the scorer waits for the venue, that
  * the publisher waits for the scorer, and that running the lot twice changes
  * nothing.
  *
@@ -110,7 +110,7 @@ function scoringModel(): ModelClient & { calls: number } {
 
 async function reset() {
   await db!.execute(
-    sql.raw(`truncate ${TABLE_NAMES.filter((t) => t.startsWith("hm_")).join(", ")} cascade`)
+    sql.raw(`truncate ${TRUNCATABLE_TABLE_NAMES.join(", ")} cascade`)
   )
 }
 
@@ -161,7 +161,9 @@ async function main() {
   const queued = await db!.select().from(hmJobs).where(eq(hmJobs.coin, COIN))
   assert.deepEqual(
     queued.map((j) => j.type).sort(),
-    ["lane_read", "publish", "score_batch"],
+    // Sorted, and one read per venue: `venue_read` sorts after the others,
+    // which the old `lane_read` did not, and there are two venues now.
+    ["publish", "score_batch", "venue_read", "venue_read"],
     "the whole week's work is queued at once; each job waits on its own preconditions"
   )
 
@@ -169,20 +171,47 @@ async function main() {
   await epochStart(ctxFor("epoch_start"))
   assert.equal(
     (await db!.select().from(hmJobs).where(eq(hmJobs.coin, COIN))).length,
-    3,
+    4,
     "a second tick queues nothing and opens nothing twice"
   )
 
-  /* ── the scorer refuses to run before the lane has reported ─────────────── */
+  /* ── the weekly timer repeats forever, and boot creates it ───────────────── */
+
+  {
+    // The timer row carries epoch 0. It used to return `done` once it opened a
+    // week, which finished the only timer there was, and no later week opened.
+    const timerCtx: JobContext = {
+      db: db!,
+      workerId: "pipeline",
+      job: { id: 2n, ...EPOCH_TIMER, attempts: 0, payload: null },
+    }
+    const outcome = await epochStart(timerCtx)
+    assert.equal(outcome.kind, "wait", "the repeating timer never finishes")
+
+    // Nothing in production enqueued it before. Boot must, exactly once.
+    const timerRows = () =>
+      db!.select().from(hmJobs).where(and(eq(hmJobs.type, "epoch_start"), eq(hmJobs.epoch, 0)))
+    await ensureEpochTimer(db!)
+    await ensureEpochTimer(db!)
+    assert.equal((await timerRows()).length, 1, "one timer, however many boots")
+    assert.equal((await timerRows())[0]!.status, "pending")
+
+    // A timer the old code left `done` is revived, not ignored.
+    await db!.update(hmJobs).set({ status: "done" }).where(and(eq(hmJobs.type, "epoch_start"), eq(hmJobs.epoch, 0)))
+    await ensureEpochTimer(db!)
+    assert.equal((await timerRows())[0]!.status, "pending", "a finished timer is put back")
+  }
+
+  /* ── the scorer refuses to run before the venue has reported ─────────────── */
 
   const model = scoringModel()
   const scoreBatch = makeScoreBatch({ makeClient: () => model })
 
   const early = await scoreBatch(ctxFor("score_batch"))
-  assert.equal(early.kind, "wait", "scoring a week whose lane has not reported would invent a list")
+  assert.equal(early.kind, "wait", "scoring a week whose venue has not reported would invent a list")
   assert.equal(model.calls, 0, "and it costs nothing to refuse")
 
-  /* ── the lane reads, the scorer scores, the publisher publishes ─────────── */
+  /* ── the venue reads, the scorer scores, the publisher publishes ─────────── */
 
   // One fixed payload, reused by the rerun below. Generating fresh pull
   // requests there would prove nothing about idempotency: they would be new
@@ -194,7 +223,7 @@ async function main() {
   ]
 
   await withFetch(serveGithub([WEEK]), async () => {
-    const out = await laneRead(ctxFor("lane_read", "github"))
+    const out = await venueRead(ctxFor("venue_read", "github"))
     assert.equal(out.kind, "done")
   })
   assert.equal((await db!.select().from(hmItems).where(eq(hmItems.coin, COIN))).length, 3)
@@ -270,7 +299,7 @@ async function main() {
 
   const callsBefore = model.calls
   await withFetch(serveGithub([WEEK]), async () => {
-    await laneRead(ctxFor("lane_read", "github"))
+    await venueRead(ctxFor("venue_read", "github"))
   })
   await scoreBatch(ctxFor("score_batch"))
   assert.equal(model.calls, callsBefore, "already-scored items are never paid for twice")
@@ -300,7 +329,7 @@ async function main() {
         db: db!,
         handlers: {
           epoch_start: epochStart,
-          lane_read: laneRead,
+          venue_read: venueRead,
           score_batch: makeScoreBatch({ makeClient: () => scoringModel() }),
           publish: makePublish({ pot: { async potFor() { return { coin: 500n, usdc: 0n } } } }),
         },

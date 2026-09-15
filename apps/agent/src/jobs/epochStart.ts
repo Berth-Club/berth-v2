@@ -19,7 +19,10 @@ import { done, waitFor, type JobContext, type JobOutcome } from "./types.js"
  */
 
 /** Jobs enqueued for each new epoch, in the order they unblock each other. */
-const LANES_TO_READ = ["github"] as const
+// Every venue a week reads. A venue a coin has not opted into costs one
+// cheap query that returns nothing, so listing them all here is simpler
+// than deriving the list per coin from its rules.
+const VENUES_TO_READ = ["github", "fomo"] as const
 
 export async function epochStart(ctx: JobContext): Promise<JobOutcome> {
   const { db } = ctx
@@ -102,19 +105,54 @@ export async function epochStart(ctx: JobContext): Promise<JobOutcome> {
       })
       .onConflictDoNothing()
 
-    for (const lane of LANES_TO_READ) {
-      await enqueue(ctx, "lane_read", c.coin, epoch, lane)
+    for (const venue of VENUES_TO_READ) {
+      await enqueue(ctx, "venue_read", c.coin, epoch, venue)
     }
     await enqueue(ctx, "score_batch", c.coin, epoch, "")
     await enqueue(ctx, "publish", c.coin, epoch, "")
     opened++
   }
 
-  // Come back well before the next boundary. The check is cheap and a missed
-  // week is not.
-  return opened > 0
-    ? done(`opened epoch ${epoch} for ${opened} coin(s), ${skipped} already had it`)
-    : waitFor(3600, `epoch ${epoch} already open for all ${skipped} coin(s)`)
+  const note =
+    opened > 0
+      ? `opened epoch ${epoch} for ${opened} coin(s), ${skipped} already had it`
+      : `epoch ${epoch} already open for all ${skipped} coin(s)`
+
+  // A backfill names one week, and once that week is open it is finished.
+  if (ctx.job.epoch > 0) return done(note)
+
+  // The repeating timer must NEVER finish. It used to return `done` after
+  // opening a week, which marked the only timer row complete, so the next week
+  // was never opened by anything. Come back well before the next boundary: the
+  // check is cheap and a missed week is not.
+  return waitFor(3600, note)
+}
+
+/**
+ * The identity of the repeating timer row.
+ *
+ * Global rather than per coin (see above), so it carries no coin and no epoch.
+ * `ensureEpochTimer` inserts it at boot; nothing else creates it.
+ */
+export const EPOCH_TIMER = { type: "epoch_start", coin: "", epoch: 0, key: "" } as const
+
+/**
+ * Make sure the repeating timer exists, and is not stuck finished.
+ *
+ * Without this nothing in production ever enqueued `epoch_start`: only the demo
+ * scripts did. A fresh deploy polled an empty queue forever and no week opened.
+ * Safe on every boot: the unique job identity makes a second insert a no-op, and
+ * a row left `done` by the old behaviour is put back to pending.
+ */
+export async function ensureEpochTimer(db: JobContext["db"]): Promise<void> {
+  await db
+    .insert(hmJobs)
+    .values({ ...EPOCH_TIMER, status: "pending", runAfter: new Date() })
+    .onConflictDoUpdate({
+      target: [hmJobs.type, hmJobs.coin, hmJobs.epoch, hmJobs.key],
+      set: { status: "pending", runAfter: new Date() },
+      setWhere: eq(hmJobs.status, "done"),
+    })
 }
 
 /**
@@ -123,7 +161,7 @@ export async function epochStart(ctx: JobContext): Promise<JobOutcome> {
  * The unique index on (type, coin, epoch, key) is what makes this safe to call
  * on every tick. Ordering comes from each handler waiting on its own
  * preconditions rather than from a dependency graph: `score_batch` waits for
- * lanes to report, `publish` waits for every item to be judged. That way a job
+ * venues to report, `publish` waits for every item to be judged. That way a job
  * enqueued too early costs one cheap poll, not a stuck week.
  */
 async function enqueue(

@@ -1,7 +1,7 @@
 import type { ModelClient } from "./model.js"
 
 /**
- * A yes/no pass before a lane with no upstream filter is scored.
+ * A yes/no pass before a venue with no upstream filter is scored.
  *
  * GitHub does not need this. A pull request had to be reviewed and merged by
  * someone with write access, so the project's maintainers are already a filter
@@ -123,5 +123,5 @@ function extractJson(raw: string): string {
   return a >= 0 && b > a ? t.slice(a, b + 1) : t
 }
 
-/** Lanes whose items are screened before scoring. */
-export const SCREENED_LANES = new Set(["fomo"])
+/** Venues whose items are screened before scoring. */
+export const SCREENED_VENUES = new Set(["fomo"])

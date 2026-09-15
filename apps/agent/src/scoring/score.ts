@@ -1,5 +1,5 @@
 import type { ModelClient } from "./model.js"
-import { buildUserPrompt } from "./prompt.js"
+import { buildUserPrompt, systemPromptFor } from "./prompt.js"
 import { parseVerdict, RejectedOutput, type Verdict } from "./schema.js"
 
 /**
@@ -23,6 +23,14 @@ export interface ScoreItem {
   content: string
   handle?: string | null
   link?: string | null
+  /** Which venue's rules to judge under. Defaults to the GitHub ones. */
+  venue?: string
+  /** Numbers the venue knows and the text does not say. FOMO only, so far. */
+  signals?: {
+    numLikes?: number | null
+    positionUsd?: number | null
+    soldAt?: Date | string | null
+  }
 }
 
 export interface Sample {
@@ -88,13 +96,18 @@ export async function scoreItem(item: ScoreItem, opts: ScoreOptions): Promise<Sc
     content: item.content,
     handle: item.handle,
     link: item.link,
+    venue: item.venue,
+    signals: item.signals,
   })
+  // The rules a callout is judged under are not the rules a pull request is
+  // judged under, and the same process scores both in one week.
+  const system = systemPromptFor(item.venue ?? "github")
 
   const samples: Sample[] = []
   for (let i = 0; i < n; i++) {
     let reply
     try {
-      reply = await opts.client.complete(userPrompt, opts.signal)
+      reply = await opts.client.complete(userPrompt, opts.signal, system)
     } catch (error) {
       // A transport failure is not a verdict. Throwing lets the job retry the
       // whole item rather than recording a zero someone would have to dispute.
